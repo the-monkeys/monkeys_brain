@@ -61,6 +61,7 @@ type TheMonkeysUser struct {
 	MobileVerificationToken     string         `json:"mobile_verification_token"`
 	MobileVerificationTimeout   sql.NullTime   `json:"mobile_verification_timeout"`
 	LoginMethod                 string         `json:"login_method"`
+	IsVerified                  bool           `json:"is_verified"`
 }
 
 type UserProfileRes struct {
