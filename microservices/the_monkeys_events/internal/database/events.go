@@ -22,6 +22,28 @@ const (
 	StatusCancelled = "cancelled"
 )
 
+// Event type filter values
+const (
+	EventTypeAll      = "all"
+	EventTypeInPerson = "in_person"
+	EventTypeOnline   = "virtual"
+	EventTypeHybrid   = "hybrid"
+)
+
+// Date filter values passed by the discovery UI.
+const (
+	DateFilterThisWeek  = "this-week"
+	DateFilterThisMonth = "this-month"
+	DateFilterAll       = "all"
+)
+
+// Sort order values passed by the discovery UI.
+const (
+	SortBySoonest = "soonest"
+	SortByPopular = "popular"
+	SortByNewest  = "newest"
+)
+
 // publicStatuses are the states an event is visible in to non-hosts.
 var publicStatuses = []string{StatusPublished, StatusLive, StatusCompleted}
 
@@ -393,7 +415,7 @@ func (f *filter) where() string {
 
 // commonFilters applies the discovery filters shared by every listing RPC.
 func commonFilters(f *filter, req *pb.ListEventsReq) {
-	if req.EventType != "" {
+	if req.EventType != "" && req.EventType != EventTypeAll {
 		f.add("e.event_type = $%d", req.EventType)
 	}
 	if req.Query != "" {
@@ -404,6 +426,14 @@ func commonFilters(f *filter, req *pb.ListEventsReq) {
 	}
 	if len(req.Tags) > 0 {
 		f.add("EXISTS (SELECT 1 FROM event_tags t WHERE t.event_id = e.id AND t.tag_name = ANY($%d))", req.Tags)
+	}
+	switch req.DateFilter {
+	case DateFilterThisWeek:
+		f.addRaw("e.start_time >= CURRENT_DATE AND e.start_time < date_trunc('week', CURRENT_DATE + interval '1 week')")
+	case DateFilterThisMonth:
+		f.addRaw("e.start_time >= CURRENT_DATE AND e.start_time < date_trunc('month', CURRENT_DATE + interval '1 month')")
+	case DateFilterAll:
+		f.addRaw("e.start_time >= CURRENT_DATE")
 	}
 }
 
@@ -427,8 +457,19 @@ func (db *eventDB) list(ctx context.Context, req *pb.ListEventsReq, f *filter, j
 	}
 
 	args := append(append([]any{}, f.args...), limit, offset)
-	query := fmt.Sprintf("SELECT%s%s%s%s ORDER BY e.start_time DESC LIMIT $%d OFFSET $%d",
-		eventColumns, eventFrom, join, where, len(args)-1, len(args))
+
+	orderBy := "e.start_time ASC" // default: SortBySoonest
+	switch req.SortBy {
+	case SortByNewest:
+		orderBy = "e.created_at DESC"
+	case SortByPopular:
+		orderBy = "(SELECT COUNT(1) FROM event_attendees a WHERE a.event_id = e.id AND a.status = 'confirmed') DESC, e.start_time ASC"
+	}
+
+	query := fmt.Sprintf("SELECT%s%s%s%s ORDER BY %s LIMIT $%d OFFSET $%d",
+		eventColumns, eventFrom, join, where, orderBy, len(args)-1, len(args))
+
+	db.log.Debugw("[DEBUG] list query", "sql", query, "args", args)
 
 	rows, err := db.db.QueryContext(ctx, query, args...)
 	if err != nil {
