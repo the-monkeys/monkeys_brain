@@ -1,48 +1,155 @@
-# The Monkeys
+# The Monkeys Engine
 
-Welcome to The Monkeys, an educational and informational blogging platform!
+**The Monkeys** is an open media and research platform for writers, researchers, and domain experts. It provides a space to publish content, discover knowledge across disciplines, and build on each other's ideas, from science and technology to philosophy, health, and beyond.
 
-We are dedicated to providing a space for individuals to share their knowledge and experiences on a variety of topics. Our platform is designed to be a resource for people looking to learn new things and expand their understanding of the world.
+The Monkeys Engine is the backend powering this platform: a high-performance microservices system built in Go.
 
-We invite readers/writers/experts to bring a diverse range of perspectives to the table, share their insights on everything from science and technology to personal development and self-improvement, psychology, philosophy, fashion, health and lifestyle etc.
+---
 
-We believe that learning should be accessible to everyone, and that's why we offer our content. Our platform is open to anyone who wants to read, learn, and grow.
+## Architecture
 
-We also believe in the power of community. Our platform encourages engagement and conversation, and we welcome feedback and suggestions from our readers.
+The engine follows an **API Gateway + microservices** pattern. All client traffic enters through a single gateway, which handles authentication, routing, and rate limiting. Services communicate synchronously over **gRPC** and asynchronously via **RabbitMQ**.
 
-Thank you for visiting our platform. We hope you find it informative and educational, and that you come back often to learn and grow with us.
+![Architecture Diagram](static/the_monkeys.jpg)
 
-<br>
+### Component Overview
 
-# The current architecture diagram.
+| Component | Role | Technology |
+|---|---|---|
+| **API Gateway** | Entry point — routing, auth, rate limiting, CORS | Go, Gin |
+| **AuthN & AuthZ** | Authentication, JWT issuance, access-level enforcement | Go, gRPC |
+| **Blog** | Content creation, drafts, publishing, tagging | Go, PostgreSQL |
+| **User** | Identity, profiles, account management | Go, PostgreSQL |
+| **Activity** | Behaviour tracking, analytics, audit logging | Go, Elasticsearch |
+| **Notification** | Push notification dispatch | Go, FreeRange Notify |
+| **Storage** | File and media asset management | Go, MinIO |
+| **M-AI** | Content recommendations, semantic search | Python, gRPC, Vector DB |
+| **RabbitMQ** | Async event bus — cascading deletes, activity events | RabbitMQ |
 
-![the monkeys](static/the_monkeys.jpg)
+### External Integrations
 
+- **Google OAuth** — social login
+- **Google Search Console** — SEO indexing
+- **FreeRange Notify** — push notifications
 
-# Contribution Guidelines:
-We're glad you're thinking about contributing to The Monkeys. If you think something is missing or could be improved, please open issues and pull requests. If you'd like to help this project grow, we'd love to have you. To start contributing, check the [Contributing Guidelines](contribution/contribution.md).
+---
 
- <!-- # Native installation steps
- 1. Move to the the_new_project directory
-   - `cd the_new_projects`
+## Technology Stack
 
- 2. Export scripts directory:
-   - `export MONKEY_SCRIPTS=$PWD/scripts/`
- 
- 3. Build the services:
-    * On docker
-    `./scripts/build.sh`
-    * On Linux
-    `sudo -E ./scripts/build.sh`
-  
- 4. Install services and other core components:
-    * On Docker
-    `./scripts/install.sh`
-    * On Linux
-    `sudo -E ./scripts/install.sh `
+| Layer | Technology |
+|---|---|
+| Language | Go 1.26, Python (AI service) |
+| API Gateway | Gin |
+| Inter-service RPC | gRPC / Protobuf |
+| Async Messaging | RabbitMQ (publisher confirms, DLX/DLQ) |
+| Relational DB | PostgreSQL 17 |
+| Search & Analytics | Elasticsearch 8 |
+| File Storage | MinIO |
+| Caching | Redis |
+| Logging | Zap (structured, JSON in production) |
+| Containerisation | Docker, Docker Compose |
+| DB Migrations | golang-migrate |
 
- 5. Install services and other core components:
-    * On docker
-     `./scripts/uninstall.sh`
-    * On linux
-     `sudo -E ./scripts/uninstall.sh ` -->
+---
+
+## Repository Structure
+
+```
+the_monkeys_engine/
+├── microservices/          # One directory per service
+│   ├── the_monkeys_gateway/
+│   ├── the_monkeys_authz/
+│   ├── the_monkeys_blog/
+│   ├── the_monkeys_users/
+│   ├── the_monkeys_activity/
+│   ├── the_monkeys_notification/
+│   ├── the_monkeys_storage/
+│   ├── the_monkeys_ai/
+│   └── the_monkeys_stream/
+├── apis/serviceconn/       # Protobuf definitions & generated gRPC stubs
+├── schema/                 # PostgreSQL migration files
+├── schema_es/              # Elasticsearch index mappings
+├── config/                 # Shared configuration helpers
+├── logger/                 # Zap logger initialisation
+├── rabbitmq/               # RabbitMQ connection manager & publisher
+├── static/                 # Static assets (architecture diagram, etc.)
+├── docker-compose.yml
+└── Makefile
+```
+
+Each microservice follows the same internal layout:
+
+```
+the_monkeys_<service>/
+├── main.go
+├── Dockerfile
+├── Dockerfile.distroless
+└── internal/
+    ├── consumer/   # RabbitMQ consumers
+    ├── services/   # Business logic / gRPC server implementation
+    ├── database/   # DB client initialisation
+    └── models/     # Data structs
+```
+
+---
+
+## Local Development
+
+### Prerequisites
+
+- [Docker](https://docs.docker.com/get-docker/) and Docker Compose
+- [Go 1.26+](https://go.dev/dl/)
+- [protoc](https://grpc.io/docs/protoc-installation/) with the Go gRPC plugins (only required if modifying `.proto` files)
+
+### 1. Configure environment
+
+Copy the example environment file and fill in your values:
+
+```bash
+cp .env.example .env
+```
+
+The key variables are documented inside `.env.example`.
+
+### 2. Start infrastructure services
+
+```bash
+docker compose up the_monkeys_db elasticsearch-node1 redis rabbitmq minio -d
+```
+
+### 3. Run database migrations
+
+```bash
+docker compose run --rm db-migrations up
+```
+
+### 4. Start all services
+
+```bash
+docker compose up
+```
+
+Or start an individual service for development:
+
+```bash
+cd microservices/the_monkeys_gateway
+go run main.go
+```
+
+---
+
+## gRPC & Protobuf
+
+All inter-service contracts are defined under `apis/serviceconn/`. After modifying a `.proto` file, regenerate stubs with:
+
+```bash
+make proto
+```
+
+---
+
+## Contributing
+
+Contributions are welcome. If something is missing or could be improved, open an issue or a pull request.
+
+Please read the [Contributing Guidelines](contribution/contribution.md) before submitting changes.
