@@ -667,7 +667,7 @@ func (es *elasticsearchStorage) GetBlogsMetaByAccountId(ctx context.Context, acc
 		})
 	} else if isDraft {
 		sort = append(sort, map[string]interface{}{
-			"published_time": map[string]interface{}{
+			"created_at": map[string]interface{}{
 				"order":         "desc",
 				"unmapped_type": "date",
 			},
@@ -701,6 +701,7 @@ func (es *elasticsearchStorage) GetBlogsMetaByAccountId(ctx context.Context, acc
 			"timezone",
 			"is_scheduled",
 			"is_draft",
+			"created_at",
 		},
 		"query": map[string]interface{}{
 			"bool": map[string]interface{}{
