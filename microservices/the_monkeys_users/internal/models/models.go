@@ -93,6 +93,40 @@ type UserLogs struct {
 	Country   string `json:"country,omitempty"`
 }
 
+// BusinessCard mirrors a row of the business_cards table. CardState holds the
+// full editor document as raw JSON (single source of truth); the discrete
+// columns are queryable metadata only.
+type BusinessCard struct {
+	Id                  string         `json:"id"`
+	AccountId           string         `json:"account_id"`
+	Name                string         `json:"name"`
+	TemplateId          string         `json:"template_id"`
+	ThemeId             string         `json:"theme_id"`
+	CardState           string         `json:"card_state"`
+	IsDefault           bool           `json:"is_default"`
+	AvatarAssetChecksum sql.NullString `json:"avatar_asset_checksum"`
+	LogoAssetChecksum   sql.NullString `json:"logo_asset_checksum"`
+	CreatedAt           sql.NullTime   `json:"created_at"`
+	UpdatedAt           sql.NullTime   `json:"updated_at"`
+}
+
+// UserAddress is a PRIVATE, owner-scoped postal address. Never exposed on the
+// public profile. Reusable across business cards and (future) billing/shipping.
+type UserAddress struct {
+	Id         string         `json:"id"`
+	AccountId  string         `json:"account_id"`
+	Label      string         `json:"label"`
+	Line1      string         `json:"line1"`
+	Line2      sql.NullString `json:"line2"`
+	City       sql.NullString `json:"city"`
+	State      sql.NullString `json:"state"`
+	PostalCode sql.NullString `json:"postal_code"`
+	Country    sql.NullString `json:"country"`
+	IsDefault  bool           `json:"is_default"`
+	CreatedAt  sql.NullTime   `json:"created_at"`
+	UpdatedAt  sql.NullTime   `json:"updated_at"`
+}
+
 type TheMonkeysMessage struct {
 	Id           int64    `json:"id"`
 	AccountId    string   `json:"account_id"`

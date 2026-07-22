@@ -64,6 +64,20 @@ type UserDb interface {
 	UpdateBlogStatusToPublish(blogId string, status string) error
 	UpdateBlogStatusToDraft(blogId string, status string) error
 
+	// Business card queries
+	CreateBusinessCard(card *models.BusinessCard) (*models.BusinessCard, error)
+	GetBusinessCard(accountId, id string) (*models.BusinessCard, error)
+	ListBusinessCards(accountId string, limit, offset int) ([]models.BusinessCard, error)
+	UpdateBusinessCard(card *models.BusinessCard) (*models.BusinessCard, error)
+	DeleteBusinessCard(accountId, id string) error
+
+	// Private address (address book) queries
+	CreateUserAddress(addr *models.UserAddress) (*models.UserAddress, error)
+	GetUserAddress(accountId, id string) (*models.UserAddress, error)
+	ListUserAddresses(accountId string) ([]models.UserAddress, error)
+	UpdateUserAddress(addr *models.UserAddress) (*models.UserAddress, error)
+	DeleteUserAddress(accountId, id string) error
+
 	// Delete queries
 	GetOwnedBlogIDs(username string) ([]string, error)
 	DeleteUserProfile(username string) error

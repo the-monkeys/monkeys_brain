@@ -49,6 +49,16 @@ const (
 	UserService_GetBlogsByUserIds_FullMethodName           = "/auth_svc.UserService/GetBlogsByUserIds"
 	UserService_CreateNewTopics_FullMethodName             = "/auth_svc.UserService/CreateNewTopics"
 	UserService_GetBatchUserDetails_FullMethodName         = "/auth_svc.UserService/GetBatchUserDetails"
+	UserService_CreateBusinessCard_FullMethodName          = "/auth_svc.UserService/CreateBusinessCard"
+	UserService_GetBusinessCard_FullMethodName             = "/auth_svc.UserService/GetBusinessCard"
+	UserService_ListBusinessCards_FullMethodName           = "/auth_svc.UserService/ListBusinessCards"
+	UserService_UpdateBusinessCard_FullMethodName          = "/auth_svc.UserService/UpdateBusinessCard"
+	UserService_DeleteBusinessCard_FullMethodName          = "/auth_svc.UserService/DeleteBusinessCard"
+	UserService_CreateUserAddress_FullMethodName           = "/auth_svc.UserService/CreateUserAddress"
+	UserService_GetUserAddress_FullMethodName              = "/auth_svc.UserService/GetUserAddress"
+	UserService_ListUserAddresses_FullMethodName           = "/auth_svc.UserService/ListUserAddresses"
+	UserService_UpdateUserAddress_FullMethodName           = "/auth_svc.UserService/UpdateUserAddress"
+	UserService_DeleteUserAddress_FullMethodName           = "/auth_svc.UserService/DeleteUserAddress"
 )
 
 // UserServiceClient is the client API for UserService service.
@@ -91,6 +101,18 @@ type UserServiceClient interface {
 	GetBlogsByUserIds(ctx context.Context, in *BlogsByUserIdsReq, opts ...grpc.CallOption) (*BlogsByUserNameRes, error)
 	CreateNewTopics(ctx context.Context, in *CreateTopicsReq, opts ...grpc.CallOption) (*CreateTopicsRes, error)
 	GetBatchUserDetails(ctx context.Context, in *GetBatchUserDetailsReq, opts ...grpc.CallOption) (*GetBatchUserDetailsRes, error)
+	// Business Cards (owned by account_id, stored in business_cards table)
+	CreateBusinessCard(ctx context.Context, in *CreateBusinessCardReq, opts ...grpc.CallOption) (*BusinessCard, error)
+	GetBusinessCard(ctx context.Context, in *GetBusinessCardReq, opts ...grpc.CallOption) (*BusinessCard, error)
+	ListBusinessCards(ctx context.Context, in *ListBusinessCardsReq, opts ...grpc.CallOption) (*ListBusinessCardsRes, error)
+	UpdateBusinessCard(ctx context.Context, in *UpdateBusinessCardReq, opts ...grpc.CallOption) (*BusinessCard, error)
+	DeleteBusinessCard(ctx context.Context, in *DeleteBusinessCardReq, opts ...grpc.CallOption) (*DeleteBusinessCardRes, error)
+	// Private addresses (owned by account_id, stored in user_addresses table)
+	CreateUserAddress(ctx context.Context, in *CreateUserAddressReq, opts ...grpc.CallOption) (*UserAddress, error)
+	GetUserAddress(ctx context.Context, in *GetUserAddressReq, opts ...grpc.CallOption) (*UserAddress, error)
+	ListUserAddresses(ctx context.Context, in *ListUserAddressesReq, opts ...grpc.CallOption) (*ListUserAddressesRes, error)
+	UpdateUserAddress(ctx context.Context, in *UpdateUserAddressReq, opts ...grpc.CallOption) (*UserAddress, error)
+	DeleteUserAddress(ctx context.Context, in *DeleteUserAddressReq, opts ...grpc.CallOption) (*DeleteUserAddressRes, error)
 }
 
 type userServiceClient struct {
@@ -404,6 +426,106 @@ func (c *userServiceClient) GetBatchUserDetails(ctx context.Context, in *GetBatc
 	return out, nil
 }
 
+func (c *userServiceClient) CreateBusinessCard(ctx context.Context, in *CreateBusinessCardReq, opts ...grpc.CallOption) (*BusinessCard, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(BusinessCard)
+	err := c.cc.Invoke(ctx, UserService_CreateBusinessCard_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *userServiceClient) GetBusinessCard(ctx context.Context, in *GetBusinessCardReq, opts ...grpc.CallOption) (*BusinessCard, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(BusinessCard)
+	err := c.cc.Invoke(ctx, UserService_GetBusinessCard_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *userServiceClient) ListBusinessCards(ctx context.Context, in *ListBusinessCardsReq, opts ...grpc.CallOption) (*ListBusinessCardsRes, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ListBusinessCardsRes)
+	err := c.cc.Invoke(ctx, UserService_ListBusinessCards_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *userServiceClient) UpdateBusinessCard(ctx context.Context, in *UpdateBusinessCardReq, opts ...grpc.CallOption) (*BusinessCard, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(BusinessCard)
+	err := c.cc.Invoke(ctx, UserService_UpdateBusinessCard_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *userServiceClient) DeleteBusinessCard(ctx context.Context, in *DeleteBusinessCardReq, opts ...grpc.CallOption) (*DeleteBusinessCardRes, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(DeleteBusinessCardRes)
+	err := c.cc.Invoke(ctx, UserService_DeleteBusinessCard_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *userServiceClient) CreateUserAddress(ctx context.Context, in *CreateUserAddressReq, opts ...grpc.CallOption) (*UserAddress, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(UserAddress)
+	err := c.cc.Invoke(ctx, UserService_CreateUserAddress_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *userServiceClient) GetUserAddress(ctx context.Context, in *GetUserAddressReq, opts ...grpc.CallOption) (*UserAddress, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(UserAddress)
+	err := c.cc.Invoke(ctx, UserService_GetUserAddress_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *userServiceClient) ListUserAddresses(ctx context.Context, in *ListUserAddressesReq, opts ...grpc.CallOption) (*ListUserAddressesRes, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ListUserAddressesRes)
+	err := c.cc.Invoke(ctx, UserService_ListUserAddresses_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *userServiceClient) UpdateUserAddress(ctx context.Context, in *UpdateUserAddressReq, opts ...grpc.CallOption) (*UserAddress, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(UserAddress)
+	err := c.cc.Invoke(ctx, UserService_UpdateUserAddress_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *userServiceClient) DeleteUserAddress(ctx context.Context, in *DeleteUserAddressReq, opts ...grpc.CallOption) (*DeleteUserAddressRes, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(DeleteUserAddressRes)
+	err := c.cc.Invoke(ctx, UserService_DeleteUserAddress_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // UserServiceServer is the server API for UserService service.
 // All implementations must embed UnimplementedUserServiceServer
 // for forward compatibility.
@@ -444,6 +566,18 @@ type UserServiceServer interface {
 	GetBlogsByUserIds(context.Context, *BlogsByUserIdsReq) (*BlogsByUserNameRes, error)
 	CreateNewTopics(context.Context, *CreateTopicsReq) (*CreateTopicsRes, error)
 	GetBatchUserDetails(context.Context, *GetBatchUserDetailsReq) (*GetBatchUserDetailsRes, error)
+	// Business Cards (owned by account_id, stored in business_cards table)
+	CreateBusinessCard(context.Context, *CreateBusinessCardReq) (*BusinessCard, error)
+	GetBusinessCard(context.Context, *GetBusinessCardReq) (*BusinessCard, error)
+	ListBusinessCards(context.Context, *ListBusinessCardsReq) (*ListBusinessCardsRes, error)
+	UpdateBusinessCard(context.Context, *UpdateBusinessCardReq) (*BusinessCard, error)
+	DeleteBusinessCard(context.Context, *DeleteBusinessCardReq) (*DeleteBusinessCardRes, error)
+	// Private addresses (owned by account_id, stored in user_addresses table)
+	CreateUserAddress(context.Context, *CreateUserAddressReq) (*UserAddress, error)
+	GetUserAddress(context.Context, *GetUserAddressReq) (*UserAddress, error)
+	ListUserAddresses(context.Context, *ListUserAddressesReq) (*ListUserAddressesRes, error)
+	UpdateUserAddress(context.Context, *UpdateUserAddressReq) (*UserAddress, error)
+	DeleteUserAddress(context.Context, *DeleteUserAddressReq) (*DeleteUserAddressRes, error)
 	mustEmbedUnimplementedUserServiceServer()
 }
 
@@ -543,6 +677,36 @@ func (UnimplementedUserServiceServer) CreateNewTopics(context.Context, *CreateTo
 }
 func (UnimplementedUserServiceServer) GetBatchUserDetails(context.Context, *GetBatchUserDetailsReq) (*GetBatchUserDetailsRes, error) {
 	return nil, status.Error(codes.Unimplemented, "method GetBatchUserDetails not implemented")
+}
+func (UnimplementedUserServiceServer) CreateBusinessCard(context.Context, *CreateBusinessCardReq) (*BusinessCard, error) {
+	return nil, status.Error(codes.Unimplemented, "method CreateBusinessCard not implemented")
+}
+func (UnimplementedUserServiceServer) GetBusinessCard(context.Context, *GetBusinessCardReq) (*BusinessCard, error) {
+	return nil, status.Error(codes.Unimplemented, "method GetBusinessCard not implemented")
+}
+func (UnimplementedUserServiceServer) ListBusinessCards(context.Context, *ListBusinessCardsReq) (*ListBusinessCardsRes, error) {
+	return nil, status.Error(codes.Unimplemented, "method ListBusinessCards not implemented")
+}
+func (UnimplementedUserServiceServer) UpdateBusinessCard(context.Context, *UpdateBusinessCardReq) (*BusinessCard, error) {
+	return nil, status.Error(codes.Unimplemented, "method UpdateBusinessCard not implemented")
+}
+func (UnimplementedUserServiceServer) DeleteBusinessCard(context.Context, *DeleteBusinessCardReq) (*DeleteBusinessCardRes, error) {
+	return nil, status.Error(codes.Unimplemented, "method DeleteBusinessCard not implemented")
+}
+func (UnimplementedUserServiceServer) CreateUserAddress(context.Context, *CreateUserAddressReq) (*UserAddress, error) {
+	return nil, status.Error(codes.Unimplemented, "method CreateUserAddress not implemented")
+}
+func (UnimplementedUserServiceServer) GetUserAddress(context.Context, *GetUserAddressReq) (*UserAddress, error) {
+	return nil, status.Error(codes.Unimplemented, "method GetUserAddress not implemented")
+}
+func (UnimplementedUserServiceServer) ListUserAddresses(context.Context, *ListUserAddressesReq) (*ListUserAddressesRes, error) {
+	return nil, status.Error(codes.Unimplemented, "method ListUserAddresses not implemented")
+}
+func (UnimplementedUserServiceServer) UpdateUserAddress(context.Context, *UpdateUserAddressReq) (*UserAddress, error) {
+	return nil, status.Error(codes.Unimplemented, "method UpdateUserAddress not implemented")
+}
+func (UnimplementedUserServiceServer) DeleteUserAddress(context.Context, *DeleteUserAddressReq) (*DeleteUserAddressRes, error) {
+	return nil, status.Error(codes.Unimplemented, "method DeleteUserAddress not implemented")
 }
 func (UnimplementedUserServiceServer) mustEmbedUnimplementedUserServiceServer() {}
 func (UnimplementedUserServiceServer) testEmbeddedByValue()                     {}
@@ -1094,6 +1258,186 @@ func _UserService_GetBatchUserDetails_Handler(srv interface{}, ctx context.Conte
 	return interceptor(ctx, in, info, handler)
 }
 
+func _UserService_CreateBusinessCard_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(CreateBusinessCardReq)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(UserServiceServer).CreateBusinessCard(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: UserService_CreateBusinessCard_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(UserServiceServer).CreateBusinessCard(ctx, req.(*CreateBusinessCardReq))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _UserService_GetBusinessCard_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetBusinessCardReq)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(UserServiceServer).GetBusinessCard(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: UserService_GetBusinessCard_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(UserServiceServer).GetBusinessCard(ctx, req.(*GetBusinessCardReq))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _UserService_ListBusinessCards_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ListBusinessCardsReq)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(UserServiceServer).ListBusinessCards(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: UserService_ListBusinessCards_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(UserServiceServer).ListBusinessCards(ctx, req.(*ListBusinessCardsReq))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _UserService_UpdateBusinessCard_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(UpdateBusinessCardReq)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(UserServiceServer).UpdateBusinessCard(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: UserService_UpdateBusinessCard_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(UserServiceServer).UpdateBusinessCard(ctx, req.(*UpdateBusinessCardReq))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _UserService_DeleteBusinessCard_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(DeleteBusinessCardReq)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(UserServiceServer).DeleteBusinessCard(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: UserService_DeleteBusinessCard_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(UserServiceServer).DeleteBusinessCard(ctx, req.(*DeleteBusinessCardReq))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _UserService_CreateUserAddress_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(CreateUserAddressReq)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(UserServiceServer).CreateUserAddress(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: UserService_CreateUserAddress_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(UserServiceServer).CreateUserAddress(ctx, req.(*CreateUserAddressReq))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _UserService_GetUserAddress_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetUserAddressReq)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(UserServiceServer).GetUserAddress(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: UserService_GetUserAddress_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(UserServiceServer).GetUserAddress(ctx, req.(*GetUserAddressReq))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _UserService_ListUserAddresses_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ListUserAddressesReq)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(UserServiceServer).ListUserAddresses(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: UserService_ListUserAddresses_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(UserServiceServer).ListUserAddresses(ctx, req.(*ListUserAddressesReq))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _UserService_UpdateUserAddress_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(UpdateUserAddressReq)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(UserServiceServer).UpdateUserAddress(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: UserService_UpdateUserAddress_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(UserServiceServer).UpdateUserAddress(ctx, req.(*UpdateUserAddressReq))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _UserService_DeleteUserAddress_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(DeleteUserAddressReq)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(UserServiceServer).DeleteUserAddress(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: UserService_DeleteUserAddress_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(UserServiceServer).DeleteUserAddress(ctx, req.(*DeleteUserAddressReq))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // UserService_ServiceDesc is the grpc.ServiceDesc for UserService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -1216,6 +1560,46 @@ var UserService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "GetBatchUserDetails",
 			Handler:    _UserService_GetBatchUserDetails_Handler,
+		},
+		{
+			MethodName: "CreateBusinessCard",
+			Handler:    _UserService_CreateBusinessCard_Handler,
+		},
+		{
+			MethodName: "GetBusinessCard",
+			Handler:    _UserService_GetBusinessCard_Handler,
+		},
+		{
+			MethodName: "ListBusinessCards",
+			Handler:    _UserService_ListBusinessCards_Handler,
+		},
+		{
+			MethodName: "UpdateBusinessCard",
+			Handler:    _UserService_UpdateBusinessCard_Handler,
+		},
+		{
+			MethodName: "DeleteBusinessCard",
+			Handler:    _UserService_DeleteBusinessCard_Handler,
+		},
+		{
+			MethodName: "CreateUserAddress",
+			Handler:    _UserService_CreateUserAddress_Handler,
+		},
+		{
+			MethodName: "GetUserAddress",
+			Handler:    _UserService_GetUserAddress_Handler,
+		},
+		{
+			MethodName: "ListUserAddresses",
+			Handler:    _UserService_ListUserAddresses_Handler,
+		},
+		{
+			MethodName: "UpdateUserAddress",
+			Handler:    _UserService_UpdateUserAddress_Handler,
+		},
+		{
+			MethodName: "DeleteUserAddress",
+			Handler:    _UserService_DeleteUserAddress_Handler,
 		},
 	},
 	Streams: []grpc.StreamDesc{

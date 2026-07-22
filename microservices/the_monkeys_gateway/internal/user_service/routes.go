@@ -108,6 +108,26 @@ func RegisterUserRouter(router *gin.Engine, cfg *config.Config, authClient *auth
 		routes.POST("/topics", usc.CreateNewTopics)
 	}
 
+	// Business cards — owned by the authenticated account.
+	{
+		routes.POST("/cards", usc.CreateBusinessCard)
+		routes.GET("/cards", usc.ListBusinessCards)
+		routes.GET("/cards/:card_id", usc.GetBusinessCard)
+		routes.PUT("/cards/:card_id", usc.UpdateBusinessCard)
+		routes.PATCH("/cards/:card_id", usc.UpdateBusinessCard)
+		routes.DELETE("/cards/:card_id", usc.DeleteBusinessCard)
+	}
+
+	// Private addresses — owned by the authenticated account (never public).
+	{
+		routes.POST("/addresses", usc.CreateUserAddress)
+		routes.GET("/addresses", usc.ListUserAddresses)
+		routes.GET("/addresses/:address_id", usc.GetUserAddress)
+		routes.PUT("/addresses/:address_id", usc.UpdateUserAddress)
+		routes.PATCH("/addresses/:address_id", usc.UpdateUserAddress)
+		routes.DELETE("/addresses/:address_id", usc.DeleteUserAddress)
+	}
+
 	routesV2 := router.Group("/api/v2/user")
 	rateLimiter := middleware.RateLimiterMiddleware("100-S")
 	{
