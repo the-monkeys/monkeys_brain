@@ -741,6 +741,12 @@ func (asc *ServiceClient) UpdateUserName(ctx *gin.Context) {
 		if status.Code(err) == codes.NotFound {
 			ctx.AbortWithStatusJSON(http.StatusNotFound, gin.H{"message": "user not found"})
 			return
+		} else if status.Code(err) == codes.AlreadyExists {
+			ctx.AbortWithStatusJSON(http.StatusConflict, gin.H{"message": "Username is already taken. Please try another."})
+			return
+		} else if status.Code(err) == codes.InvalidArgument {
+			ctx.AbortWithStatusJSON(http.StatusBadRequest, gin.H{"message": status.Convert(err).Message()})
+			return
 		} else {
 			ctx.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"message": "couldn't update username"})
 			return

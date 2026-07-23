@@ -1037,6 +1037,11 @@ func (as *AuthzSvc) UpdateUsername(ctx context.Context, req *pb.UpdateUsernameRe
 		return nil, status.Errorf(codes.InvalidArgument, "current username or new username cannot be empty")
 	}
 
+	// Allow only letters, numbers, underscore and period in usernames.
+	if !utils.IsValidUsername(req.NewUsername) {
+		return nil, status.Errorf(codes.InvalidArgument, "Usernames can only contain letters, numbers, underscores, and periods.")
+	}
+
 	if utils.IsRestrictedUsername(req.NewUsername) {
 		return nil, status.Errorf(codes.InvalidArgument, "the username %s is not allowed, please choose a different username", req.NewUsername)
 	}
@@ -1049,6 +1054,16 @@ func (as *AuthzSvc) UpdateUsername(ctx context.Context, req *pb.UpdateUsernameRe
 			return nil, status.Errorf(codes.NotFound, "user %s doesn't exist", req.CurrentUsername)
 		}
 		return nil, status.Errorf(codes.Internal, "cannot get the user profile")
+	}
+
+	// Ensure the new username isn't already taken by another user.
+	// Without this pre-check the UPDATE below hits the unique constraint and
+	// surfaces as a generic Internal error (HTTP 500) instead of a clear conflict.
+	if _, err := as.dbConn.CheckIfUsernameExist(req.NewUsername); err == nil {
+		return nil, status.Errorf(codes.AlreadyExists, "the username %s is already taken", req.NewUsername)
+	} else if err != sql.ErrNoRows {
+		as.logger.Errorf("error while checking availability of new username %s, err: %v", req.NewUsername, err)
+		return nil, status.Errorf(codes.Internal, "cannot verify username availability")
 	}
 
 	// Update the username
