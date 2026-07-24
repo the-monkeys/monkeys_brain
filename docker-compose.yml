@@ -455,46 +455,46 @@ services:
       retries: 3
       start_period: 15s
 
-  # the_monkeys_ai_engine:
-  #   container_name: "the_monkeys_ai_engine"
-  #   build:
-  #     context: .
-  #     dockerfile: microservices/the_monkeys_ai/Dockerfile
-  #     args:
-  #       AI_ENGINE_PORT: ${MICROSERVICES_AI_ENGINE_PORT}
-  #       AI_ENGINE_HEALTH_PORT: ${MICROSERVICES_AI_ENGINE_HEALTH_PORT}
-  #   # For production, you can switch to:
-  #   # dockerfile: microservices/the_monkeys_ai/Dockerfile.distroless
-  #   networks:
-  #     - monkeys-network
-  #   depends_on:
-  #     - rabbitmq
-  #     - the_monkeys_db
-  #   ports:
-  #     - "${MICROSERVICES_AI_ENGINE_PORT}:${MICROSERVICES_AI_ENGINE_INTERNAL_PORT}"
-  #     - "${MICROSERVICES_AI_ENGINE_HEALTH_PORT}:${MICROSERVICES_AI_ENGINE_HEALTH_INTERNAL_PORT}"  # Health check endpoint (gRPC port + 1000)
-  #   restart: unless-stopped
-  #   env_file:
-  #     - .env
-  #   environment:
-  #     - PYTHONPATH=/app
-  #   # Security: Run as non-root user
-  #   user: "1001:1001"
-  #   # Resource limits for production
-  #   deploy:
-  #     resources:
-  #       limits:
-  #         memory: 512M
-  #         cpus: '1.0'
-  #       reservations:
-  #         memory: 256M
-  #         cpus: '0.3'
-  #   healthcheck:
-  #     test: ["CMD", "curl", "-f", "http://localhost:${MICROSERVICES_AI_ENGINE_HEALTH_INTERNAL_PORT}/health"]
-  #     interval: 30s
-  #     timeout: 10s
-  #     retries: 3
-  #     start_period: 60s
+  the_monkeys_ai_engine:
+    container_name: "the_monkeys_ai_engine"
+    build:
+      context: .
+      dockerfile: microservices/the_monkeys_ai/Dockerfile
+      args:
+        AI_ENGINE_PORT: ${MICROSERVICES_AI_ENGINE_PORT}
+        AI_ENGINE_HEALTH_PORT: ${MICROSERVICES_AI_ENGINE_HEALTH_PORT}
+    # For production, you can switch to:
+    # dockerfile: microservices/the_monkeys_ai/Dockerfile.distroless
+    networks:
+      - monkeys-network
+    depends_on:
+      - rabbitmq
+      - the_monkeys_db
+    ports:
+      - "${MICROSERVICES_AI_ENGINE_PORT}:${MICROSERVICES_AI_ENGINE_INTERNAL_PORT}"
+      - "${MICROSERVICES_AI_ENGINE_HEALTH_PORT}:${MICROSERVICES_AI_ENGINE_HEALTH_INTERNAL_PORT}"  # Health check endpoint (gRPC port + 1000)
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      - PYTHONPATH=/app
+    # Security: Run as non-root user
+    user: "1001:1001"
+    # Resource limits for production
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+          cpus: '1.0'
+        reservations:
+          memory: 256M
+          cpus: '0.3'
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:${MICROSERVICES_AI_ENGINE_HEALTH_INTERNAL_PORT}/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
 
   the_monkeys_activity:
     container_name: "the_monkeys_activity"

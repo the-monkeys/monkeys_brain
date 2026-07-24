@@ -27,17 +27,20 @@ import "time"
 // }
 
 type InterServiceMessage struct {
-	AccountId    string    `json:"account_id"`
-	UserStatus   string    `json:"user_status"`
-	BlogId       string    `json:"blog_id"`
-	BlogIds      []string  `json:"blog_ids,omitempty"`
-	Action       string    `json:"action"`
-	BlogStatus   string    `json:"blog_status"`
-	IpAddress    string    `json:"ip_address"`
-	Client       string    `json:"client"`
-	Tags         []string  `json:"tags"`
-	ScheduleTime time.Time `json:"schedule_time"`
-	Timezone     string    `json:"timezone"`
+	AccountId           string    `json:"account_id"`
+	UserStatus          string    `json:"user_status"`
+	BlogId              string    `json:"blog_id"`
+	BlogIds             []string  `json:"blog_ids,omitempty"`
+	Action              string    `json:"action"`
+	BlogStatus          string    `json:"blog_status"`
+	IpAddress           string    `json:"ip_address"`
+	Client              string    `json:"client"`
+	Tags                []string  `json:"tags"`
+	ScheduleTime        time.Time `json:"schedule_time"`
+	Timezone            string    `json:"timezone"`
+	AnalysisRequestedAt time.Time `json:"analysis_requested_at,omitempty"`
+	CorrelationId       string    `json:"correlation_id,omitempty"`
+	Priority            string    `json:"priority,omitempty"`
 }
 
 type DraftBlogRequest struct {

@@ -29,6 +29,7 @@ postgres_backup/
 elasticsearch_snapshots/
 backup/
 minio-data/
+minio-data_bak/
 logs/
 test_data/
 static/

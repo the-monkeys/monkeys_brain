@@ -73,6 +73,7 @@ err.log
 the_monkeys/*
 test/*
 minio-data/*
+minio-data_bak/*
 
 # Local debug / scratch dumps
 /a.json

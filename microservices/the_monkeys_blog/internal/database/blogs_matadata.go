@@ -42,6 +42,38 @@ func getStringOrDefault(value interface{}, defaultValue string) string {
 	return defaultValue
 }
 
+// aiMetadataFields are the AI-detection fields written onto a blog document by
+// the AI service. They only exist on blogs analyzed after the feature shipped;
+// older blogs omit them, so they must always be treated as optional.
+var aiMetadataFields = []string{
+	"ai_score",
+	"ai_verdict",
+	"ai_is_flagged",
+	"ai_analyzer_version",
+	"ai_analyzed_at",
+	"ai_features",
+	"ai_stats",
+	"ai_tells",
+	"ai_tell_count",
+}
+
+// withAIMetadataSource appends the optional AI-detection fields to an ES _source
+// include list, leaving the base fields untouched.
+func withAIMetadataSource(base ...string) []string {
+	return append(base, aiMetadataFields...)
+}
+
+// addAIMetadata copies any present AI-detection fields from the ES _source into
+// the metadata map. Missing fields (older blogs) are skipped, so responses stay
+// backward compatible and nothing panics on a nil value.
+func addAIMetadata(dst, src map[string]interface{}) {
+	for _, field := range aiMetadataFields {
+		if value, ok := src[field]; ok {
+			dst[field] = value
+		}
+	}
+}
+
 // Returns metadata, total counts of blogs, and errors
 func (es *elasticsearchStorage) GetBlogsMetadataByTags(ctx context.Context, tags []string, isDraft bool, limit, offset int32) ([]map[string]interface{}, int, error) {
 	// Ensure tags are not empty
@@ -68,14 +100,14 @@ func (es *elasticsearchStorage) GetBlogsMetadataByTags(ctx context.Context, tags
 		},
 		"from": offset,
 		"size": limit,
-		"_source": []string{
+		"_source": withAIMetadataSource(
 			"blog_id",
 			"owner_account_id",
 			"blog.blocks", // To extract title, first paragraph, and first image
 			"tags",
 			"content_type",
 			"published_time",
-		},
+		),
 		"query": map[string]interface{}{
 			"bool": map[string]interface{}{
 				"must": []map[string]interface{}{
@@ -222,6 +254,8 @@ func (es *elasticsearchStorage) GetBlogsMetadataByTags(ctx context.Context, tags
 		blogMetadata["first_paragraph"] = firstParagraph
 		blogMetadata["first_image"] = firstImage
 
+		addAIMetadata(blogMetadata, hitSource)
+
 		blogsMetadata = append(blogsMetadata, blogMetadata)
 	}
 
@@ -242,14 +276,14 @@ func (es *elasticsearchStorage) GetAllPublishedBlogsMetadata(ctx context.Context
 		},
 		"from": offset,
 		"size": limit,
-		"_source": []string{
+		"_source": withAIMetadataSource(
 			"blog_id",
 			"owner_account_id",
 			"blog.blocks", // To extract title, first paragraph, and first image
 			"tags",
 			"content_type",
 			"published_time",
-		},
+		),
 		"query": map[string]interface{}{
 			"bool": map[string]interface{}{
 				"must": []map[string]interface{}{
@@ -374,6 +408,8 @@ func (es *elasticsearchStorage) GetAllPublishedBlogsMetadata(ctx context.Context
 		blogMetadata["first_paragraph"] = firstParagraph
 		blogMetadata["first_image"] = firstImage
 
+		addAIMetadata(blogMetadata, hitSource)
+
 		blogsMetadata = append(blogsMetadata, blogMetadata)
 	}
 
@@ -398,14 +434,14 @@ func (es *elasticsearchStorage) GetBlogsMetadataByQuery(ctx context.Context, que
 				},
 			},
 		},
-		"_source": []string{
+		"_source": withAIMetadataSource(
 			"blog_id",
 			"owner_account_id",
 			"blog.blocks",
 			"tags",
 			"content_type",
 			"published_time",
-		},
+		),
 		"query": map[string]interface{}{
 			"bool": map[string]interface{}{
 				"must": []map[string]interface{}{
@@ -570,6 +606,8 @@ func (es *elasticsearchStorage) GetBlogsMetadataByQuery(ctx context.Context, que
 			}
 		}
 
+		addAIMetadata(blogMetadata, hitSource)
+
 		blogsMetadata = append(blogsMetadata, blogMetadata)
 	}
 
@@ -690,7 +728,7 @@ func (es *elasticsearchStorage) GetBlogsMetaByAccountId(ctx context.Context, acc
 		"from": offset,
 		"size": limit,
 		"sort": sort,
-		"_source": []string{
+		"_source": withAIMetadataSource(
 			"blog_id",
 			"owner_account_id",
 			"blog.blocks",
@@ -702,7 +740,7 @@ func (es *elasticsearchStorage) GetBlogsMetaByAccountId(ctx context.Context, acc
 			"is_scheduled",
 			"is_draft",
 			"created_at",
-		},
+		),
 		"query": map[string]interface{}{
 			"bool": map[string]interface{}{
 				"must":     must,
@@ -839,6 +877,8 @@ func (es *elasticsearchStorage) GetBlogsMetaByAccountId(ctx context.Context, acc
 			}
 		}
 
+		addAIMetadata(blogMetadata, hitSource)
+
 		blogsMetadata = append(blogsMetadata, blogMetadata)
 	}
 
@@ -867,14 +907,14 @@ func (es *elasticsearchStorage) GetBlogsMetaByBlogIdsV2(ctx context.Context, blo
 		},
 		"from": offset,
 		"size": limit,
-		"_source": []string{
+		"_source": withAIMetadataSource(
 			"blog_id",
 			"owner_account_id",
 			"blog.blocks", // To extract title, first paragraph, and first image
 			"tags",
 			"content_type",
 			"published_time",
-		},
+		),
 		"query": map[string]interface{}{
 			"bool": map[string]interface{}{
 				"must": []map[string]interface{}{
@@ -1016,6 +1056,8 @@ func (es *elasticsearchStorage) GetBlogsMetaByBlogIdsV2(ctx context.Context, blo
 				}
 			}
 		}
+
+		addAIMetadata(blogMetadata, hitSource)
 
 		blogsMetadata = append(blogsMetadata, blogMetadata)
 	}
