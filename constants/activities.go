@@ -54,4 +54,14 @@ const (
 	DraftedABlogAsCoAuthor   = "Drafted a Blog as a Co-Author"
 	BookMarkedBlog           = "Bookmarked a Blog, blog id %s"
 	RemoveBookMark           = "Removed Bookmark from a Blog, blog id %s"
+
+	// AI Analysis Actions
+	BLOG_AI_ANALYSIS          = "AI_ANALYSIS_REQUESTED"
+	AI_ANALYSIS_COMPLETED     = "AI_ANALYSIS_COMPLETED"
+	AI_ANALYSIS_FAILED        = "AI_ANALYSIS_FAILED"
+
+	// Risk Levels
+	RISK_LOW                  = "low"
+	RISK_MEDIUM               = "medium"
+	RISK_HIGH                 = "high"
 )

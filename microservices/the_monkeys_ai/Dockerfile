@@ -10,7 +10,7 @@ RUN apt-get update && apt-get install -y \
 WORKDIR /app
 
 # Copy requirements first for better layer caching
-COPY requirements.txt ./
+COPY microservices/the_monkeys_ai/requirements.txt ./
 RUN pip install --no-cache-dir -r requirements.txt
 
 # Copy source code
