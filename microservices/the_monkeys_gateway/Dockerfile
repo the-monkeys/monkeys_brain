@@ -44,12 +44,10 @@ WORKDIR /app
 RUN mkdir -p config/certs/openssl && \
     chown -R appuser:appgroup config
 
-# Copy the binary from builder stage
-COPY --from=builder /app/gateway-service .
-
-# Change ownership to non-root user
-RUN chown -R appuser:appgroup /app && \
-    chmod +x /app/gateway-service
+# Copy the binary from builder stage, setting ownership and the exec bit in the
+# same layer. A separate `RUN chown -R /app` would duplicate the ~44MB binary
+# into a new layer, doubling its on-disk cost.
+COPY --from=builder --chown=appuser:appgroup --chmod=0755 /app/gateway-service .
 
 # Switch to non-root user
 USER appuser

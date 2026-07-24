@@ -13,8 +13,9 @@ WORKDIR /app
 COPY microservices/the_monkeys_ai/requirements.txt ./
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy source code
-COPY . .
+# Copy only the AI service source (keeps the image lean; the service is
+# self-contained and does not import from the rest of the monorepo)
+COPY microservices/the_monkeys_ai ./microservices/the_monkeys_ai
 
 # Generate proto files during build
 WORKDIR /app/microservices/the_monkeys_ai
@@ -39,11 +40,10 @@ WORKDIR /app
 COPY --from=builder /usr/local/lib/python3.10/site-packages /usr/local/lib/python3.10/site-packages
 COPY --from=builder /usr/local/bin /usr/local/bin
 
-# Copy application code and generated proto files
-COPY --from=builder /app .
-
-# Change ownership to non-root user
-RUN chown -R appuser:appgroup /app
+# Copy application code and generated proto files, setting ownership in the same
+# layer. A separate `RUN chown -R` would duplicate the entire tree into a new
+# layer, doubling image size.
+COPY --from=builder --chown=appuser:appgroup /app .
 
 # Switch to non-root user
 USER appuser
