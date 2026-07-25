@@ -48,6 +48,11 @@ func (blog *BlogService) generateSessionID() string {
 	return fmt.Sprintf("session_%d_%s", time.Now().UnixNano(), generateGUID()[:8])
 }
 
+// Helper method to generate correlation ID for AI analysis tracking
+func (blog *BlogService) generateCorrelationID() string {
+	return fmt.Sprintf("blog-analysis-%d-%s", time.Now().UnixNano(), generateGUID()[:8])
+}
+
 // Helper method to generate GUID (simple version)
 func generateGUID() string {
 	return fmt.Sprintf("%d", time.Now().UnixNano())
@@ -948,6 +953,46 @@ func (blog *BlogService) PublishBlog(ctx context.Context, req *pb.PublishBlogReq
 				blog.config.RabbitMQ.RoutingKeys[1], err)
 		}
 
+	}()
+
+	// Send AI analysis request to AI service queue asynchronously
+	go func() {
+		aiAnalysisMsg := models.InterServiceMessage{
+			AccountId:           req.AccountId,
+			BlogId:              req.BlogId,
+			Action:              constants.BLOG_AI_ANALYSIS,
+			BlogStatus:          constants.BlogStatusPublished,
+			IpAddress:           req.Ip,
+			Client:              req.Client,
+			Tags:                req.Tags,
+			AnalysisRequestedAt: time.Now(),
+			CorrelationId:       blog.generateCorrelationID(),
+			Priority:            "normal",
+		}
+
+		aiMsgBytes, err := json.Marshal(aiAnalysisMsg)
+		if err != nil {
+			blog.logger.Errorf("failed to marshal AI analysis message: blog_id=%s, error=%v",
+				req.BlogId, err)
+			return
+		}
+
+		// Publish to AI service queue with reliable delivery (RoutingKeys[7])
+		err = blog.qConn.PublishReliable(
+			blog.config.RabbitMQ.Exchange,
+			blog.config.RabbitMQ.RoutingKeys[7],
+			aiMsgBytes,
+			blog.config.RabbitMQ.MaxRetries,
+		)
+
+		if err != nil {
+			blog.logger.Errorf("failed to publish AI analysis message to RabbitMQ: "+
+				"exchange=%s, routing_key=%s, blog_id=%s, error=%v",
+				blog.config.RabbitMQ.Exchange, blog.config.RabbitMQ.RoutingKeys[7], req.BlogId, err)
+		} else {
+			blog.logger.Infof("AI analysis request published: blog_id=%s, correlation_id=%s",
+				req.BlogId, aiAnalysisMsg.CorrelationId)
+		}
 	}()
 
 	go func() {
