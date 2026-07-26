@@ -479,6 +479,13 @@ func (s *Service) presignedOrCDNURL(ctx context.Context, objectName string, expi
 	return "/api/v2/storage/" + objectName, nil
 }
 
+// profileImageURL builds the extensionless profile route. The raw object key
+// carries an extension (profile.png) that has no matching GET route, so we must
+// point at /profiles/{user}/profile which resolves the stored key internally.
+func (s *Service) profileImageURL(ctx context.Context, userID string, expiry time.Duration) (string, error) {
+	return s.presignedOrCDNURL(ctx, "profiles/"+userID+"/profile", expiry)
+}
+
 // Handlers (Create/Read/Update/Delete)
 
 // UploadPostFile
@@ -987,6 +994,10 @@ func (s *Service) UploadProfileImage(ctx *gin.Context) {
 		"contentType": contentType,
 	}
 	s.enrichResponse(ctx.Request.Context(), resp, objectName, opts)
+	// Override with the routable extensionless profile route.
+	if urlStr, err := s.profileImageURL(ctx.Request.Context(), userID, 10*time.Minute); err == nil {
+		resp["url"] = urlStr
+	}
 	ctx.JSON(http.StatusCreated, resp)
 }
 
@@ -1099,6 +1110,10 @@ func (s *Service) UpdateProfileImage(ctx *gin.Context) {
 		"contentType": contentType,
 	}
 	s.enrichResponse(ctx.Request.Context(), resp, objectName, opts)
+	// Override with the routable extensionless profile route.
+	if urlStr, err := s.profileImageURL(ctx.Request.Context(), userID, 10*time.Minute); err == nil {
+		resp["url"] = urlStr
+	}
 	ctx.JSON(http.StatusOK, resp)
 }
 
@@ -1185,7 +1200,7 @@ func (s *Service) GetProfileMeta(ctx *gin.Context) {
 		}
 	}
 
-	urlStr, _ := s.presignedOrCDNURL(ctx.Request.Context(), objectName, 10*time.Minute)
+	urlStr, _ := s.profileImageURL(ctx.Request.Context(), userID, 10*time.Minute)
 
 	ctx.JSON(http.StatusOK, gin.H{
 		"object":       objectName,
@@ -1244,8 +1259,7 @@ func (s *Service) GetPostFileURL(ctx *gin.Context) {
 func (s *Service) GetProfileURL(ctx *gin.Context) {
 	userID := ctx.Param("user_id")
 
-	objectName, found := s.resolveProfileKey(ctx.Request.Context(), userID)
-	if !found {
+	if _, found := s.resolveProfileKey(ctx.Request.Context(), userID); !found {
 		ctx.AbortWithStatusJSON(http.StatusNotFound, gin.H{"message": "profile not found"})
 		return
 	}
@@ -1262,7 +1276,7 @@ func (s *Service) GetProfileURL(ctx *gin.Context) {
 		}
 	}
 
-	urlStr, err := s.presignedOrCDNURL(ctx.Request.Context(), objectName, time.Duration(expires)*time.Second)
+	urlStr, err := s.profileImageURL(ctx.Request.Context(), userID, time.Duration(expires)*time.Second)
 	if err != nil {
 		ctx.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"message": "could not generate url"})
 		return
