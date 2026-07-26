@@ -126,6 +126,15 @@ func IsRestrictedUsername(username string) bool {
 	return false
 }
 
+// usernameRegex allows only letters, digits, underscore and period.
+var usernameRegex = regexp.MustCompile(`^[a-zA-Z0-9_.]+$`)
+
+// IsValidUsername reports whether the username uses only allowed characters
+// [a-zA-Z0-9_.]. Only checked on write, so existing usernames still work.
+func IsValidUsername(username string) bool {
+	return usernameRegex.MatchString(username)
+}
+
 // Function to shuffle a string
 //func shuffleString(s string) string {
 //	// Convert string to a slice of runes (to handle Unicode characters properly)
