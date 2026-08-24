@@ -34,6 +34,16 @@ const (
 	USER_DEACTIVATED         = "user_deactivated"
 	USER_REACTIVATED         = "user_reactivated"
 	PREFERENCES_CHANGED      = "preferences_changed"
+
+	// Event actions (published to RoutingKeys[4])
+	EVENT_RSVP_CONFIRMED    = "event_rsvp_confirmed"
+	EVENT_RSVP_WAITLISTED   = "event_rsvp_waitlisted"
+	EVENT_WAITLIST_PROMOTED = "event_waitlist_promoted"
+	EVENT_REMINDER          = "event_reminder"
+	EVENT_CANCELLED         = "event_cancelled"
+	EVENT_NEW_BY_FOLLOWED   = "event_new_by_followed"
+	EVENT_COMMENT_NEW       = "event_comment_new"
+	EVENT_PAYMENT_REFUND    = "event_payment_refund"
 )
 
 // RestrictedUsernames contains usernames that are not allowed for user registration

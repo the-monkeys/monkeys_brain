@@ -398,6 +398,58 @@ func handleUserAction(user models.TheMonkeysMessage, log *zap.SugaredLogger, frn
 		}
 
 	default:
+		if handleEventAction(ctx, user, log, frn) {
+			return
+		}
 		log.Warnf("Unknown notification action: %s", user.Action)
 	}
+}
+
+// eventTemplates maps each event action to the FRN templates it renders with.
+// Ticketing and cancellation also go out by email because they carry money or
+// a change of plans; the rest stay in-app.
+var eventTemplates = map[string]struct {
+	inApp    string
+	email    string
+	priority string
+}{
+	constants.EVENT_RSVP_CONFIRMED:    {constants.FRNTplEventRSVPConfirmedInApp, constants.FRNTplEventRSVPConfirmedEmail, "normal"},
+	constants.EVENT_RSVP_WAITLISTED:   {constants.FRNTplEventRSVPWaitlistedInApp, "", "normal"},
+	constants.EVENT_WAITLIST_PROMOTED: {constants.FRNTplEventWaitlistPromoInApp, constants.FRNTplEventWaitlistPromoEmail, "high"},
+	constants.EVENT_REMINDER:          {constants.FRNTplEventReminderInApp, constants.FRNTplEventReminderEmail, "high"},
+	constants.EVENT_CANCELLED:         {constants.FRNTplEventCancelledInApp, constants.FRNTplEventCancelledEmail, "high"},
+	constants.EVENT_NEW_BY_FOLLOWED:   {constants.FRNTplEventNewByFollowedInApp, "", "low"},
+	constants.EVENT_COMMENT_NEW:       {constants.FRNTplEventCommentInApp, "", "low"},
+	constants.EVENT_PAYMENT_REFUND:    {constants.FRNTplEventRefundInApp, constants.FRNTplEventRefundEmail, "high"},
+}
+
+// handleEventAction dispatches the events service notifications. Every event
+// action shares one payload shape, so a table keeps this to a single branch.
+// It reports whether the action was recognised.
+func handleEventAction(ctx context.Context, user models.TheMonkeysMessage, log *zap.SugaredLogger, frn *freerangenotify.Client) bool {
+	tpl, ok := eventTemplates[user.Action]
+	if !ok {
+		return false
+	}
+
+	log.Debugw("Processing event notification",
+		"action", user.Action, "recipient", user.NewUsername, "event", user.EventSlug)
+
+	if err := freerangenotify.Notify(ctx, frn, freerangenotify.NotifyRequest{
+		UserID:   user.NewUsername,
+		InAppTpl: tpl.inApp,
+		EmailTpl: tpl.email,
+		Priority: tpl.priority,
+		Category: constants.FRNCategoryEvents,
+		Data: map[string]interface{}{
+			"event_slug":  user.EventSlug,
+			"event_title": user.EventTitle,
+			"actor_name":  user.Username,
+			"message":     user.Notification,
+		},
+	}, log); err != nil {
+		log.Errorw("FRN event notification failed",
+			"action", user.Action, "recipient", user.NewUsername, "err", err)
+	}
+	return true
 }

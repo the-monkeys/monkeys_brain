@@ -1,0 +1,590 @@
+syntax = "proto3";
+
+package event_svc;
+
+import "google/protobuf/timestamp.proto";
+
+option go_package = "./apis/serviceconn/gateway_event/pb";
+
+// Common ClientInfo (matches auth and blog service)
+message ClientInfo {
+    string ip_address = 1;
+    string client = 2;
+    string session_id = 3;
+    string user_agent = 4;
+    string referrer = 5;
+    string platform = 6;
+    string timezone = 7;
+    string device_type = 8;
+    string os = 9;
+    string browser = 10;
+}
+
+// -----------------------------------------------------------------------------
+// Core Models
+//
+// Identity crosses the wire as user_account.account_id (VARCHAR) and username,
+// never as the numeric primary key. The events service resolves those to
+// numeric ids internally, keeping the gateway free of database identifiers.
+// -----------------------------------------------------------------------------
+
+message Event {
+    int64 id = 1;
+    string title = 2;
+    string description = 3;
+    string slug = 4;
+    google.protobuf.Timestamp start_time = 5;
+    google.protobuf.Timestamp end_time = 6;
+    string timezone = 7;
+    string event_type = 8;   // 'virtual', 'in_person', 'hybrid'
+    string location = 9;
+    string meeting_link = 10;
+    int32 capacity = 11;
+    string status = 12;      // 'draft', 'published', 'live', 'completed', 'cancelled'
+    string cover_image = 13;
+    string organizer_account_id = 14;
+    string organizer_username = 15;
+    google.protobuf.Timestamp created_at = 16;
+    google.protobuf.Timestamp updated_at = 17;
+
+    repeated TicketTier ticket_tiers = 18;
+    repeated string tags = 19;
+    repeated string co_host_usernames = 20;
+    int32 attendee_count = 21;
+    repeated ReactionCount reactions = 22;
+
+    // Meetup-parity additive fields. All optional/defaulted so existing
+    // standalone events keep hydrating exactly as before. group_id == 0 and
+    // group_slug == "" mean the event is not attached to any group.
+    int64 group_id = 23;
+    string group_slug = 24;
+    string group_name = 25;
+    string visibility = 26;   // 'public', 'group_members', 'private', 'unlisted'
+    google.protobuf.Timestamp rsvp_opens_at = 27;
+    google.protobuf.Timestamp rsvp_closes_at = 28;
+    bool allow_guests = 29;
+    int32 max_guests_per_rsvp = 30;
+    int64 venue_id = 31;
+    Venue venue = 32;
+    string how_to_find_us = 33;
+    int64 series_id = 34;
+    google.protobuf.Timestamp series_occurrence_at = 35;
+    repeated EventQuestion questions = 36;
+    // Reaction types the requesting viewer has applied to this event, so the UI
+    // can restore its selected/highlighted state on load. Empty for anonymous
+    // callers or when the viewer has not reacted.
+    repeated string viewer_reactions = 37;
+}
+
+message ReactionCount {
+    string reaction_type = 1;
+    int32 count = 2;
+}
+
+message TicketTier {
+    int64 id = 1;
+    int64 event_id = 2;
+    string name = 3;
+    string description = 4;
+    double price = 5;
+    string currency = 6;
+    int32 capacity = 7;   // 0 = unlimited
+    int32 sort_order = 8;
+    int32 booked = 9;     // confirmed + pending_payment holders
+}
+
+// TicketTierInput carries the mutable fields of a tier, shared by create,
+// inline-on-event-create and update so the shape stays in one place.
+message TicketTierInput {
+    string name = 1;
+    string description = 2;
+    double price = 3;
+    string currency = 4;
+    int32 capacity = 5;
+    int32 sort_order = 6;
+}
+
+message Coupon {
+    int64 id = 1;
+    int64 event_id = 2;
+    string code = 3;
+    double discount_percent = 4;
+    int32 max_uses = 5;   // 0 = unlimited
+    int32 current_uses = 6;
+    google.protobuf.Timestamp valid_from = 7;
+    google.protobuf.Timestamp valid_to = 8;
+}
+
+message Attendee {
+    int64 id = 1;
+    int64 event_id = 2;
+    string account_id = 3;
+    string user_name = 4;
+    string user_email = 5;
+    int64 ticket_tier_id = 6;
+    string ticket_tier_name = 7;
+    string status = 8;    // 'pending_payment', 'confirmed', 'waitlisted', 'cancelled'
+    string payment_id = 9;
+    string coupon_used = 10;
+    bool checked_in = 11;
+    google.protobuf.Timestamp created_at = 12;
+
+    // Meetup-parity additive fields. checked_in (11) is preserved for
+    // backward compatibility; new code keeps it consistent with checked_in_at.
+    int32 guest_count = 13;
+    string attendance_status = 14;   // 'registered', 'checked_in', 'no_show', 'not_coming'
+    google.protobuf.Timestamp checked_in_at = 15;
+}
+
+message EventComment {
+    int64 id = 1;
+    int64 event_id = 2;
+    string account_id = 3;
+    string user_name = 4;
+    string comment_text = 5;
+    google.protobuf.Timestamp created_at = 6;
+}
+
+// -----------------------------------------------------------------------------
+// Meetup-parity Models (venues, registration questions, RSVP answers)
+// -----------------------------------------------------------------------------
+
+message Venue {
+    int64 id = 1;
+    string name = 2;
+    string address_line1 = 3;
+    string address_line2 = 4;
+    string city = 5;
+    string region = 6;
+    string country = 7;
+    string postal_code = 8;
+    double latitude = 9;
+    double longitude = 10;
+}
+
+message EventQuestion {
+    int64 id = 1;
+    int64 event_id = 2;
+    string question_text = 3;
+    string question_type = 4;   // 'text', 'textarea', 'single_choice', 'multi_choice', 'checkbox'
+    bool required = 5;
+    string options_json = 6;    // JSON-encoded options for choice types
+    int32 sort_order = 7;
+}
+
+message RSVPAnswer {
+    int64 question_id = 1;
+    string answer_json = 2;     // JSON-encoded answer, shape depends on question_type
+}
+
+// -----------------------------------------------------------------------------
+// Event CRUD
+// -----------------------------------------------------------------------------
+
+message CreateEventReq {
+    string account_id = 1;   // organizer
+    string title = 2;
+    string description = 3;
+    google.protobuf.Timestamp start_time = 4;
+    google.protobuf.Timestamp end_time = 5;
+    string timezone = 6;
+    string event_type = 7;
+    string location = 8;
+    string meeting_link = 9;
+    int32 capacity = 10;
+    string cover_image = 11;
+    repeated string tags = 12;
+    repeated string co_host_usernames = 13;
+    // Tiers created in the same transaction so an organizer can define
+    // pricing without a second round trip.
+    repeated TicketTierInput ticket_tiers = 14;
+    ClientInfo client_info = 15;
+
+    // Meetup-parity additive inputs (new numbers only). Identity still crosses
+    // the wire as slug/account_id; group_slug empty means a standalone event.
+    string group_slug = 16;
+    string visibility = 17;
+    google.protobuf.Timestamp rsvp_opens_at = 18;
+    google.protobuf.Timestamp rsvp_closes_at = 19;
+    bool allow_guests = 20;
+    int32 max_guests_per_rsvp = 21;
+    int64 venue_id = 22;
+    string how_to_find_us = 23;
+    repeated EventQuestion questions = 24;
+}
+
+message UpdateEventReq {
+    string slug = 1;
+    string account_id = 2;
+    string title = 3;
+    string description = 4;
+    google.protobuf.Timestamp start_time = 5;
+    google.protobuf.Timestamp end_time = 6;
+    string timezone = 7;
+    string event_type = 8;
+    string location = 9;
+    string meeting_link = 10;
+    int32 capacity = 11;
+    string cover_image = 12;
+    repeated string tags = 13;
+    ClientInfo client_info = 14;
+
+    // Meetup-parity additive inputs (new numbers only).
+    string visibility = 15;
+    google.protobuf.Timestamp rsvp_opens_at = 16;
+    google.protobuf.Timestamp rsvp_closes_at = 17;
+    bool allow_guests = 18;
+    int32 max_guests_per_rsvp = 19;
+    int64 venue_id = 20;
+    string how_to_find_us = 21;
+    repeated EventQuestion questions = 22;
+}
+
+// EventActionReq drives the slug-scoped verbs: delete, publish and cancel.
+message EventActionReq {
+    string slug = 1;
+    string account_id = 2;
+    ClientInfo client_info = 3;
+}
+
+message GetEventReq {
+    string slug = 1;
+    string account_id = 2;   // optional viewer, resolves viewer_rsvp_status
+    ClientInfo client_info = 3;
+}
+
+message EventResp {
+    string message = 1;
+    Event event = 2;
+    string error = 3;
+    string viewer_rsvp_status = 4;
+}
+
+message ListEventsReq {
+    int32 limit = 1;
+    int32 offset = 2;
+    repeated string tags = 3;
+    string status = 4;
+    string event_type = 5;
+    string account_id = 6;   // viewer / owner, depending on the RPC
+    string username = 7;     // target user for GetUserEvents & GetUserAttendingEvents
+    string query = 8;        // free-text match on title
+    string location = 9;     // city / venue filter for in-person events
+    ClientInfo client_info = 10;
+    string group_slug = 11;  // target community for GetGroupEvents
+}
+
+message ListEventsResp {
+    repeated Event events = 1;
+    int32 total = 2;
+    string error = 3;
+}
+
+message BasicResp {
+    string message = 1;
+    string error = 2;
+    bool success = 3;
+}
+
+// -----------------------------------------------------------------------------
+// Ticket Tiers
+// -----------------------------------------------------------------------------
+
+message CreateTicketTierReq {
+    string event_slug = 1;
+    string account_id = 2;
+    TicketTierInput tier = 3;
+    ClientInfo client_info = 4;
+}
+
+message UpdateTicketTierReq {
+    string event_slug = 1;
+    string account_id = 2;
+    int64 tier_id = 3;
+    TicketTierInput tier = 4;
+    ClientInfo client_info = 5;
+}
+
+message TierActionReq {
+    string event_slug = 1;
+    string account_id = 2;
+    int64 tier_id = 3;
+    ClientInfo client_info = 4;
+}
+
+message TicketTierResp {
+    string message = 1;
+    TicketTier tier = 2;
+    string error = 3;
+}
+
+// -----------------------------------------------------------------------------
+// Coupons
+// -----------------------------------------------------------------------------
+
+message CreateCouponReq {
+    string event_slug = 1;
+    string account_id = 2;
+    string code = 3;
+    double discount_percent = 4;
+    int32 max_uses = 5;
+    google.protobuf.Timestamp valid_from = 6;
+    google.protobuf.Timestamp valid_to = 7;
+    ClientInfo client_info = 8;
+}
+
+message CouponActionReq {
+    string event_slug = 1;
+    string account_id = 2;
+    int64 coupon_id = 3;
+    ClientInfo client_info = 4;
+}
+
+message ListCouponsReq {
+    string event_slug = 1;
+    string account_id = 2;
+    ClientInfo client_info = 3;
+}
+
+message ListCouponsResp {
+    repeated Coupon coupons = 1;
+    string error = 2;
+}
+
+message ValidateCouponReq {
+    string event_slug = 1;
+    string code = 2;
+    int64 ticket_tier_id = 3;   // optional, enables discounted_amount
+    ClientInfo client_info = 4;
+}
+
+message CouponResp {
+    string message = 1;
+    Coupon coupon = 2;
+    string error = 3;
+    double discounted_amount = 4;
+}
+
+// -----------------------------------------------------------------------------
+// RSVP, Payments & Attendees
+// -----------------------------------------------------------------------------
+
+message RSVPReq {
+    string event_slug = 1;
+    string account_id = 2;
+    int64 ticket_tier_id = 3;
+    string coupon_code = 4;
+    ClientInfo client_info = 5;
+    // Additive: old clients default guest_count to 0 and send no answers.
+    // The service only rejects empty answers when required questions exist.
+    int32 guest_count = 6;
+    repeated RSVPAnswer answers = 7;
+}
+
+message RSVPResp {
+    string message = 1;
+    string status = 2;             // 'confirmed', 'waitlisted', 'pending_payment'
+    string payment_order_id = 3;   // Razorpay order id when payment is required
+    double amount_due = 4;
+    string currency = 5;
+    string razorpay_key_id = 6;    // public key for the checkout widget
+    string error = 7;
+}
+
+message CancelRSVPReq {
+    string event_slug = 1;
+    string account_id = 2;
+    ClientInfo client_info = 3;
+}
+
+message PaymentWebhookReq {
+    string signature = 1;   // X-Razorpay-Signature header
+    bytes raw_body = 2;     // untouched payload, required for HMAC verification
+}
+
+message ListAttendeesReq {
+    string event_slug = 1;
+    string account_id = 2;
+    int32 limit = 3;
+    int32 offset = 4;
+    string status = 5;   // optional filter
+    ClientInfo client_info = 6;
+}
+
+message ListAttendeesResp {
+    repeated Attendee attendees = 1;
+    int32 total = 2;
+    string error = 3;
+}
+
+// UpdateAttendanceReq is used by organizers/hosts to change an attendee's
+// attendance status and check-in state. The service keeps checked_in and
+// checked_in_at consistent.
+message UpdateAttendanceReq {
+    string event_slug = 1;
+    string account_id = 2;      // actor (must hold manage_checkins/manage_attendees)
+    int64 attendee_id = 3;
+    string attendance_status = 4;   // 'registered', 'checked_in', 'no_show', 'not_coming'
+    bool checked_in = 5;
+    ClientInfo client_info = 6;
+}
+
+// SaveEventReq backs both SaveEvent and UnsaveEvent (idempotent bookmarks).
+message SaveEventReq {
+    string event_slug = 1;
+    string account_id = 2;
+    ClientInfo client_info = 3;
+}
+
+// -----------------------------------------------------------------------------
+// Social
+// -----------------------------------------------------------------------------
+
+message AddCommentReq {
+    string event_slug = 1;
+    string account_id = 2;
+    string comment_text = 3;
+    ClientInfo client_info = 4;
+}
+
+message CommentResp {
+    string message = 1;
+    EventComment comment = 2;
+    string error = 3;
+}
+
+message ListCommentsReq {
+    string event_slug = 1;
+    int32 limit = 2;
+    int32 offset = 3;
+}
+
+message ListCommentsResp {
+    repeated EventComment comments = 1;
+    int32 total = 2;
+    string error = 3;
+}
+
+message DeleteCommentReq {
+    string event_slug = 1;
+    string account_id = 2;
+    int64 comment_id = 3;
+    ClientInfo client_info = 4;
+}
+
+message ReactReq {
+    string event_slug = 1;
+    string account_id = 2;
+    string reaction_type = 3;
+    ClientInfo client_info = 4;
+}
+
+message ReportEventReq {
+    string event_slug = 1;
+    string account_id = 2;
+    string reason = 3;
+    ClientInfo client_info = 4;
+}
+
+// -----------------------------------------------------------------------------
+// Co-Hosts & Utility
+// -----------------------------------------------------------------------------
+
+message CoHostReq {
+    string event_slug = 1;
+    string account_id = 2;        // actor
+    string cohost_username = 3;   // target
+    ClientInfo client_info = 4;
+}
+
+message CalendarReq {
+    string event_slug = 1;
+    string account_id = 2;  // viewer; decides whether the join link is embedded
+}
+
+message CalendarResp {
+    bytes ics_data = 1;
+    string error = 2;
+}
+
+// -----------------------------------------------------------------------------
+// Authorization
+// -----------------------------------------------------------------------------
+
+// AuthorizeReq resolves, in one round trip, everything the gateway needs to
+// admit or reject a request against an event. The gateway caches the answer
+// briefly, so this must stay cheap: no hydration, no joins beyond the grant.
+message AuthorizeReq {
+    string account_id = 1;  // empty for anonymous viewers
+    string event_slug = 2;
+    int64 comment_id = 3;   // optional ownership probe; 0 skips it
+}
+
+message AuthorizeResp {
+    bool event_exists = 1;
+    string event_status = 2;      // draft|published|live|completed|cancelled
+    string role = 3;              // organizer|co_host|attendee|viewer
+    repeated string permissions = 4;
+    bool is_attendee = 5;         // confirmed RSVP; may see the meeting link
+    bool owns_comment = 6;        // set only when comment_id was supplied
+}
+
+// -----------------------------------------------------------------------------
+// Service Definition
+// -----------------------------------------------------------------------------
+
+service EventService {
+    // Event CRUD
+    rpc CreateEvent(CreateEventReq) returns (EventResp);
+    rpc UpdateEvent(UpdateEventReq) returns (EventResp);
+    rpc DeleteEvent(EventActionReq) returns (BasicResp);
+    rpc PublishEvent(EventActionReq) returns (EventResp);
+    rpc CancelEvent(EventActionReq) returns (EventResp);
+    rpc GetEvent(GetEventReq) returns (EventResp);
+    rpc ListEvents(ListEventsReq) returns (ListEventsResp);
+    rpc GetUserEvents(ListEventsReq) returns (ListEventsResp);
+    rpc GetUserAttendingEvents(ListEventsReq) returns (ListEventsResp);
+    rpc GetGroupEvents(ListEventsReq) returns (ListEventsResp);
+
+    // Ticket Tiers
+    rpc CreateTicketTier(CreateTicketTierReq) returns (TicketTierResp);
+    rpc UpdateTicketTier(UpdateTicketTierReq) returns (TicketTierResp);
+    rpc DeleteTicketTier(TierActionReq) returns (BasicResp);
+
+    // Coupons
+    rpc CreateCoupon(CreateCouponReq) returns (CouponResp);
+    rpc ListCoupons(ListCouponsReq) returns (ListCouponsResp);
+    rpc DeleteCoupon(CouponActionReq) returns (BasicResp);
+    rpc ValidateCoupon(ValidateCouponReq) returns (CouponResp);
+
+    // RSVP & Payments
+    rpc RSVPEvent(RSVPReq) returns (RSVPResp);
+    rpc CancelRSVP(CancelRSVPReq) returns (BasicResp);
+    rpc ProcessPaymentWebhook(PaymentWebhookReq) returns (BasicResp);
+
+    // Attendees
+    rpc GetAttendees(ListAttendeesReq) returns (ListAttendeesResp);
+    rpc UpdateAttendance(UpdateAttendanceReq) returns (BasicResp);
+
+    // Saves / bookmarks
+    rpc SaveEvent(SaveEventReq) returns (BasicResp);
+    rpc UnsaveEvent(SaveEventReq) returns (BasicResp);
+
+    // Social
+    rpc AddEventComment(AddCommentReq) returns (CommentResp);
+    rpc ListEventComments(ListCommentsReq) returns (ListCommentsResp);
+    rpc DeleteEventComment(DeleteCommentReq) returns (BasicResp);
+    rpc ReactToEvent(ReactReq) returns (BasicResp);
+    rpc RemoveReaction(ReactReq) returns (BasicResp);
+    rpc ReportEvent(ReportEventReq) returns (BasicResp);
+
+    // Co-Hosts
+    rpc AddCoHost(CoHostReq) returns (BasicResp);
+    rpc RemoveCoHost(CoHostReq) returns (BasicResp);
+
+    // Utility
+    rpc GetCalendarFile(CalendarReq) returns (CalendarResp);
+
+    // Authorization
+    rpc Authorize(AuthorizeReq) returns (AuthorizeResp);
+}

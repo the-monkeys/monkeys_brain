@@ -225,6 +225,8 @@ services:
       - db-migrations
       - the_monkeys_db
       - minio
+      - the_monkeys_events
+      - the_monkeys_groups
     ports:
       - "${THE_MONKEYS_GATEWAY_HTTP_PORT}:${THE_MONKEYS_GATEWAY_INTERNAL_PORT}"
     restart: unless-stopped
@@ -529,6 +531,78 @@ services:
     # Health check is built into Dockerfile, but can override here
     healthcheck:
       test: [ "CMD", "/usr/local/bin/grpc_health_probe", "-addr=localhost:${MICROSERVICES_ACTIVITY_INTERNAL_PORT}" ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+
+  the_monkeys_events:
+    container_name: "the_monkeys_events"
+    build:
+      context: .
+      dockerfile: microservices/the_monkeys_events/Dockerfile
+      args:
+        EVENTS_SERVICE_PORT: ${MICROSERVICES_EVENTS_PORT}
+    networks:
+      - monkeys-network
+    depends_on:
+      - rabbitmq
+      - db-migrations
+      - the_monkeys_db
+    ports:
+      - "${MICROSERVICES_EVENTS_PORT}:${MICROSERVICES_EVENTS_INTERNAL_PORT}"
+    restart: unless-stopped
+    env_file:
+      - .env
+    # Security: Run as non-root user
+    user: "1001:1001"
+    # Resource limits for production
+    deploy:
+      resources:
+        limits:
+          memory: 192M
+          cpus: '0.5'
+        reservations:
+          memory: 64M
+          cpus: '0.1'
+    healthcheck:
+      test: [ "CMD", "/usr/local/bin/grpc_health_probe", "-addr=localhost:${MICROSERVICES_EVENTS_INTERNAL_PORT}" ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+
+  the_monkeys_groups:
+    container_name: "the_monkeys_groups"
+    build:
+      context: .
+      dockerfile: microservices/the_monkeys_groups/Dockerfile
+      args:
+        GROUPS_SERVICE_PORT: ${MICROSERVICES_GROUPS_PORT}
+    networks:
+      - monkeys-network
+    depends_on:
+      - rabbitmq
+      - db-migrations
+      - the_monkeys_db
+    ports:
+      - "${MICROSERVICES_GROUPS_PORT}:${MICROSERVICES_GROUPS_INTERNAL_PORT}"
+    restart: unless-stopped
+    env_file:
+      - .env
+    # Security: Run as non-root user
+    user: "1001:1001"
+    # Resource limits for production
+    deploy:
+      resources:
+        limits:
+          memory: 192M
+          cpus: '0.5'
+        reservations:
+          memory: 64M
+          cpus: '0.1'
+    healthcheck:
+      test: [ "CMD", "/usr/local/bin/grpc_health_probe", "-addr=localhost:${MICROSERVICES_GROUPS_INTERNAL_PORT}" ]
       interval: 30s
       timeout: 10s
       retries: 3

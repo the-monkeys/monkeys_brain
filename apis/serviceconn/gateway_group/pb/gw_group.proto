@@ -1,0 +1,383 @@
+syntax = "proto3";
+
+package group_svc;
+
+import "google/protobuf/timestamp.proto";
+
+option go_package = "./apis/serviceconn/gateway_group/pb";
+
+// Common ClientInfo (matches event, auth and blog services). Each service
+// proto declares its own copy so packages stay self-contained.
+message ClientInfo {
+    string ip_address = 1;
+    string client = 2;
+    string session_id = 3;
+    string user_agent = 4;
+    string referrer = 5;
+    string platform = 6;
+    string timezone = 7;
+    string device_type = 8;
+    string os = 9;
+    string browser = 10;
+}
+
+// -----------------------------------------------------------------------------
+// Core Models
+//
+// Identity crosses the wire as user_account.account_id (VARCHAR) and username,
+// never as the numeric primary key. The groups service resolves those to
+// numeric ids internally, keeping the gateway free of database identifiers.
+// -----------------------------------------------------------------------------
+
+message Group {
+    int64 id = 1;
+    string slug = 2;
+    string name = 3;
+    string description = 4;
+    string visibility = 5;   // 'public', 'private', 'unlisted'
+    string status = 6;       // 'draft', 'published', 'archived', 'suspended'
+    string city = 7;
+    string region = 8;
+    string country = 9;
+    string timezone = 10;
+    double latitude = 11;
+    double longitude = 12;
+    string cover_image = 13;
+    string logo_image = 14;
+    string organizer_account_id = 15;
+    string organizer_username = 16;
+    int32 member_count = 17;
+    repeated string topics = 18;
+    google.protobuf.Timestamp created_at = 19;
+    google.protobuf.Timestamp updated_at = 20;
+
+    // Viewer-scoped hydration, resolved when account_id is supplied on read.
+    string viewer_role = 21;         // organizer|co_organizer|moderator|member|viewer
+    string viewer_member_status = 22; // active|pending|left|removed|banned|'' when none
+    repeated GroupRule rules = 23;
+}
+
+message GroupMember {
+    int64 id = 1;
+    int64 group_id = 2;
+    string account_id = 3;
+    string username = 4;
+    string role = 5;     // 'organizer', 'co_organizer', 'moderator', 'member'
+    string status = 6;   // 'active', 'pending', 'left', 'removed', 'banned'
+    google.protobuf.Timestamp joined_at = 7;
+    repeated string permissions = 8;
+}
+
+message GroupRule {
+    int64 id = 1;
+    int64 group_id = 2;
+    string title = 3;
+    string body = 4;
+    int32 sort_order = 5;
+    google.protobuf.Timestamp created_at = 6;
+    google.protobuf.Timestamp updated_at = 7;
+}
+
+// -----------------------------------------------------------------------------
+// Group CRUD
+// -----------------------------------------------------------------------------
+
+message CreateGroupReq {
+    string account_id = 1;   // organizer
+    string name = 2;
+    string description = 3;
+    string visibility = 4;
+    string city = 5;
+    string region = 6;
+    string country = 7;
+    string timezone = 8;
+    double latitude = 9;
+    double longitude = 10;
+    string cover_image = 11;
+    string logo_image = 12;
+    repeated string topics = 13;
+    ClientInfo client_info = 14;
+}
+
+message UpdateGroupReq {
+    string slug = 1;
+    string account_id = 2;
+    string name = 3;
+    string description = 4;
+    string visibility = 5;
+    string city = 6;
+    string region = 7;
+    string country = 8;
+    string timezone = 9;
+    double latitude = 10;
+    double longitude = 11;
+    string cover_image = 12;
+    string logo_image = 13;
+    repeated string topics = 14;
+    ClientInfo client_info = 15;
+}
+
+// GroupActionReq drives the slug-scoped verbs: delete, publish and leave.
+message GroupActionReq {
+    string slug = 1;
+    string account_id = 2;
+    ClientInfo client_info = 3;
+}
+
+message GetGroupReq {
+    string slug = 1;
+    string account_id = 2;   // optional viewer, resolves viewer_role/status
+    ClientInfo client_info = 3;
+}
+
+message GroupResp {
+    string message = 1;
+    Group group = 2;
+    string error = 3;
+}
+
+message ListGroupsReq {
+    int32 limit = 1;
+    int32 offset = 2;
+    repeated string topics = 3;
+    string status = 4;
+    string country = 5;
+    string region = 6;
+    string city = 7;
+    string query = 8;        // free-text match on name
+    string account_id = 9;   // viewer / owner depending on the RPC
+    string username = 10;    // target user for "groups I organize/belong to"
+    ClientInfo client_info = 11;
+}
+
+message ListGroupsResp {
+    repeated Group groups = 1;
+    int32 total = 2;
+    string error = 3;
+}
+
+message BasicResp {
+    string message = 1;
+    string error = 2;
+    bool success = 3;
+}
+
+// -----------------------------------------------------------------------------
+// Membership
+// -----------------------------------------------------------------------------
+
+message JoinGroupReq {
+    string slug = 1;
+    string account_id = 2;
+    string answers_json = 3;   // JSON answers for private-group join questions
+    ClientInfo client_info = 4;
+}
+
+message ListGroupMembersReq {
+    string slug = 1;
+    string account_id = 2;   // actor / viewer
+    int32 limit = 3;
+    int32 offset = 4;
+    string role = 5;         // optional filter
+    string status = 6;       // optional filter
+    ClientInfo client_info = 7;
+}
+
+message ListGroupMembersResp {
+    repeated GroupMember members = 1;
+    int32 total = 2;
+    string error = 3;
+}
+
+// UpdateMemberRoleReq backs role changes, removal and bans. reason is only
+// read for BanMember. target_username identifies the member being acted upon.
+message UpdateMemberRoleReq {
+    string slug = 1;
+    string account_id = 2;        // actor
+    string target_username = 3;   // member being acted upon
+    string role = 4;              // new role for UpdateMemberRole
+    string reason = 5;            // ban reason (BanMember only)
+    ClientInfo client_info = 6;
+}
+
+// JoinDecisionReq approves or rejects a pending join request.
+message JoinDecisionReq {
+    string slug = 1;
+    string account_id = 2;        // actor deciding the request
+    string target_username = 3;   // requester
+    ClientInfo client_info = 4;
+}
+
+// AddMemberReq lets staff enroll a user directly (bypassing the pending queue).
+// The added user becomes an active member immediately with the given role.
+message AddMemberReq {
+    string slug = 1;
+    string account_id = 2;        // actor (must hold manage_members)
+    string target_username = 3;   // user to enroll
+    string role = 4;              // optional; defaults to 'member'
+    ClientInfo client_info = 5;
+}
+
+// -----------------------------------------------------------------------------
+// Invite links
+//
+// Tokened, shareable links that admit their bearer to the group. Links may
+// carry an optional expiry and a maximum number of uses; an unlimited link
+// sets max_uses = 0 and expires_at = null.
+// -----------------------------------------------------------------------------
+
+message GroupInvite {
+    int64 id = 1;
+    int64 group_id = 2;
+    string token = 3;
+    string role = 4;              // role granted on accept; defaults to 'member'
+    int32 max_uses = 5;           // 0 = unlimited
+    int32 uses = 6;
+    google.protobuf.Timestamp expires_at = 7;   // null = never expires
+    string created_by_username = 8;
+    google.protobuf.Timestamp created_at = 9;
+    bool revoked = 10;
+    // Hydrated for the public accept page:
+    string group_slug = 11;
+    string group_name = 12;
+    string group_visibility = 13;
+    bool active = 14;             // not revoked, not expired, uses remaining
+}
+
+message CreateInviteReq {
+    string slug = 1;
+    string account_id = 2;        // actor (must hold manage_members)
+    string role = 3;              // defaults to 'member'
+    int32 max_uses = 4;           // 0 = unlimited
+    int32 expires_in_hours = 5;   // 0 = never expires
+    ClientInfo client_info = 6;
+}
+
+message InviteResp {
+    string message = 1;
+    GroupInvite invite = 2;
+    string error = 3;
+}
+
+message ListInvitesReq {
+    string slug = 1;
+    string account_id = 2;        // actor (must hold manage_members)
+    ClientInfo client_info = 3;
+}
+
+message ListInvitesResp {
+    repeated GroupInvite invites = 1;
+    string error = 2;
+}
+
+message RevokeInviteReq {
+    string slug = 1;
+    string account_id = 2;        // actor (must hold manage_members)
+    int64 invite_id = 3;
+    ClientInfo client_info = 4;
+}
+
+message GetInviteReq {
+    string token = 1;
+    string account_id = 2;        // optional viewer
+    ClientInfo client_info = 3;
+}
+
+message AcceptInviteReq {
+    string token = 1;
+    string account_id = 2;        // required: the accepting user
+    ClientInfo client_info = 3;
+}
+
+// -----------------------------------------------------------------------------
+// Rules
+// -----------------------------------------------------------------------------
+
+// GroupRuleReq backs both AddGroupRule (rule_id == 0) and UpdateGroupRule.
+message GroupRuleReq {
+    string slug = 1;
+    string account_id = 2;
+    int64 rule_id = 3;   // 0 = create
+    string title = 4;
+    string body = 5;
+    int32 sort_order = 6;
+    ClientInfo client_info = 7;
+}
+
+message GroupRuleResp {
+    string message = 1;
+    GroupRule rule = 2;
+    string error = 3;
+}
+
+message GroupRuleActionReq {
+    string slug = 1;
+    string account_id = 2;
+    int64 rule_id = 3;
+    ClientInfo client_info = 4;
+}
+
+// -----------------------------------------------------------------------------
+// Authorization
+//
+// AuthorizeGroupReq resolves, in one round trip, everything the gateway needs
+// to admit or reject a request against a group. The gateway caches the answer
+// briefly, so this must stay cheap: no hydration beyond the grant.
+// -----------------------------------------------------------------------------
+
+message AuthorizeGroupReq {
+    string account_id = 1;   // empty for anonymous viewers
+    string group_slug = 2;
+}
+
+message AuthorizeGroupResp {
+    bool group_exists = 1;
+    string group_status = 2;      // draft|published|archived|suspended
+    string group_visibility = 3;  // public|private|unlisted
+    string role = 4;              // organizer|co_organizer|moderator|member|viewer
+    string member_status = 5;     // active|pending|left|removed|banned|''
+    repeated string permissions = 6;
+    bool is_member = 7;
+    bool is_banned = 8;
+}
+
+// -----------------------------------------------------------------------------
+// Service Definition
+// -----------------------------------------------------------------------------
+
+service GroupService {
+    // Group CRUD
+    rpc CreateGroup(CreateGroupReq) returns (GroupResp);
+    rpc UpdateGroup(UpdateGroupReq) returns (GroupResp);
+    rpc DeleteGroup(GroupActionReq) returns (BasicResp);
+    rpc PublishGroup(GroupActionReq) returns (GroupResp);
+    rpc GetGroup(GetGroupReq) returns (GroupResp);
+    rpc ListGroups(ListGroupsReq) returns (ListGroupsResp);
+    rpc GetUserGroups(ListGroupsReq) returns (ListGroupsResp);
+
+    // Membership
+    rpc JoinGroup(JoinGroupReq) returns (BasicResp);
+    rpc LeaveGroup(GroupActionReq) returns (BasicResp);
+    rpc ListMembers(ListGroupMembersReq) returns (ListGroupMembersResp);
+    rpc UpdateMemberRole(UpdateMemberRoleReq) returns (BasicResp);
+    rpc RemoveMember(UpdateMemberRoleReq) returns (BasicResp);
+    rpc BanMember(UpdateMemberRoleReq) returns (BasicResp);
+    rpc ApproveJoinRequest(JoinDecisionReq) returns (BasicResp);
+    rpc RejectJoinRequest(JoinDecisionReq) returns (BasicResp);
+
+    // Direct add + invite links
+    rpc AddMember(AddMemberReq) returns (BasicResp);
+    rpc CreateInvite(CreateInviteReq) returns (InviteResp);
+    rpc ListInvites(ListInvitesReq) returns (ListInvitesResp);
+    rpc RevokeInvite(RevokeInviteReq) returns (BasicResp);
+    rpc GetInvite(GetInviteReq) returns (InviteResp);
+    rpc AcceptInvite(AcceptInviteReq) returns (BasicResp);
+
+    // Rules
+    rpc AddGroupRule(GroupRuleReq) returns (GroupRuleResp);
+    rpc UpdateGroupRule(GroupRuleReq) returns (GroupRuleResp);
+    rpc DeleteGroupRule(GroupRuleActionReq) returns (BasicResp);
+
+    // Authorization
+    rpc Authorize(AuthorizeGroupReq) returns (AuthorizeGroupResp);
+}

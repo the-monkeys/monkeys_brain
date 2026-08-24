@@ -18,6 +18,8 @@ import (
 	"github.com/the-monkeys/the_monkeys/microservices/the_monkeys_gateway/internal/blog"
 	"github.com/the-monkeys/the_monkeys/microservices/the_monkeys_gateway/internal/blogsearch"
 	"github.com/the-monkeys/the_monkeys/microservices/the_monkeys_gateway/internal/cache/searchcache"
+	"github.com/the-monkeys/the_monkeys/microservices/the_monkeys_gateway/internal/events"
+	"github.com/the-monkeys/the_monkeys/microservices/the_monkeys_gateway/internal/groups"
 	"github.com/the-monkeys/the_monkeys/microservices/the_monkeys_gateway/internal/notification"
 	"github.com/the-monkeys/the_monkeys/microservices/the_monkeys_gateway/internal/snapshot"
 	"github.com/the-monkeys/the_monkeys/microservices/the_monkeys_gateway/internal/storage"
@@ -109,8 +111,10 @@ func main() {
 	// the Phase 2 alias swap is currently pointing at.
 	blogsearch.RegisterRoutes(server.router, cfg, searchCache, log)
 	storageClient := storage.RegisterFileStorageRouter(server.router, cfg, authClient, log)
-	storage_v2.RegisterRoutes(server.router, cfg, storageClient.Client, authClient, log)
+	storageV2Svc := storage_v2.RegisterRoutes(server.router, cfg, storageClient.Client, authClient, log)
 	notification.RegisterNotificationRoute(server.router, cfg, authClient, log)
+	eventClient := events.RegisterEventRouter(server.router, cfg, authClient, storageV2Svc, log)
+	groups.RegisterGroupRouter(server.router, cfg, authClient, eventClient.Client, storageV2Svc, log)
 	// monkeys_ai.RegisterRecommendationRoute(server.router, cfg, authClient, log)
 	admin.RegisterAdminRouter(server.router, cfg, log)
 	systems.RegisterSystemRouter(server.router, cfg, log)

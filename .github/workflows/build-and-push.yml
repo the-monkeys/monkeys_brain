@@ -64,6 +64,14 @@ jobs:
             dockerfile: microservices/the_monkeys_activity/Dockerfile
             context: .
             build_args: ""
+          - name: event
+            dockerfile: microservices/the_monkeys_events/Dockerfile
+            context: .
+            build_args: ""
+          - name: group
+            dockerfile: microservices/the_monkeys_groups/Dockerfile
+            context: .
+            build_args: ""
 
     steps:
       - name: 🛒 Checkout Repository
@@ -260,6 +268,36 @@ jobs:
                 - .env
               user: "1001:1001"
 
+            the_monkeys_events:
+              container_name: "the_monkeys_events"
+              image: ghcr.io/the-monkeys/monkeys-event:latest
+              networks:
+                - monkeys-network
+              depends_on:
+                - rabbitmq
+                - the_monkeys_db
+              ports:
+                - "${MICROSERVICES_EVENTS_PORT}:${MICROSERVICES_EVENTS_INTERNAL_PORT}"
+              restart: unless-stopped
+              env_file:
+                - .env
+              user: "1001:1001"
+
+            the_monkeys_groups:
+              container_name: "the_monkeys_groups"
+              image: ghcr.io/the-monkeys/monkeys-group:latest
+              networks:
+                - monkeys-network
+              depends_on:
+                - rabbitmq
+                - the_monkeys_db
+              ports:
+                - "${MICROSERVICES_GROUPS_PORT}:${MICROSERVICES_GROUPS_INTERNAL_PORT}"
+              restart: unless-stopped
+              env_file:
+                - .env
+              user: "1001:1001"
+
           networks:
             monkeys-network:
               driver: bridge
@@ -291,6 +329,8 @@ jobs:
           echo "• ghcr.io/${{ github.repository_owner }}/monkeys-notification:latest"
           echo "• ghcr.io/${{ github.repository_owner }}/monkeys-storage:latest"
           echo "• ghcr.io/${{ github.repository_owner }}/monkeys-activity:latest"
+          echo "• ghcr.io/${{ github.repository_owner }}/monkeys-event:latest"
+          echo "• ghcr.io/${{ github.repository_owner }}/monkeys-group:latest"
           echo ""
           echo "🚀 To deploy:"
           echo "1. Use your existing docker-compose.yml for infrastructure services"
