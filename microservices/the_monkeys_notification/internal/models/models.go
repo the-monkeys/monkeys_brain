@@ -36,6 +36,8 @@ type TheMonkeysMessage struct {
 	BlogIds      []string `json:"blog_ids,omitempty"`
 	BlogStatus   string   `json:"blog_status"`
 	BlogTitle    string   `json:"blog_title"`
+	EventSlug    string   `json:"event_slug"`
+	EventTitle   string   `json:"event_title"`
 }
 
 type TheMonkeysUser struct {

@@ -40,6 +40,12 @@ type Microservices struct {
 	TheMonkeysActivity         string `mapstructure:"the_monkeys_activity"`
 	ActivityPort               int    `mapstructure:"activity_port"`
 	ActivityInternalPort       int    `mapstructure:"activity_internal_port"`
+	TheMonkeysEvents           string `mapstructure:"the_monkeys_events"`
+	EventsPort                 int    `mapstructure:"events_port"`
+	EventsInternalPort         int    `mapstructure:"events_internal_port"`
+	TheMonkeysGroups           string `mapstructure:"the_monkeys_groups"`
+	GroupsPort                 int    `mapstructure:"groups_port"`
+	GroupsInternalPort         int    `mapstructure:"groups_internal_port"`
 }
 
 type Database struct {
@@ -110,12 +116,15 @@ type RabbitMQ struct {
 }
 
 type Keys struct {
-	MediaStack     string `mapstructure:"mediastack"`
-	NewsApi        string `mapstructure:"newsapi"`
-	HindustanTimes string `mapstructure:"hindustantimes"`
-	GitHubToken    string `mapstructure:"github_token"`
-	AdminSecretKey string `mapstructure:"admin_secret_key"`
-	SystemKey      string `mapstructure:"system_key"` // Key for system-level operations
+	MediaStack            string `mapstructure:"mediastack"`
+	NewsApi               string `mapstructure:"newsapi"`
+	HindustanTimes        string `mapstructure:"hindustantimes"`
+	GitHubToken           string `mapstructure:"github_token"`
+	AdminSecretKey        string `mapstructure:"admin_secret_key"`
+	SystemKey             string `mapstructure:"system_key"` // Key for system-level operations
+	RazorpayKeyID         string `mapstructure:"razorpay_key_id"`
+	RazorpaySecret        string `mapstructure:"razorpay_secret"`
+	RazorpayWebhookSecret string `mapstructure:"razorpay_webhook_secret"`
 }
 
 type SEO struct {
@@ -279,6 +288,12 @@ func bindEnvVars() {
 	viper.BindEnv("microservices.the_monkeys_activity", "MICROSERVICES_THE_MONKEYS_ACTIVITY")
 	viper.BindEnv("microservices.activity_port", "MICROSERVICES_ACTIVITY_PORT")
 	viper.BindEnv("microservices.activity_internal_port", "MICROSERVICES_ACTIVITY_INTERNAL_PORT")
+	viper.BindEnv("microservices.the_monkeys_events", "MICROSERVICES_THE_MONKEYS_EVENTS")
+	viper.BindEnv("microservices.events_port", "MICROSERVICES_EVENTS_PORT")
+	viper.BindEnv("microservices.events_internal_port", "MICROSERVICES_EVENTS_INTERNAL_PORT")
+	viper.BindEnv("microservices.the_monkeys_groups", "MICROSERVICES_THE_MONKEYS_GROUPS")
+	viper.BindEnv("microservices.groups_port", "MICROSERVICES_GROUPS_PORT")
+	viper.BindEnv("microservices.groups_internal_port", "MICROSERVICES_GROUPS_INTERNAL_PORT")
 
 	// PostgreSQL
 	viper.BindEnv("postgresql.primary_db.db_username", "POSTGRESQL_PRIMARY_DB_DB_USERNAME")
@@ -349,6 +364,9 @@ func bindEnvVars() {
 	viper.BindEnv("keys.github_token", "KEYS_GITHUB_TOKEN")
 	viper.BindEnv("keys.admin_secret_key", "KEYS_ADMIN_SECRET_KEY")
 	viper.BindEnv("keys.system_key", "KEYS_SYSTEM_KEY")
+	viper.BindEnv("keys.razorpay_key_id", "KEYS_RAZORPAY_KEY_ID")
+	viper.BindEnv("keys.razorpay_secret", "KEYS_RAZORPAY_SECRET")
+	viper.BindEnv("keys.razorpay_webhook_secret", "KEYS_RAZORPAY_WEBHOOK_SECRET")
 
 	// CORS
 	viper.BindEnv("cors.allowed_origin_regexp", "CORS_ALLOWED_ORIGIN_REGEXP")

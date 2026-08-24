@@ -37,6 +37,21 @@ const (
 	FRNTplEmailChangedEmail     = "email_changed_email"
 	FRNTplUsernameChangedInApp  = "username_changed_inapp"
 
+	// Events
+	FRNTplEventRSVPConfirmedInApp  = "event_rsvp_confirmed_inapp"
+	FRNTplEventRSVPConfirmedEmail  = "event_rsvp_confirmed_email"
+	FRNTplEventRSVPWaitlistedInApp = "event_rsvp_waitlisted_inapp"
+	FRNTplEventWaitlistPromoInApp  = "event_waitlist_promoted_inapp"
+	FRNTplEventWaitlistPromoEmail  = "event_waitlist_promoted_email"
+	FRNTplEventReminderInApp       = "event_reminder_inapp"
+	FRNTplEventReminderEmail       = "event_reminder_email"
+	FRNTplEventCancelledInApp      = "event_cancelled_inapp"
+	FRNTplEventCancelledEmail      = "event_cancelled_email"
+	FRNTplEventNewByFollowedInApp  = "event_new_by_followed_inapp"
+	FRNTplEventCommentInApp        = "event_comment_inapp"
+	FRNTplEventRefundInApp         = "event_refund_inapp"
+	FRNTplEventRefundEmail         = "event_refund_email"
+
 	// Account lifecycle
 	FRNTplAccountDeletedInApp     = "account_deleted_inapp"
 	FRNTplAccountDeletedEmail     = "account_deleted_email"
@@ -51,4 +66,5 @@ const (
 	FRNCategoryContent       = "content"
 	FRNCategorySecurity      = "security"
 	FRNCategoryAccount       = "account"
+	FRNCategoryEvents        = "events"
 )

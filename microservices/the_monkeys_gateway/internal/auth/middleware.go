@@ -75,6 +75,27 @@ func (c *AuthMiddlewareConfig) AuthRequired(ctx *gin.Context) {
 	ctx.Next()
 }
 
+// AuthOptional identifies the caller when a valid token is present but lets
+// anonymous requests through. Use it on public reads that render differently
+// for a signed-in viewer.
+func (c *AuthMiddlewareConfig) AuthOptional(ctx *gin.Context) {
+	token, err := c.extractToken(ctx)
+	if err != nil {
+		ctx.Next()
+		return
+	}
+
+	res, err := c.svc.Client.Validate(context.Background(), &pb.ValidateRequest{Token: token})
+	if err != nil {
+		ctx.Next()
+		return
+	}
+
+	ctx.Set("userName", res.UserName)
+	ctx.Set("accountId", res.AccountId)
+	ctx.Next()
+}
+
 // Middleware to check authorization with specific access level
 func (c *AuthMiddlewareConfig) AuthzRequired(ctx *gin.Context) {
 	res, err := c.validateToken(ctx)

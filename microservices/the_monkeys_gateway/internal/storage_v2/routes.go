@@ -165,6 +165,19 @@ func RegisterRoutes(router *gin.Engine, cfg *config.Config, storageCli pb.Upload
 		// Returns presigned or CDN URL for direct delivery. Optional ?expires=seconds.
 		v2.GET("/posts/:id/:fileName/url", svc.GetPostFileURL)
 	}
+	{
+		// Stream a group's logo or cover image (public). The write side lives on
+		// the /api/v1/groups surface so it can reuse the group permission guard.
+		v2.GET("/groups/:slug/:kind", svc.GetGroupImage)
+	}
+	{
+		// Event imagery (public). The cover and the gallery are open so shared
+		// event pages render without a session; the write side lives on the
+		// /api/v1/events surface behind the event host permission guard.
+		v2.GET("/events/:slug/cover", svc.GetEventCoverImage)
+		v2.GET("/events/:slug/photos", svc.ListEventPhotos)
+		v2.GET("/events/:slug/photos/:photo", svc.GetEventPhoto)
+	}
 
 	// Auth-required writes and deletes (and management)
 	v2.Use(mw.AuthRequired)
@@ -210,6 +223,10 @@ func RegisterRoutes(router *gin.Engine, cfg *config.Config, storageCli pb.Upload
 		vf.GET("/assets/sha256/:p1/:p2/:fileName", svc.GetAssetFile)
 		vf.GET("/posts/:id/:fileName/meta", svc.GetPostFileMeta)
 		vf.GET("/posts/:id/:fileName/url", svc.GetPostFileURL)
+		vf.GET("/groups/:slug/:kind", svc.GetGroupImage)
+		vf.GET("/events/:slug/cover", svc.GetEventCoverImage)
+		vf.GET("/events/:slug/photos", svc.ListEventPhotos)
+		vf.GET("/events/:slug/photos/:photo", svc.GetEventPhoto)
 	}
 	vf.Use(mw.AuthRequired)
 	{
