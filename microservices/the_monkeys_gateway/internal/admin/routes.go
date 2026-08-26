@@ -117,8 +117,8 @@ func RegisterAdminRouter(router *gin.Engine, cfg *config.Config, logg *zap.Sugar
 
 	// Admin routes group with local network restriction and admin key validation
 	adminRoutes := router.Group("/api/v1/admin")
-	// adminRoutes.Use(LocalNetworkMiddleware(logg))
-	// adminRoutes.Use(AdminKeyMiddleware(cfg.Keys.AdminSecretKey, logg))
+	adminRoutes.Use(LocalNetworkMiddleware(logg))
+	adminRoutes.Use(AdminKeyMiddleware(cfg.Keys.AdminSecretKey, logg))
 
 	// User management routes
 	{
