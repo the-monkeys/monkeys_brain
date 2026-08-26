@@ -28,7 +28,6 @@ type AdminServiceClient struct {
 func NewAdminServiceClient(cfg *config.Config, log *zap.SugaredLogger) pb.UserServiceClient {
 	userService := fmt.Sprintf("%s:%d", cfg.Microservices.TheMonkeysUser, cfg.Microservices.UserPort)
 	cc, err := grpc.NewClient(userService, grpc.WithTransportCredentials(insecure.NewCredentials()))
-	// cc, err := grpc.NewClient(cfg.Microservices.TheMonkeysUser, grpc.WithTransportCredentials(insecure.NewCredentials()))
 	if err != nil {
 		log.Errorf("cannot dial to grpc user server for admin: %v", err)
 	}
@@ -118,8 +117,8 @@ func RegisterAdminRouter(router *gin.Engine, cfg *config.Config, logg *zap.Sugar
 
 	// Admin routes group with local network restriction and admin key validation
 	adminRoutes := router.Group("/api/v1/admin")
-	// adminRoutes.Use(LocalNetworkMiddleware(logg))
-	// adminRoutes.Use(AdminKeyMiddleware(cfg.Keys.AdminSecretKey, logg))
+	adminRoutes.Use(LocalNetworkMiddleware(logg))
+	adminRoutes.Use(AdminKeyMiddleware(cfg.Keys.AdminSecretKey, logg))
 
 	// User management routes
 	{
