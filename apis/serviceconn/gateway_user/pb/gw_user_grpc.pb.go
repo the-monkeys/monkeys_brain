@@ -59,6 +59,11 @@ const (
 	UserService_ListUserAddresses_FullMethodName           = "/auth_svc.UserService/ListUserAddresses"
 	UserService_UpdateUserAddress_FullMethodName           = "/auth_svc.UserService/UpdateUserAddress"
 	UserService_DeleteUserAddress_FullMethodName           = "/auth_svc.UserService/DeleteUserAddress"
+	UserService_SubmitVerificationRequest_FullMethodName   = "/auth_svc.UserService/SubmitVerificationRequest"
+	UserService_GetMyVerification_FullMethodName           = "/auth_svc.UserService/GetMyVerification"
+	UserService_CancelVerificationRequest_FullMethodName   = "/auth_svc.UserService/CancelVerificationRequest"
+	UserService_ListVerificationRequests_FullMethodName    = "/auth_svc.UserService/ListVerificationRequests"
+	UserService_ReviewVerificationRequest_FullMethodName   = "/auth_svc.UserService/ReviewVerificationRequest"
 )
 
 // UserServiceClient is the client API for UserService service.
@@ -113,6 +118,13 @@ type UserServiceClient interface {
 	ListUserAddresses(ctx context.Context, in *ListUserAddressesReq, opts ...grpc.CallOption) (*ListUserAddressesRes, error)
 	UpdateUserAddress(ctx context.Context, in *UpdateUserAddressReq, opts ...grpc.CallOption) (*UserAddress, error)
 	DeleteUserAddress(ctx context.Context, in *DeleteUserAddressReq, opts ...grpc.CallOption) (*DeleteUserAddressRes, error)
+	// Account verification (blue-check)
+	SubmitVerificationRequest(ctx context.Context, in *SubmitVerificationReq, opts ...grpc.CallOption) (*VerificationRequest, error)
+	GetMyVerification(ctx context.Context, in *GetVerificationReq, opts ...grpc.CallOption) (*VerificationRequest, error)
+	CancelVerificationRequest(ctx context.Context, in *GetVerificationReq, opts ...grpc.CallOption) (*VerificationActionRes, error)
+	// Admin review surface
+	ListVerificationRequests(ctx context.Context, in *ListVerificationReq, opts ...grpc.CallOption) (*ListVerificationRes, error)
+	ReviewVerificationRequest(ctx context.Context, in *ReviewVerificationReq, opts ...grpc.CallOption) (*VerificationRequest, error)
 }
 
 type userServiceClient struct {
@@ -526,6 +538,56 @@ func (c *userServiceClient) DeleteUserAddress(ctx context.Context, in *DeleteUse
 	return out, nil
 }
 
+func (c *userServiceClient) SubmitVerificationRequest(ctx context.Context, in *SubmitVerificationReq, opts ...grpc.CallOption) (*VerificationRequest, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(VerificationRequest)
+	err := c.cc.Invoke(ctx, UserService_SubmitVerificationRequest_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *userServiceClient) GetMyVerification(ctx context.Context, in *GetVerificationReq, opts ...grpc.CallOption) (*VerificationRequest, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(VerificationRequest)
+	err := c.cc.Invoke(ctx, UserService_GetMyVerification_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *userServiceClient) CancelVerificationRequest(ctx context.Context, in *GetVerificationReq, opts ...grpc.CallOption) (*VerificationActionRes, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(VerificationActionRes)
+	err := c.cc.Invoke(ctx, UserService_CancelVerificationRequest_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *userServiceClient) ListVerificationRequests(ctx context.Context, in *ListVerificationReq, opts ...grpc.CallOption) (*ListVerificationRes, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ListVerificationRes)
+	err := c.cc.Invoke(ctx, UserService_ListVerificationRequests_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *userServiceClient) ReviewVerificationRequest(ctx context.Context, in *ReviewVerificationReq, opts ...grpc.CallOption) (*VerificationRequest, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(VerificationRequest)
+	err := c.cc.Invoke(ctx, UserService_ReviewVerificationRequest_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // UserServiceServer is the server API for UserService service.
 // All implementations must embed UnimplementedUserServiceServer
 // for forward compatibility.
@@ -578,6 +640,13 @@ type UserServiceServer interface {
 	ListUserAddresses(context.Context, *ListUserAddressesReq) (*ListUserAddressesRes, error)
 	UpdateUserAddress(context.Context, *UpdateUserAddressReq) (*UserAddress, error)
 	DeleteUserAddress(context.Context, *DeleteUserAddressReq) (*DeleteUserAddressRes, error)
+	// Account verification (blue-check)
+	SubmitVerificationRequest(context.Context, *SubmitVerificationReq) (*VerificationRequest, error)
+	GetMyVerification(context.Context, *GetVerificationReq) (*VerificationRequest, error)
+	CancelVerificationRequest(context.Context, *GetVerificationReq) (*VerificationActionRes, error)
+	// Admin review surface
+	ListVerificationRequests(context.Context, *ListVerificationReq) (*ListVerificationRes, error)
+	ReviewVerificationRequest(context.Context, *ReviewVerificationReq) (*VerificationRequest, error)
 	mustEmbedUnimplementedUserServiceServer()
 }
 
@@ -707,6 +776,21 @@ func (UnimplementedUserServiceServer) UpdateUserAddress(context.Context, *Update
 }
 func (UnimplementedUserServiceServer) DeleteUserAddress(context.Context, *DeleteUserAddressReq) (*DeleteUserAddressRes, error) {
 	return nil, status.Error(codes.Unimplemented, "method DeleteUserAddress not implemented")
+}
+func (UnimplementedUserServiceServer) SubmitVerificationRequest(context.Context, *SubmitVerificationReq) (*VerificationRequest, error) {
+	return nil, status.Error(codes.Unimplemented, "method SubmitVerificationRequest not implemented")
+}
+func (UnimplementedUserServiceServer) GetMyVerification(context.Context, *GetVerificationReq) (*VerificationRequest, error) {
+	return nil, status.Error(codes.Unimplemented, "method GetMyVerification not implemented")
+}
+func (UnimplementedUserServiceServer) CancelVerificationRequest(context.Context, *GetVerificationReq) (*VerificationActionRes, error) {
+	return nil, status.Error(codes.Unimplemented, "method CancelVerificationRequest not implemented")
+}
+func (UnimplementedUserServiceServer) ListVerificationRequests(context.Context, *ListVerificationReq) (*ListVerificationRes, error) {
+	return nil, status.Error(codes.Unimplemented, "method ListVerificationRequests not implemented")
+}
+func (UnimplementedUserServiceServer) ReviewVerificationRequest(context.Context, *ReviewVerificationReq) (*VerificationRequest, error) {
+	return nil, status.Error(codes.Unimplemented, "method ReviewVerificationRequest not implemented")
 }
 func (UnimplementedUserServiceServer) mustEmbedUnimplementedUserServiceServer() {}
 func (UnimplementedUserServiceServer) testEmbeddedByValue()                     {}
@@ -1438,6 +1522,96 @@ func _UserService_DeleteUserAddress_Handler(srv interface{}, ctx context.Context
 	return interceptor(ctx, in, info, handler)
 }
 
+func _UserService_SubmitVerificationRequest_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(SubmitVerificationReq)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(UserServiceServer).SubmitVerificationRequest(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: UserService_SubmitVerificationRequest_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(UserServiceServer).SubmitVerificationRequest(ctx, req.(*SubmitVerificationReq))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _UserService_GetMyVerification_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetVerificationReq)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(UserServiceServer).GetMyVerification(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: UserService_GetMyVerification_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(UserServiceServer).GetMyVerification(ctx, req.(*GetVerificationReq))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _UserService_CancelVerificationRequest_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetVerificationReq)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(UserServiceServer).CancelVerificationRequest(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: UserService_CancelVerificationRequest_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(UserServiceServer).CancelVerificationRequest(ctx, req.(*GetVerificationReq))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _UserService_ListVerificationRequests_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ListVerificationReq)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(UserServiceServer).ListVerificationRequests(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: UserService_ListVerificationRequests_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(UserServiceServer).ListVerificationRequests(ctx, req.(*ListVerificationReq))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _UserService_ReviewVerificationRequest_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ReviewVerificationReq)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(UserServiceServer).ReviewVerificationRequest(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: UserService_ReviewVerificationRequest_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(UserServiceServer).ReviewVerificationRequest(ctx, req.(*ReviewVerificationReq))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // UserService_ServiceDesc is the grpc.ServiceDesc for UserService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -1600,6 +1774,26 @@ var UserService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "DeleteUserAddress",
 			Handler:    _UserService_DeleteUserAddress_Handler,
+		},
+		{
+			MethodName: "SubmitVerificationRequest",
+			Handler:    _UserService_SubmitVerificationRequest_Handler,
+		},
+		{
+			MethodName: "GetMyVerification",
+			Handler:    _UserService_GetMyVerification_Handler,
+		},
+		{
+			MethodName: "CancelVerificationRequest",
+			Handler:    _UserService_CancelVerificationRequest_Handler,
+		},
+		{
+			MethodName: "ListVerificationRequests",
+			Handler:    _UserService_ListVerificationRequests_Handler,
+		},
+		{
+			MethodName: "ReviewVerificationRequest",
+			Handler:    _UserService_ReviewVerificationRequest_Handler,
 		},
 	},
 	Streams: []grpc.StreamDesc{

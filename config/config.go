@@ -146,13 +146,14 @@ type GoogleOAuth2 struct {
 
 // Minio holds object storage configuration
 type Minio struct {
-	Endpoint      string `mapstructure:"endpoint"`
-	AccessKey     string `mapstructure:"access_key"`
-	SecretKey     string `mapstructure:"secret_key"`
-	Bucket        string `mapstructure:"bucket_name"`
-	UseSSL        bool   `mapstructure:"use_ssl"`
-	CDNURL        string `mapstructure:"cdn_url"`
-	PublicBaseURL string `mapstructure:"public_base_url"`
+	Endpoint           string `mapstructure:"endpoint"`
+	AccessKey          string `mapstructure:"access_key"`
+	SecretKey          string `mapstructure:"secret_key"`
+	Bucket             string `mapstructure:"bucket_name"`
+	VerificationBucket string `mapstructure:"verification_bucket"`
+	UseSSL             bool   `mapstructure:"use_ssl"`
+	CDNURL             string `mapstructure:"cdn_url"`
+	PublicBaseURL      string `mapstructure:"public_base_url"`
 	// Remote sync settings
 	RemoteEndpoint   string `mapstructure:"remote_endpoint"`
 	RemoteAccessKey  string `mapstructure:"remote_access_key"`
@@ -385,6 +386,7 @@ func bindEnvVars() {
 	viper.BindEnv("minio.access_key", "MINIO_ACCESS_KEY")
 	viper.BindEnv("minio.secret_key", "MINIO_SECRET_KEY")
 	viper.BindEnv("minio.bucket_name", "MINIO_BUCKET_NAME")
+	viper.BindEnv("minio.verification_bucket", "MINIO_VERIFICATION_BUCKET")
 	viper.BindEnv("minio.use_ssl", "MINIO_USE_SSL")
 	viper.BindEnv("minio.cdn_url", "MINIO_CDN_URL")
 	viper.BindEnv("minio.public_base_url", "MINIO_PUBLIC_BASE_URL")

@@ -65,6 +65,13 @@ func RegisterUserRouter(router *gin.Engine, cfg *config.Config, authClient *auth
 	routes.Use(mware.AuthRequired)
 
 	{
+		// Account verification (blue-check)
+		routes.POST("/verification", middleware.RateLimiterMiddleware("10-H"), usc.SubmitVerification)
+		routes.GET("/verification/me", usc.GetMyVerification)
+		routes.DELETE("/verification/:request_id", usc.CancelVerification)
+	}
+
+	{
 		routes.PUT("/:id", usc.UpdateUserProfile)
 		routes.PATCH("/:id", usc.UpdateUserProfile)
 		routes.GET("/:id", usc.GetUserProfile)

@@ -328,6 +328,14 @@ service UserService {
     rpc ListUserAddresses(ListUserAddressesReq) returns (ListUserAddressesRes) {}
     rpc UpdateUserAddress(UpdateUserAddressReq) returns (UserAddress) {}
     rpc DeleteUserAddress(DeleteUserAddressReq) returns (DeleteUserAddressRes) {}
+
+    // Account verification (blue-check)
+    rpc SubmitVerificationRequest(SubmitVerificationReq) returns (VerificationRequest) {}
+    rpc GetMyVerification(GetVerificationReq) returns (VerificationRequest) {}
+    rpc CancelVerificationRequest(GetVerificationReq) returns (VerificationActionRes) {}
+    // Admin review surface
+    rpc ListVerificationRequests(ListVerificationReq) returns (ListVerificationRes) {}
+    rpc ReviewVerificationRequest(ReviewVerificationReq) returns (VerificationRequest) {}
 }
 
 message GetBatchUserDetailsReq {
@@ -480,3 +488,67 @@ message DeleteUserAddressRes {
     string message = 2;
 }
 
+
+// Account verification (blue-check).
+// Lifecycle: pending -> under_review -> approved | rejected.
+// A rejected request may be resubmitted as a NEW row; at most one row
+// per username may sit in an active state (pending/under_review),
+// enforced by a partial unique index in schema/000013.
+message VerificationRequest {
+    string id                 = 1;
+    string username           = 2;
+    string verification_type  = 3;  // social_proof | id_document
+    string country            = 4;  // ISO 3166-1 alpha-2, required for id_document
+    string id_document_type   = 5;  // passport | national_id | drivers_license | residence_permit
+    string status             = 6;  // pending | under_review | approved | rejected
+    string selfie_checksum    = 7;  // storage_assets.checksum (private bucket)
+    string id_front_checksum  = 8;
+    string id_back_checksum   = 9;  // optional, doc-type dependent
+    string additional_info    = 10;
+    string reviewer_username  = 11;
+    string rejection_reason   = 12;
+    google.protobuf.Timestamp created_at  = 13;
+    google.protobuf.Timestamp updated_at  = 14;
+    google.protobuf.Timestamp reviewed_at = 15;
+}
+
+message SubmitVerificationReq {
+    string username          = 1;  // injected from JWT context at gateway
+    string verification_type = 2;
+    string country           = 3;
+    string id_document_type  = 4;
+    string selfie_checksum   = 5;
+    string id_front_checksum = 6;
+    string id_back_checksum  = 7;
+    string additional_info   = 8;
+}
+
+message GetVerificationReq {
+    string username   = 1;  // requester context ("me")
+    string request_id = 2;  // admin path: specific request
+    bool   latest     = 3;  // return most recent request for username
+}
+
+message ListVerificationReq {
+    string status  = 1;  // empty = all statuses
+    int32  limit   = 2;  // server-capped
+    int32  offset  = 3;
+}
+
+message ListVerificationRes {
+    repeated VerificationRequest requests = 1;
+    int32 total = 2;
+}
+
+message ReviewVerificationReq {
+    string request_id        = 1;
+    string reviewer_username = 2;  // stamped for audit trail
+    bool   approve           = 3;
+    string rejection_reason  = 4;  // required when approve=false
+}
+
+message VerificationActionRes {
+    string status  = 1;
+    string message = 2;
+    string error   = 3;
+}

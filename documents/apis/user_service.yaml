@@ -4,6 +4,10 @@ info:
   version: 0.0.1
 tags:
   - name: Authentication
+  - name: Verification
+    description: >
+      Blue-check identity verification: private-bucket document uploads,
+      submission, tracking and reviewer access URLs.
 consumes:
   - application/json
 produces:
@@ -459,3 +463,276 @@ paths:
           description: Bearer token for authentication
       tags:
         - Get User Activity
+
+  # ---------------------------------------------------------------------
+  # Account verification (blue-check)
+  #
+  # Flow: 1) upload each document -> receive its sha256 `checksum`
+  #       2) POST /user/verification referencing those checksums
+  # Documents live in a PRIVATE bucket; the only way to view one is the
+  # short-lived presigned URL endpoint (owner or platform admin).
+  # ---------------------------------------------------------------------
+
+  /v2/storage/verifications:
+    post:
+      tags:
+        - Verification
+      summary: Upload a verification document (step 1 of the blue-check flow)
+      description: >
+        Authenticated owner-scoped upload of ONE document into the private
+        verification bucket. `kind` selects the slot: `selfie`,
+        `id_front` or `id_back`. Accepts JPEG, PNG or WebP up to 10 MiB;
+        HEIC/HEIF (default iPhone format) is rejected - convert first.
+        The response `checksum` is what you send when submitting the
+        verification request. Rate limit: none beyond global gateway limits.
+      operationId: UserService.uploadVerificationAsset
+      consumes:
+        - multipart/form-data
+      parameters:
+        - in: header
+          name: Authorization
+          type: string
+          required: true
+          description: Bearer token for authorization
+        - in: query
+          name: kind
+          type: string
+          required: true
+          enum:
+            - selfie
+            - id_front
+            - id_back
+        - in: formData
+          name: file
+          type: file
+          required: true
+          description: Image file (JPEG, PNG or WebP, max 10 MiB)
+      responses:
+        '201':
+          description: Document stored. Echo `checksum` back in step 2.
+          schema:
+            type: object
+            properties:
+              kind: { type: string, example: selfie }
+              checksum:
+                type: string
+                example: 9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08
+              bucket: { type: string }
+              object: { type: string }
+              etag: { type: string }
+              size: { type: integer }
+              contentType: { type: string, example: image/jpeg }
+              blurhash: { type: string }
+              width: { type: integer }
+              height: { type: integer }
+        '400':
+          description: Missing file field or invalid `kind`.
+        '401':
+          description: Not authenticated.
+        '413':
+          description: File exceeds 10 MiB.
+        '415':
+          description: Unsupported media type (only JPEG/PNG/WebP accepted).
+        default:
+          description: An unexpected error response.
+
+  /v2/storage/verifications/{request_id}/{kind}/url:
+    get:
+      tags:
+        - Verification
+      summary: Get a short-lived URL to view one submitted document
+      description: >
+        Returns a presigned GET URL (valid 10 minutes) into the private
+        bucket. Accessible ONLY to the request owner or an admin JWT role.
+      operationId: UserService.getVerificationAssetURL
+      parameters:
+        - in: header
+          name: Authorization
+          type: string
+          required: true
+          description: Bearer token for authorization
+        - in: path
+          name: request_id
+          type: string
+          required: true
+          description: Verification request id (from submit/get responses)
+        - in: path
+          name: kind
+          type: string
+          required: true
+          enum: [selfie, id_front, id_back]
+      responses:
+        '200':
+          description: Presigned URL issued.
+          schema:
+            type: object
+            properties:
+              url: { type: string }
+              expires_in_seconds: { type: integer, example: 600 }
+        '403':
+          description: Caller is neither the owner nor an admin.
+        '404':
+          description: Request not found, or that `kind` was not uploaded.
+        default:
+          description: An unexpected error response.
+
+  /user/verification:
+    post:
+      tags:
+        - Verification
+      summary: Submit a verification request (step 2 of the flow)
+      description: >
+        Creates a `pending` request. One active request per account -
+        duplicates get 409. For `id_document` requests the server enforces
+        country-specific document rules (~40 launch regions; unknown
+        countries accept passport/residence_permit only), requires
+        `selfie_checksum` + `id_front_checksum` (`id_back_checksum`
+        recommended where the ID has a reverse side), and verifies every
+        checksum exists from step 1 uploads. Rate limited to 10/hour.
+      operationId: UserService.submitVerification
+      parameters:
+        - in: header
+          name: Authorization
+          type: string
+          required: true
+          description: Bearer token for authorization
+        - in: body
+          name: body
+          required: true
+          schema:
+            type: object
+            required:
+              - verification_type
+            properties:
+              verification_type:
+                type: string
+                enum: [social_proof, id_document]
+                example: id_document
+              country:
+                type: string
+                description: ISO 3166-1 alpha-2, required for id_document requests
+                example: IN
+              id_document_type:
+                type: string
+                enum: [passport, national_id, drivers_license, residence_permit]
+                example: passport
+              selfie_checksum:
+                type: string
+                description: 64-char sha256 from step 1 (required for id_document)
+              id_front_checksum:
+                type: string
+                description: Required for id_document
+              id_back_checksum:
+                type: string
+                description: Optional (send when the ID has a reverse side)
+              additional_info:
+                type: string
+                maxLength: 2000
+                description: Free-text context for reviewers (e.g. social links for social_proof)
+      responses:
+        '201':
+          description: Request created with status `pending`.
+          schema:
+            $ref: '#/definitions/VerificationRequest'
+        '400':
+          description: Validation failure (bad type/country/doc combo, unknown checksum, oversized info).
+        '401':
+          description: Not authenticated.
+        '409':
+          description: An active request already exists.
+        default:
+          description: An unexpected error response.
+
+  /user/verification/me:
+    get:
+      tags:
+        - Verification
+      summary: Get my latest verification request and its state
+      operationId: UserService.getMyVerification
+      parameters:
+        - in: header
+          name: Authorization
+          type: string
+          required: true
+          description: Bearer token for authorization
+      responses:
+        '200':
+          description: >
+            Latest request, or `{ "status": "none" }` when the caller has
+            never submitted one.
+          schema:
+            oneOf:
+              - $ref: '#/definitions/VerificationRequest'
+              - type: object
+                properties:
+                  status: { type: string, example: none }
+                  message: { type: string }
+        '401':
+          description: Not authenticated.
+        default:
+          description: An unexpected error response.
+
+  /user/verification/{request_id}:
+    delete:
+      tags:
+        - Verification
+      summary: Cancel my PENDING verification request
+      description: >
+        Only requests still in `pending` can be cancelled; anything under
+        review or decided is permanent history. Ownership enforced
+        server-side.
+      operationId: UserService.cancelVerification
+      parameters:
+        - in: header
+          name: Authorization
+          type: string
+          required: true
+          description: Bearer token for authorization
+        - in: path
+          name: request_id
+          type: string
+          required: true
+      responses:
+        '200':
+          description: Cancelled.
+          schema:
+            type: object
+            properties:
+              message: { type: string, example: verification request cancelled }
+        '404':
+          description: No pending request with that id for this account.
+        default:
+          description: An unexpected error response.
+
+definitions:
+  VerificationRequest:
+    type: object
+    properties:
+      id: { type: string }
+      username: { type: string }
+      verification_type:
+        type: string
+        enum: [social_proof, id_document]
+      country:
+        type: string
+        description: Present on id_document requests
+        example: IN
+      id_document_type:
+        type: string
+        enum: [passport, national_id, drivers_license, residence_permit]
+      status:
+        type: string
+        enum: [pending, under_review, approved, rejected]
+        description: Lifecycle is pending -> under_review -> approved|rejected.
+      selfie_checksum: { type: string }
+      id_front_checksum: { type: string }
+      id_back_checksum: { type: string }
+      additional_info: { type: string }
+      reviewer_username: { type: string }
+      rejection_reason:
+        type: string
+        description: Set when status is rejected
+      created_at: { type: string, format: date-time }
+      updated_at: { type: string, format: date-time }
+      reviewed_at: { type: string, format: date-time }
+

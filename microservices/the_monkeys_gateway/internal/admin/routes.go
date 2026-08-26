@@ -128,6 +128,12 @@ func RegisterAdminRouter(router *gin.Engine, cfg *config.Config, logg *zap.Sugar
 		adminRoutes.POST("/users/:id/unflag", asc.UnflagUser)
 		adminRoutes.GET("/users/flagged", asc.GetFlaggedUsers)
 		adminRoutes.GET("/users/stats", asc.GetUserStats)
+
+		// Account verification review queue
+		{
+			adminRoutes.GET("/verifications", asc.ListVerifications)
+			adminRoutes.POST("/verifications/:id/review", asc.ReviewVerification)
+		}
 	}
 
 	// System health and monitoring

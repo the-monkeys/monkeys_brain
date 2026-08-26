@@ -78,6 +78,15 @@ type UserDb interface {
 	UpdateUserAddress(addr *models.UserAddress) (*models.UserAddress, error)
 	DeleteUserAddress(accountId, id string) error
 
+	// Account verification (blue-check) queries
+	CreateVerificationRequest(vr *models.VerificationRequest) (*models.VerificationRequest, error)
+	GetLatestVerificationRequest(username string) (*models.VerificationRequest, error)
+	GetVerificationRequestByID(id string) (*models.VerificationRequest, error)
+	CancelVerificationRequest(id, username string) error
+	ListVerificationRequests(statusFilter string, limit, offset int) ([]models.VerificationRequest, int, error)
+	ReviewVerificationRequest(id, reviewer string, approve bool, reason string) (*models.VerificationRequest, error)
+	VerificationAssetsExist(checksums []string) (bool, error)
+
 	// Delete queries
 	GetOwnedBlogIDs(username string) ([]string, error)
 	DeleteUserProfile(username string) error
