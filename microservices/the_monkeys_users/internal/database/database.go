@@ -137,10 +137,10 @@ func (uh *uDBHandler) GetUserProfile(username string) (*models.UserAccount, erro
 
 	// Step 1: Fetch user profile information from the user_account table
 	err := uh.db.QueryRow(`
-		SELECT id, username, first_name, last_name, bio, avatar_url, created_at, address, linkedin, github, twitter, instagram 
+		SELECT id, username, first_name, last_name, bio, avatar_url, created_at, address, linkedin, github, twitter, instagram, is_verified 
 		FROM user_account WHERE username = $1;`, username).
 		Scan(&tmu.Id, &tmu.UserName, &tmu.FirstName, &tmu.LastName, &tmu.Bio, &tmu.AvatarUrl, &tmu.CreatedAt,
-			&tmu.Address, &tmu.LinkedIn, &tmu.Github, &tmu.Twitter, &tmu.Instagram)
+			&tmu.Address, &tmu.LinkedIn, &tmu.Github, &tmu.Twitter, &tmu.Instagram, &tmu.IsVerified)
 
 	if err != nil {
 		uh.log.Errorf("Can't find a user with username %s, error: %+v", username, err)
@@ -173,6 +173,11 @@ func (uh *uDBHandler) GetUserProfile(username string) (*models.UserAccount, erro
 			return nil, err
 		}
 		interests = append(interests, interest)
+	}
+
+	if err := rows.Err(); err != nil {
+		uh.log.Errorf("Error iterating rows for user ID %d, error: %+v", tmu.Id, err)
+		return nil, err
 	}
 
 	// Assign interests to the user's profile

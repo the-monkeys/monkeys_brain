@@ -37,6 +37,7 @@ message UserProfileRes {
     string twitter = 16;
     string github = 17;
     repeated string topics = 18;
+    bool is_verified = 19;
 }
 
 message UserActivityReq {

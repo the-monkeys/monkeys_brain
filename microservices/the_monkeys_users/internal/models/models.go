@@ -24,6 +24,7 @@ type UserAccount struct {
 	Twitter       sql.NullString `json:"twitter"`
 	Instagram     sql.NullString `json:"instagram"`
 	Interests     []string       `json:"interests"`
+	IsVerified    bool           `json:"is_verified"`
 }
 
 type UserAuthInfo struct {
