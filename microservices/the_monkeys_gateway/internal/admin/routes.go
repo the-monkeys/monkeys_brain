@@ -26,7 +26,8 @@ type AdminServiceClient struct {
 }
 
 func NewAdminServiceClient(cfg *config.Config, log *zap.SugaredLogger) pb.UserServiceClient {
-	cc, err := grpc.NewClient(cfg.Microservices.TheMonkeysUser, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	userService := fmt.Sprintf("%s:%d", cfg.Microservices.TheMonkeysUser, cfg.Microservices.UserPort)
+	cc, err := grpc.NewClient(userService, grpc.WithTransportCredentials(insecure.NewCredentials()))
 	if err != nil {
 		log.Errorf("cannot dial to grpc user server for admin: %v", err)
 	}
@@ -128,6 +129,12 @@ func RegisterAdminRouter(router *gin.Engine, cfg *config.Config, logg *zap.Sugar
 		adminRoutes.POST("/users/:id/unflag", asc.UnflagUser)
 		adminRoutes.GET("/users/flagged", asc.GetFlaggedUsers)
 		adminRoutes.GET("/users/stats", asc.GetUserStats)
+
+		// Account verification review queue
+		{
+			adminRoutes.GET("/verifications", asc.ListVerifications)
+			adminRoutes.POST("/verifications/:id/review", asc.ReviewVerification)
+		}
 	}
 
 	// System health and monitoring

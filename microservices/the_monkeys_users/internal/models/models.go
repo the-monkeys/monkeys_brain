@@ -24,6 +24,7 @@ type UserAccount struct {
 	Twitter       sql.NullString `json:"twitter"`
 	Instagram     sql.NullString `json:"instagram"`
 	Interests     []string       `json:"interests"`
+	IsVerified    bool           `json:"is_verified"`
 }
 
 type UserAuthInfo struct {
@@ -152,4 +153,26 @@ type Blog struct {
 	AccountId  string `json:"account_id"`
 	Permission string `json:"permission"`
 	BlogStatus string `json:"blog_status"`
+}
+
+// VerificationRequest is one blue-check submission. Documents are stored
+// as checksum-addressed assets in a PRIVATE MinIO bucket (schema/000013);
+// this struct carries only their SHA-256 fingerprints plus review state.
+type VerificationRequest struct {
+	Id               string         `json:"id"`
+	Username         string         `json:"username"`
+	VerificationType string         `json:"verification_type"`
+	Country          sql.NullString `json:"country"`          // ISO 3166-1 alpha-2, id_document only
+	IDDocumentType   sql.NullString `json:"id_document_type"` // passport | national_id | drivers_license | residence_permit
+	ProofUrls        sql.NullString `json:"proof_urls"`       // legacy social_proof links
+	Status           string         `json:"status"`
+	SelfieChecksum   sql.NullString `json:"selfie_checksum"`
+	IDFrontChecksum  sql.NullString `json:"id_front_checksum"`
+	IDBackChecksum   sql.NullString `json:"id_back_checksum"`
+	AdditionalInfo   sql.NullString `json:"additional_info"`
+	ReviewerUsername sql.NullString `json:"reviewer_username"`
+	RejectionReason  sql.NullString `json:"rejection_reason"`
+	CreatedAt        sql.NullTime   `json:"created_at"`
+	UpdatedAt        sql.NullTime   `json:"updated_at"`
+	ReviewedAt       sql.NullTime   `json:"reviewed_at"`
 }

@@ -78,6 +78,15 @@ type UserDb interface {
 	UpdateUserAddress(addr *models.UserAddress) (*models.UserAddress, error)
 	DeleteUserAddress(accountId, id string) error
 
+	// Account verification (blue-check) queries
+	CreateVerificationRequest(vr *models.VerificationRequest) (*models.VerificationRequest, error)
+	GetLatestVerificationRequest(username string) (*models.VerificationRequest, error)
+	GetVerificationRequestByID(id string) (*models.VerificationRequest, error)
+	CancelVerificationRequest(id, username string) error
+	ListVerificationRequests(statusFilter string, limit, offset int) ([]models.VerificationRequest, int, error)
+	ReviewVerificationRequest(id, reviewer string, approve bool, reason string) (*models.VerificationRequest, error)
+	VerificationAssetsExist(checksums []string) (bool, error)
+
 	// Delete queries
 	GetOwnedBlogIDs(username string) ([]string, error)
 	DeleteUserProfile(username string) error
@@ -128,10 +137,10 @@ func (uh *uDBHandler) GetUserProfile(username string) (*models.UserAccount, erro
 
 	// Step 1: Fetch user profile information from the user_account table
 	err := uh.db.QueryRow(`
-		SELECT id, username, first_name, last_name, bio, avatar_url, created_at, address, linkedin, github, twitter, instagram 
+		SELECT id, username, first_name, last_name, bio, avatar_url, created_at, address, linkedin, github, twitter, instagram, is_verified 
 		FROM user_account WHERE username = $1;`, username).
 		Scan(&tmu.Id, &tmu.UserName, &tmu.FirstName, &tmu.LastName, &tmu.Bio, &tmu.AvatarUrl, &tmu.CreatedAt,
-			&tmu.Address, &tmu.LinkedIn, &tmu.Github, &tmu.Twitter, &tmu.Instagram)
+			&tmu.Address, &tmu.LinkedIn, &tmu.Github, &tmu.Twitter, &tmu.Instagram, &tmu.IsVerified)
 
 	if err != nil {
 		uh.log.Errorf("Can't find a user with username %s, error: %+v", username, err)
@@ -164,6 +173,11 @@ func (uh *uDBHandler) GetUserProfile(username string) (*models.UserAccount, erro
 			return nil, err
 		}
 		interests = append(interests, interest)
+	}
+
+	if err := rows.Err(); err != nil {
+		uh.log.Errorf("Error iterating rows for user ID %d, error: %+v", tmu.Id, err)
+		return nil, err
 	}
 
 	// Assign interests to the user's profile

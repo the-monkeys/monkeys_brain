@@ -146,6 +146,16 @@ func RegisterRoutes(router *gin.Engine, cfg *config.Config, storageCli pb.Upload
 
 	v2 := router.Group("/api/v2/storage")
 
+	// Account verification documents (PRIVATE bucket, CAS-addressed).
+	// Own route group so AuthRequired applies without touching public reads.
+	vh := newVerificationHandler(svc, cfg, log)
+	v2auth := router.Group("/api/v2/storage")
+	v2auth.Use(mw.AuthRequired)
+	{
+		v2auth.POST("/verifications", vh.UploadVerificationAsset)
+		v2auth.GET("/verifications/:request_id/:kind/url", vh.GetVerificationAssetURL)
+	}
+
 	// Public reads (CDN-style). We may later gate or sign URLs as needed.
 	{
 		// Stream the user's profile image (public). Canonical key.

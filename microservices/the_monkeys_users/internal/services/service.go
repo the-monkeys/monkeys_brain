@@ -48,18 +48,19 @@ func (us *UserSvc) GetUserProfile(ctx context.Context, req *pb.UserProfileReq) (
 			return nil, status.Errorf(codes.Internal, "cannot get the user profile")
 		}
 		return &pb.UserProfileRes{
-			Username:  userProfile.UserName,
-			FirstName: userProfile.FirstName,
-			LastName:  userProfile.LastName,
-			Bio:       userProfile.Bio.String,
-			AvatarUrl: userProfile.AvatarUrl.String,
-			CreatedAt: timestamp.New(userProfile.CreatedAt.Time),
-			Address:   userProfile.Address.String,
-			Linkedin:  userProfile.LinkedIn.String,
-			Instagram: userProfile.Instagram.String,
-			Twitter:   userProfile.Twitter.String,
-			Github:    userProfile.Github.String,
-			Topics:    userProfile.Interests,
+			Username:   userProfile.UserName,
+			FirstName:  userProfile.FirstName,
+			LastName:   userProfile.LastName,
+			Bio:        userProfile.Bio.String,
+			AvatarUrl:  userProfile.AvatarUrl.String,
+			CreatedAt:  timestamp.New(userProfile.CreatedAt.Time),
+			Address:    userProfile.Address.String,
+			Linkedin:   userProfile.LinkedIn.String,
+			Instagram:  userProfile.Instagram.String,
+			Twitter:    userProfile.Twitter.String,
+			Github:     userProfile.Github.String,
+			Topics:     userProfile.Interests,
+			IsVerified: userProfile.IsVerified,
 		}, nil
 
 	}
