@@ -56,6 +56,8 @@ func listQuery(ctx *gin.Context) *pb.ListEventsReq {
 		AccountId:  accountID(ctx),
 		Username:   ctx.Param("username"),
 		ClientInfo: clientInfo(ctx),
+		DateFilter: ctx.Query("date"),
+		SortBy:     ctx.Query("sort"),
 	}
 	if tags := ctx.Query("tags"); tags != "" {
 		req.Tags = strings.Split(tags, ",")
@@ -174,7 +176,16 @@ func (esc *EventServiceClient) GetEvent(ctx *gin.Context) {
 }
 
 func (esc *EventServiceClient) ListEvents(ctx *gin.Context) {
-	res, err := esc.Client.ListEvents(ctx, listQuery(ctx))
+	req := listQuery(ctx)
+	esc.log.Debugw("[DEBUG] ListEvents filters",
+		"type", req.EventType,
+		"date", req.DateFilter,
+		"sort", req.SortBy,
+		"q", req.Query,
+		"location", req.Location,
+		"tags", req.Tags,
+	)
+	res, err := esc.Client.ListEvents(ctx, req)
 	if esc.fail(ctx, err, "list events") {
 		return
 	}

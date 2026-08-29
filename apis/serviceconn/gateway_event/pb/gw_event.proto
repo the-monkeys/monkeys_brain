@@ -272,6 +272,8 @@ message ListEventsReq {
     string location = 9;     // city / venue filter for in-person events
     ClientInfo client_info = 10;
     string group_slug = 11;  // target community for GetGroupEvents
+    string date_filter = 12; // "this-week", "this-month", "all"
+    string sort_by = 13;     // "soonest", "popular", "newest"
 }
 
 message ListEventsResp {

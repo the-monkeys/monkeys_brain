@@ -352,12 +352,13 @@ func (us *UserSvc) GetUserDetails(ctx context.Context, req *pb.UserDetailReq) (*
 	}
 
 	return &pb.UserDetailsResp{
-		Username:  userInfo.Username,
-		FirstName: userInfo.FirstName,
-		LastName:  userInfo.LastName,
-		AccountId: userInfo.AccountId,
-		Bio:       userInfo.Bio.String,
-		Location:  userInfo.Location.String,
+		Username:   userInfo.Username,
+		FirstName:  userInfo.FirstName,
+		LastName:   userInfo.LastName,
+		AccountId:  userInfo.AccountId,
+		Bio:        userInfo.Bio.String,
+		Location:   userInfo.Location.String,
+		IsVerified: userInfo.IsVerified,
 	}, nil
 }
 

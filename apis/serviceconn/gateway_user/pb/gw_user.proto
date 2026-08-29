@@ -4,59 +4,57 @@ package auth_svc;
 
 import "google/protobuf/timestamp.proto";
 
-
-
-
 option go_package = "./apis/serviceconn/gateway_user/pb";
 
 message UserProfileReq {
-    string account_id = 1;
-    string username = 2;
-    string email = 3;
-    bool is_private = 4;
-    string ip = 5;
-    string client = 6;
+  string account_id = 1;
+  string username   = 2;
+  string email      = 3;
+  bool   is_private = 4;
+  string ip         = 5;
+  string client     = 6;
 }
 
 message UserProfileRes {
-    string account_id = 1;
-    string username = 2; 
-    string first_name = 3;
-    string last_name = 4;
-    string date_of_birth = 5;
-    int64 role_id = 6;
-    string bio = 7;
-    string avatar_url = 8; 
-    google.protobuf.Timestamp created_at = 9;
-    google.protobuf.Timestamp updated_at = 10; 
-    string address = 11;
-    string contact_number = 12;
-    string user_status = 13;
-    string instagram = 14;
-    string linkedin = 15;
-    string twitter = 16;
-    string github = 17;
-    repeated string topics = 18;
-    bool is_verified = 19;
+  string                    account_id     = 1;
+  string                    username       = 2;
+  string                    first_name     = 3;
+  string                    last_name      = 4;
+  string                    date_of_birth  = 5;
+  int64                     role_id        = 6;
+  string                    bio            = 7;
+  string                    avatar_url     = 8;
+  google.protobuf.Timestamp created_at     = 9;
+  google.protobuf.Timestamp updated_at     = 10;
+  string                    address        = 11;
+  string                    contact_number = 12;
+  string                    user_status    = 13;
+  string                    instagram      = 14;
+  string                    linkedin       = 15;
+  string                    twitter        = 16;
+  string                    github         = 17;
+  repeated string           topics         = 18;
+  bool                      is_verified    = 19;
 }
 
 message UserActivityReq {
-    string user_id = 1;
-    string user_name = 2;
-    string email = 3;
-    string ip = 4;
-    string client = 5;
+  string user_id   = 1;
+  string user_name = 2;
+  string email     = 3;
+  string ip        = 4;
+  string client    = 5;
 }
 
 message UserActivityResp {
-    repeated UserActivity response = 1;
+  repeated UserActivity response = 1;
 }
+
 message UserActivity {
-    string event_type = 1;
-    string service_type = 2;
-    string timestamp = 3;
-    string ip_address = 4;
-    string description = 5;
+  string event_type   = 1;
+  string service_type = 2;
+  string timestamp    = 3;
+  string ip_address   = 4;
+  string description  = 5;
 }
 
 // message Error {
@@ -66,429 +64,430 @@ message UserActivity {
 // }
 
 message UpdateUserProfileReq {
-    string username = 1;
-    string first_name = 2;
-    string last_name = 3;
-    string date_of_birth = 4;
-    string bio = 5;
-    string address = 6;
-    string contact_number = 7;
-    string ip = 8;
-    string client = 9;
-    bool partial = 10;
-    string instagram = 11;
-    string linkedin = 12;
-    string twitter = 13;
-    string github = 14;
+  string username       = 1;
+  string first_name     = 2;
+  string last_name      = 3;
+  string date_of_birth  = 4;
+  string bio            = 5;
+  string address        = 6;
+  string contact_number = 7;
+  string ip             = 8;
+  string client         = 9;
+  bool   partial        = 10;
+  string instagram      = 11;
+  string linkedin       = 12;
+  string twitter        = 13;
+  string github         = 14;
 }
 
 message UpdateUserProfileRes {
-    string account_id = 1;
-    string username = 2; 
-    string first_name = 3;
-    string last_name = 4;
-    string date_of_birth = 5;
-    string bio = 6;
-    string address = 7;
-    int64 contact_number = 8;
-    string email = 9;
-    int64  status = 10;
-    string error = 11;
+  string account_id     = 1;
+  string username       = 2;
+  string first_name     = 3;
+  string last_name      = 4;
+  string date_of_birth  = 5;
+  string bio            = 6;
+  string address        = 7;
+  int64  contact_number = 8;
+  string email          = 9;
+  int64  status         = 10;
+  string error          = 11;
 }
 
 message DeleteUserProfileReq {
-    string account_id = 1;
-    string username = 2;
-    string email    = 3;
-    string client   = 4;
-    string ip = 5;
+  string account_id = 1;
+  string username   = 2;
+  string email      = 3;
+  string client     = 4;
+  string ip         = 5;
 }
 
 message DeleteUserProfileRes {
-    string success = 1;
-    string error = 2;
-    string status = 3;
+  string success = 1;
+  string error   = 2;
+  string status  = 3;
 }
 
 message GetTopicsRequests {
 }
 
 message Topics {
-    string topic = 1;
-    string category = 2;
+  string topic    = 1;
+  string category = 2;
 }
 
 message GetTopicsResponse {
-    repeated Topics topics = 1; 
+  repeated Topics topics = 1;
 }
 
 message Category {
-    repeated string Topics = 1;
-} 
+  repeated string Topics = 1;
+}
 
 message GetAllCategoriesReq {
 }
 
 message GetAllCategoriesRes {
-    map<string, Category> category = 1;
+  map<string, Category> category = 1;
 }
 
 message UserDetailReq {
-    string account_id = 1;
-    string username = 2;
-    string email = 3;
-    string search_term = 4;
-    int32 limit = 5;
-    int32 offset = 6;
+  string account_id  = 1;
+  string username    = 2;
+  string email       = 3;
+  string search_term = 4;
+  int32  limit       = 5;
+  int32  offset      = 6;
 }
 
 message UserDetailsResp {
-    string account_id = 1;
-    string username = 2; 
-    string first_name = 3;
-    string last_name = 4;
-    string bio = 5;
-    string avatar_url = 6;
-    string location = 7;
-    string error = 8;
+  string account_id  = 1;
+  string username    = 2;
+  string first_name  = 3;
+  string last_name   = 4;
+  string bio         = 5;
+  string avatar_url  = 6;
+  string location    = 7;
+  string error       = 8;
+  bool   is_verified = 9;
 }
 
 message TopicActionReq {
-    repeated string topic = 1;
-    string username = 2;
-    string ip = 3;
-    string client = 4;
+  repeated string topic    = 1;
+  string          username = 2;
+  string          ip       = 3;
+  string          client   = 4;
 }
 
 message TopicActionRes {
-    int32 status = 1;
-    string message = 2;
-    string error = 3;
+  int32  status  = 1;
+  string message = 2;
+  string error   = 3;
 }
 
 message CoAuthorAccessReq {
-    string account_id = 1;
-    string username = 2;
-    string email = 3;
-    string ip = 4;
-    string client = 5;
-    string blog_owner_username = 6;
-    string blog_id = 7;
+  string account_id          = 1;
+  string username            = 2;
+  string email               = 3;
+  string ip                  = 4;
+  string client              = 5;
+  string blog_owner_username = 6;
+  string blog_id             = 7;
 }
 
 message CoAuthorAccessRes {
-    string account_id = 1;
-    string username = 2;
-    string email = 3;
-    string status = 4;
-    string error = 5;
-    string message = 6;
+  string account_id = 1;
+  string username   = 2;
+  string email      = 3;
+  string status     = 4;
+  string error      = 5;
+  string message    = 6;
 }
 
 message BlogsByUserIdsReq{
-    string username = 1;
-    string type = 2;
-    string account_id = 3;
+  string username   = 1;
+  string type       = 2;
+  string account_id = 3;
 }
 
 message Blog {
-    int64 id = 1;
-    string username = 2;
-    string account_id = 3;
-    string blog_id = 4;
-    string permission = 5;
-    string status = 6;
+  int64  id         = 1;
+  string username   = 2;
+  string account_id = 3;
+  string blog_id    = 4;
+  string permission = 5;
+  string status     = 6;
 }
+
 message BlogsByUserNameRes{
-    repeated Blog blogs = 1;
+  repeated Blog blogs = 1;
 }
 
 message CreateTopicsReq {
-    repeated string topics = 1;
-    string category = 2;
-    string username = 3;
-    string ip = 4;
-    string client = 5;
+  repeated string topics   = 1;
+  string          category = 2;
+  string          username = 3;
+  string          ip       = 4;
+  string          client   = 5;
 }
 
 message CreateTopicsRes {
-    int32 status = 1;
-    string message = 2;
-    string error = 3;
+  int32  status  = 1;
+  string message = 2;
+  string error   = 3;
 }
 
 message BookMarkReq {
-    string blog_id = 1;
-    string username = 2;
-    string ip = 3;
-    string client = 4;
+  string blog_id  = 1;
+  string username = 2;
+  string ip       = 3;
+  string client   = 4;
 }
 
 message BookMarkRes {
-    int32 status = 1;
-    string message = 2;
-    string error = 3;
-    bool isLiked = 4;
-    bool bookMarked = 5;
-    repeated string blog_ids = 6;
+  int32           status     = 1;
+  string          message    = 2;
+  string          error      = 3;
+  bool            isLiked    = 4;
+  bool            bookMarked = 5;
+  repeated string blog_ids   = 6;
 }
 
 message UserFollowReq {
-    string username = 1;
-    string follower_username = 2;
-    string ip = 3;
-    string client = 4;
+  string username          = 1;
+  string follower_username = 2;
+  string ip                = 3;
+  string client            = 4;
 }
 
 message UserFollowRes {
-    int32 status = 1;
-    string message = 2;
-    string error = 3;
-    bool isFollowing = 4;
+  int32  status      = 1;
+  string message     = 2;
+  string error       = 3;
+  bool   isFollowing = 4;
 }
 
 message User {
-    string account_id = 1;
-    string username = 2;
-    string email = 3;
-    string first_name = 4;
-    string last_name = 5;
-    string bio = 6;
-    string avatar_url = 7;
+  string account_id = 1;
+  string username   = 2;
+  string email      = 3;
+  string first_name = 4;
+  string last_name  = 5;
+  string bio        = 6;
+  string avatar_url = 7;
 }
 
 message FollowerFollowingResp {
-    repeated User users = 1;
-    int32 limit = 2;
-    int32 offset = 3;
+  repeated User users  = 1;
+  int32         limit  = 2;
+  int32         offset = 3;
 }
 
 message CountResp {
-    int32 count = 1;
-    string error = 2;
-    int32 status = 3;
+  int32  count  = 1;
+  string error  = 2;
+  int32  status = 3;
 }
 
 message FollowerFollowingCountsResp {
-    int64 followers = 1;
-    int64 following = 2;
-    string error = 3;
-    string message = 4;
-    int32 status = 5;
+  int64  followers = 1;
+  int64  following = 2;
+  string error     = 3;
+  string message   = 4;
+  int32  status    = 5;
 }
 
 service UserService {
-    rpc GetUserActivities(UserActivityReq) returns (UserActivityResp) {}
-    rpc GetUserProfile(UserProfileReq) returns (UserProfileRes) {}
-    rpc UpdateUserProfile(UpdateUserProfileReq) returns (UpdateUserProfileRes) {}
-    rpc DeleteUserAccount(DeleteUserProfileReq) returns (DeleteUserProfileRes) {}
-    rpc GetAllTopics(GetTopicsRequests) returns (GetTopicsResponse) {}
-    rpc GetAllCategories(GetAllCategoriesReq) returns (GetAllCategoriesRes) {}
-    rpc GetUserDetails(UserDetailReq) returns (UserDetailsResp) {}
-    rpc FollowTopics(TopicActionReq) returns (TopicActionRes) {}
-    rpc UnFollowTopics(TopicActionReq) returns (TopicActionRes) {}
-    rpc FollowUser(UserFollowReq) returns (UserFollowRes) {}
-    rpc UnFollowUser(UserFollowReq) returns (UserFollowRes) {}
-    rpc GetFollowers(UserDetailReq) returns (FollowerFollowingResp) {} // Get Users who follow me
-    rpc GetFollowing(UserDetailReq) returns (FollowerFollowingResp) {} // Get Users I follow
-    rpc GetIfIFollowedUser(UserFollowReq) returns (UserFollowRes) {}
-    rpc GetFollowersFollowingCounts(UserDetailReq) returns (FollowerFollowingCountsResp) {}
-    rpc SearchUser(stream UserDetailReq) returns (stream FollowerFollowingResp) {}
+  rpc GetUserActivities(UserActivityReq) returns (UserActivityResp) {}
+  rpc GetUserProfile(UserProfileReq) returns (UserProfileRes) {}
+  rpc UpdateUserProfile(UpdateUserProfileReq) returns (UpdateUserProfileRes) {}
+  rpc DeleteUserAccount(DeleteUserProfileReq) returns (DeleteUserProfileRes) {}
+  rpc GetAllTopics(GetTopicsRequests) returns (GetTopicsResponse) {}
+  rpc GetAllCategories(GetAllCategoriesReq) returns (GetAllCategoriesRes) {}
+  rpc GetUserDetails(UserDetailReq) returns (UserDetailsResp) {}
+  rpc FollowTopics(TopicActionReq) returns (TopicActionRes) {}
+  rpc UnFollowTopics(TopicActionReq) returns (TopicActionRes) {}
+  rpc FollowUser(UserFollowReq) returns (UserFollowRes) {}
+  rpc UnFollowUser(UserFollowReq) returns (UserFollowRes) {}
+  rpc GetFollowers(UserDetailReq) returns (FollowerFollowingResp) {} // Get Users who follow me
+  rpc GetFollowing(UserDetailReq) returns (FollowerFollowingResp) {} // Get Users I follow
+  rpc GetIfIFollowedUser(UserFollowReq) returns (UserFollowRes) {}
+  rpc GetFollowersFollowingCounts(UserDetailReq) returns (FollowerFollowingCountsResp) {}
+  rpc SearchUser(stream UserDetailReq) returns (stream FollowerFollowingResp) {}
     // Bookmark blog
-    rpc BookMarkBlog(BookMarkReq) returns (BookMarkRes) {}
-    rpc GetBookMarks(BookMarkReq) returns (BookMarkRes) {}
+  rpc BookMarkBlog(BookMarkReq) returns (BookMarkRes) {}
+  rpc GetBookMarks(BookMarkReq) returns (BookMarkRes) {}
     // Remove Bookmark
-    rpc RemoveBookMark(BookMarkReq) returns (BookMarkRes) {}
-    rpc LikeBlog(BookMarkReq) returns (BookMarkRes) {}
-    rpc UnlikeBlog(BookMarkReq) returns (BookMarkRes) {}
-    rpc GetIfBlogLiked(BookMarkReq) returns (BookMarkRes) {}
-    rpc GetIfBlogBookMarked(BookMarkReq) returns (BookMarkRes) {}
-    rpc GetBookMarkCounts(BookMarkReq) returns (CountResp) {}
-    rpc GetLikeCounts(BookMarkReq) returns (CountResp) {}
+  rpc RemoveBookMark(BookMarkReq) returns (BookMarkRes) {}
+  rpc LikeBlog(BookMarkReq) returns (BookMarkRes) {}
+  rpc UnlikeBlog(BookMarkReq) returns (BookMarkRes) {}
+  rpc GetIfBlogLiked(BookMarkReq) returns (BookMarkRes) {}
+  rpc GetIfBlogBookMarked(BookMarkReq) returns (BookMarkRes) {}
+  rpc GetBookMarkCounts(BookMarkReq) returns (CountResp) {}
+  rpc GetLikeCounts(BookMarkReq) returns (CountResp) {}
     // Invite a co author
-    rpc InviteCoAuthor(CoAuthorAccessReq) returns (CoAuthorAccessRes) {}
+  rpc InviteCoAuthor(CoAuthorAccessReq) returns (CoAuthorAccessRes) {}
 
     // Accept co author invitation
     // Reject co author invitation
     // Revoke co author invitation access
-    rpc RevokeCoAuthorAccess(CoAuthorAccessReq) returns (CoAuthorAccessRes) {}
-    rpc GetBlogsByUserIds(BlogsByUserIdsReq) returns (BlogsByUserNameRes) {}
-    rpc CreateNewTopics(CreateTopicsReq) returns (CreateTopicsRes) {}
-    rpc GetBatchUserDetails(GetBatchUserDetailsReq) returns (GetBatchUserDetailsRes) {}
+  rpc RevokeCoAuthorAccess(CoAuthorAccessReq) returns (CoAuthorAccessRes) {}
+  rpc GetBlogsByUserIds(BlogsByUserIdsReq) returns (BlogsByUserNameRes) {}
+  rpc CreateNewTopics(CreateTopicsReq) returns (CreateTopicsRes) {}
+  rpc GetBatchUserDetails(GetBatchUserDetailsReq) returns (GetBatchUserDetailsRes) {}
 
     // Business Cards (owned by account_id, stored in business_cards table)
-    rpc CreateBusinessCard(CreateBusinessCardReq) returns (BusinessCard) {}
-    rpc GetBusinessCard(GetBusinessCardReq) returns (BusinessCard) {}
-    rpc ListBusinessCards(ListBusinessCardsReq) returns (ListBusinessCardsRes) {}
-    rpc UpdateBusinessCard(UpdateBusinessCardReq) returns (BusinessCard) {}
-    rpc DeleteBusinessCard(DeleteBusinessCardReq) returns (DeleteBusinessCardRes) {}
+  rpc CreateBusinessCard(CreateBusinessCardReq) returns (BusinessCard) {}
+  rpc GetBusinessCard(GetBusinessCardReq) returns (BusinessCard) {}
+  rpc ListBusinessCards(ListBusinessCardsReq) returns (ListBusinessCardsRes) {}
+  rpc UpdateBusinessCard(UpdateBusinessCardReq) returns (BusinessCard) {}
+  rpc DeleteBusinessCard(DeleteBusinessCardReq) returns (DeleteBusinessCardRes) {}
 
     // Private addresses (owned by account_id, stored in user_addresses table)
-    rpc CreateUserAddress(CreateUserAddressReq) returns (UserAddress) {}
-    rpc GetUserAddress(GetUserAddressReq) returns (UserAddress) {}
-    rpc ListUserAddresses(ListUserAddressesReq) returns (ListUserAddressesRes) {}
-    rpc UpdateUserAddress(UpdateUserAddressReq) returns (UserAddress) {}
-    rpc DeleteUserAddress(DeleteUserAddressReq) returns (DeleteUserAddressRes) {}
+  rpc CreateUserAddress(CreateUserAddressReq) returns (UserAddress) {}
+  rpc GetUserAddress(GetUserAddressReq) returns (UserAddress) {}
+  rpc ListUserAddresses(ListUserAddressesReq) returns (ListUserAddressesRes) {}
+  rpc UpdateUserAddress(UpdateUserAddressReq) returns (UserAddress) {}
+  rpc DeleteUserAddress(DeleteUserAddressReq) returns (DeleteUserAddressRes) {}
 
     // Account verification (blue-check)
-    rpc SubmitVerificationRequest(SubmitVerificationReq) returns (VerificationRequest) {}
-    rpc GetMyVerification(GetVerificationReq) returns (VerificationRequest) {}
-    rpc CancelVerificationRequest(GetVerificationReq) returns (VerificationActionRes) {}
+  rpc SubmitVerificationRequest(SubmitVerificationReq) returns (VerificationRequest) {}
+  rpc GetMyVerification(GetVerificationReq) returns (VerificationRequest) {}
+  rpc CancelVerificationRequest(GetVerificationReq) returns (VerificationActionRes) {}
     // Admin review surface
-    rpc ListVerificationRequests(ListVerificationReq) returns (ListVerificationRes) {}
-    rpc ReviewVerificationRequest(ReviewVerificationReq) returns (VerificationRequest) {}
+  rpc ListVerificationRequests(ListVerificationReq) returns (ListVerificationRes) {}
+  rpc ReviewVerificationRequest(ReviewVerificationReq) returns (VerificationRequest) {}
 }
 
 message GetBatchUserDetailsReq {
-    repeated string account_ids = 1;
+  repeated string account_ids = 1;
 }
 
 message GetBatchUserDetailsRes {
-    repeated UserDetailsResp users = 1;
+  repeated UserDetailsResp users = 1;
 }
 
 // A single stored business card. card_state carries the full editor document
 // (contact + social links + customization) as a JSON string; the discrete
 // fields are queryable metadata only.
 message BusinessCard {
-    string id = 1;
-    string account_id = 2;
-    string name = 3;
-    string template_id = 4;
-    string theme_id = 5;
-    string card_state = 6;                 // JSON document, single source of truth
-    bool is_default = 7;
-    string avatar_asset_checksum = 8;
-    string logo_asset_checksum = 9;
-    google.protobuf.Timestamp created_at = 10;
-    google.protobuf.Timestamp updated_at = 11;
+  string                    id                    = 1;
+  string                    account_id            = 2;
+  string                    name                  = 3;
+  string                    template_id           = 4;
+  string                    theme_id              = 5;
+  string                    card_state            = 6;                 // JSON document, single source of truth
+  bool                      is_default            = 7;
+  string                    avatar_asset_checksum = 8;
+  string                    logo_asset_checksum   = 9;
+  google.protobuf.Timestamp created_at            = 10;
+  google.protobuf.Timestamp updated_at            = 11;
 }
 
 message CreateBusinessCardReq {
-    string account_id = 1;                 // owner, injected from JWT at gateway
-    string name = 2;
-    string template_id = 3;
-    string theme_id = 4;
-    string card_state = 5;
-    bool is_default = 6;
-    string avatar_asset_checksum = 7;
-    string logo_asset_checksum = 8;
-    string ip = 9;
-    string client = 10;
+  string account_id            = 1;                 // owner, injected from JWT at gateway
+  string name                  = 2;
+  string template_id           = 3;
+  string theme_id              = 4;
+  string card_state            = 5;
+  bool   is_default            = 6;
+  string avatar_asset_checksum = 7;
+  string logo_asset_checksum   = 8;
+  string ip                    = 9;
+  string client                = 10;
 }
 
 message GetBusinessCardReq {
-    string account_id = 1;                 // owner, injected from JWT at gateway
-    string id = 2;
+  string account_id = 1;                 // owner, injected from JWT at gateway
+  string id         = 2;
 }
 
 message ListBusinessCardsReq {
-    string account_id = 1;                 // owner, injected from JWT at gateway
-    int32 limit = 2;
-    int32 offset = 3;
+  string account_id = 1;                 // owner, injected from JWT at gateway
+  int32  limit      = 2;
+  int32  offset     = 3;
 }
 
 message ListBusinessCardsRes {
-    repeated BusinessCard cards = 1;
+  repeated BusinessCard cards = 1;
 }
 
 message UpdateBusinessCardReq {
-    string account_id = 1;                 // owner, injected from JWT at gateway
-    string id = 2;
-    string name = 3;
-    string template_id = 4;
-    string theme_id = 5;
-    string card_state = 6;
-    bool is_default = 7;
-    string avatar_asset_checksum = 8;
-    string logo_asset_checksum = 9;
-    string ip = 10;
-    string client = 11;
+  string account_id            = 1;                 // owner, injected from JWT at gateway
+  string id                    = 2;
+  string name                  = 3;
+  string template_id           = 4;
+  string theme_id              = 5;
+  string card_state            = 6;
+  bool   is_default            = 7;
+  string avatar_asset_checksum = 8;
+  string logo_asset_checksum   = 9;
+  string ip                    = 10;
+  string client                = 11;
 }
 
 message DeleteBusinessCardReq {
-    string account_id = 1;                 // owner, injected from JWT at gateway
-    string id = 2;
-    string ip = 3;
-    string client = 4;
+  string account_id = 1;                 // owner, injected from JWT at gateway
+  string id         = 2;
+  string ip         = 3;
+  string client     = 4;
 }
 
 message DeleteBusinessCardRes {
-    string status = 1;
-    string message = 2;
+  string status  = 1;
+  string message = 2;
 }
 
 // A single PRIVATE postal address (address book entry). Owner-scoped; never
 // returned on public endpoints.
 message UserAddress {
-    string id = 1;
-    string account_id = 2;
-    string label = 3;                      // e.g. "Home", "Office", "Billing"
-    string line1 = 4;
-    string line2 = 5;
-    string city = 6;
-    string state = 7;
-    string postal_code = 8;
-    string country = 9;
-    bool is_default = 10;
-    google.protobuf.Timestamp created_at = 11;
-    google.protobuf.Timestamp updated_at = 12;
+  string                    id          = 1;
+  string                    account_id  = 2;
+  string                    label       = 3;                      // e.g. "Home", "Office", "Billing"
+  string                    line1       = 4;
+  string                    line2       = 5;
+  string                    city        = 6;
+  string                    state       = 7;
+  string                    postal_code = 8;
+  string                    country     = 9;
+  bool                      is_default  = 10;
+  google.protobuf.Timestamp created_at  = 11;
+  google.protobuf.Timestamp updated_at  = 12;
 }
 
 message CreateUserAddressReq {
-    string account_id = 1;                 // owner, injected from JWT at gateway
-    string label = 2;
-    string line1 = 3;
-    string line2 = 4;
-    string city = 5;
-    string state = 6;
-    string postal_code = 7;
-    string country = 8;
-    bool is_default = 9;
-    string ip = 10;
-    string client = 11;
+  string account_id  = 1;                 // owner, injected from JWT at gateway
+  string label       = 2;
+  string line1       = 3;
+  string line2       = 4;
+  string city        = 5;
+  string state       = 6;
+  string postal_code = 7;
+  string country     = 8;
+  bool   is_default  = 9;
+  string ip          = 10;
+  string client      = 11;
 }
 
 message GetUserAddressReq {
-    string account_id = 1;                 // owner, injected from JWT at gateway
-    string id = 2;
+  string account_id = 1;                 // owner, injected from JWT at gateway
+  string id         = 2;
 }
 
 message ListUserAddressesReq {
-    string account_id = 1;                 // owner, injected from JWT at gateway
+  string account_id = 1;                 // owner, injected from JWT at gateway
 }
 
 message ListUserAddressesRes {
-    repeated UserAddress addresses = 1;
+  repeated UserAddress addresses = 1;
 }
 
 message UpdateUserAddressReq {
-    string account_id = 1;                 // owner, injected from JWT at gateway
-    string id = 2;
-    string label = 3;
-    string line1 = 4;
-    string line2 = 5;
-    string city = 6;
-    string state = 7;
-    string postal_code = 8;
-    string country = 9;
-    bool is_default = 10;
-    string ip = 11;
-    string client = 12;
+  string account_id  = 1;                 // owner, injected from JWT at gateway
+  string id          = 2;
+  string label       = 3;
+  string line1       = 4;
+  string line2       = 5;
+  string city        = 6;
+  string state       = 7;
+  string postal_code = 8;
+  string country     = 9;
+  bool   is_default  = 10;
+  string ip          = 11;
+  string client      = 12;
 }
 
 message DeleteUserAddressReq {
-    string account_id = 1;                 // owner, injected from JWT at gateway
-    string id = 2;
-    string ip = 3;
-    string client = 4;
+  string account_id = 1;                 // owner, injected from JWT at gateway
+  string id         = 2;
+  string ip         = 3;
+  string client     = 4;
 }
 
 message DeleteUserAddressRes {
-    string status = 1;
-    string message = 2;
+  string status  = 1;
+  string message = 2;
 }
-
 
 // Account verification (blue-check).
 // Lifecycle: pending -> under_review -> approved | rejected.
@@ -496,60 +495,60 @@ message DeleteUserAddressRes {
 // per username may sit in an active state (pending/under_review),
 // enforced by a partial unique index in schema/000013.
 message VerificationRequest {
-    string id                 = 1;
-    string username           = 2;
-    string verification_type  = 3;  // social_proof | id_document
-    string country            = 4;  // ISO 3166-1 alpha-2, required for id_document
-    string id_document_type   = 5;  // passport | national_id | drivers_license | residence_permit
-    string status             = 6;  // pending | under_review | approved | rejected
-    string selfie_checksum    = 7;  // storage_assets.checksum (private bucket)
-    string id_front_checksum  = 8;
-    string id_back_checksum   = 9;  // optional, doc-type dependent
-    string additional_info    = 10;
-    string reviewer_username  = 11;
-    string rejection_reason   = 12;
-    google.protobuf.Timestamp created_at  = 13;
-    google.protobuf.Timestamp updated_at  = 14;
-    google.protobuf.Timestamp reviewed_at = 15;
+  string                    id                = 1;
+  string                    username          = 2;
+  string                    verification_type = 3;  // social_proof | id_document
+  string                    country           = 4;  // ISO 3166-1 alpha-2, required for id_document
+  string                    id_document_type  = 5;  // passport | national_id | drivers_license | residence_permit
+  string                    status            = 6;  // pending | under_review | approved | rejected
+  string                    selfie_checksum   = 7;  // storage_assets.checksum (private bucket)
+  string                    id_front_checksum = 8;
+  string                    id_back_checksum  = 9;  // optional, doc-type dependent
+  string                    additional_info   = 10;
+  string                    reviewer_username = 11;
+  string                    rejection_reason  = 12;
+  google.protobuf.Timestamp created_at        = 13;
+  google.protobuf.Timestamp updated_at        = 14;
+  google.protobuf.Timestamp reviewed_at       = 15;
 }
 
 message SubmitVerificationReq {
-    string username          = 1;  // injected from JWT context at gateway
-    string verification_type = 2;
-    string country           = 3;
-    string id_document_type  = 4;
-    string selfie_checksum   = 5;
-    string id_front_checksum = 6;
-    string id_back_checksum  = 7;
-    string additional_info   = 8;
+  string username          = 1;  // injected from JWT context at gateway
+  string verification_type = 2;
+  string country           = 3;
+  string id_document_type  = 4;
+  string selfie_checksum   = 5;
+  string id_front_checksum = 6;
+  string id_back_checksum  = 7;
+  string additional_info   = 8;
 }
 
 message GetVerificationReq {
-    string username   = 1;  // requester context ("me")
-    string request_id = 2;  // admin path: specific request
-    bool   latest     = 3;  // return most recent request for username
+  string username   = 1;  // requester context ("me")
+  string request_id = 2;  // admin path: specific request
+  bool   latest     = 3;  // return most recent request for username
 }
 
 message ListVerificationReq {
-    string status  = 1;  // empty = all statuses
-    int32  limit   = 2;  // server-capped
-    int32  offset  = 3;
+  string status = 1;  // empty = all statuses
+  int32  limit  = 2;  // server-capped
+  int32  offset = 3;
 }
 
 message ListVerificationRes {
-    repeated VerificationRequest requests = 1;
-    int32 total = 2;
+  repeated VerificationRequest requests = 1;
+  int32                        total    = 2;
 }
 
 message ReviewVerificationReq {
-    string request_id        = 1;
-    string reviewer_username = 2;  // stamped for audit trail
-    bool   approve           = 3;
-    string rejection_reason  = 4;  // required when approve=false
+  string request_id        = 1;
+  string reviewer_username = 2;  // stamped for audit trail
+  bool   approve           = 3;
+  string rejection_reason  = 4;  // required when approve=false
 }
 
 message VerificationActionRes {
-    string status  = 1;
-    string message = 2;
-    string error   = 3;
+  string status  = 1;
+  string message = 2;
+  string error   = 3;
 }
