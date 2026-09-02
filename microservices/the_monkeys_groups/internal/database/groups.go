@@ -195,6 +195,8 @@ func (db *groupDB) CreateGroup(ctx context.Context, req *pb.CreateGroupReq) (*pb
 		return nil, status.Error(codes.InvalidArgument, "group name is required")
 	}
 
+	lat, lng := coordsFromPlace(req.Latitude, req.Longitude, req.City, req.Region, req.Country)
+
 	var out *pb.Group
 	err := db.inTx(ctx, func(tx *sql.Tx) error {
 		organizerID, err := resolveAccount(ctx, tx, req.AccountId)
@@ -217,7 +219,7 @@ func (db *groupDB) CreateGroup(ctx context.Context, req *pb.CreateGroupReq) (*pb
 			RETURNING id`,
 			slug, req.Name, nullifyStr(req.Description), defaultVisibilityValue(req.Visibility),
 			nullifyStr(req.City), nullifyStr(req.Region), nullifyStr(req.Country), timezone,
-			nullifyCoord(req.Latitude), nullifyCoord(req.Longitude),
+			nullifyCoord(lat), nullifyCoord(lng),
 			nullifyStr(req.CoverImage), nullifyStr(req.LogoImage), organizerID,
 		).Scan(&groupID)
 		if err != nil {
@@ -251,6 +253,8 @@ func (db *groupDB) UpdateGroup(ctx context.Context, req *pb.UpdateGroupReq) (*pb
 		return nil, status.Error(codes.InvalidArgument, "group name is required")
 	}
 
+	lat, lng := coordsFromPlace(req.Latitude, req.Longitude, req.City, req.Region, req.Country)
+
 	var out *pb.Group
 	err := db.inTx(ctx, func(tx *sql.Tx) error {
 		groupID, _, err := authorizeGroup(ctx, tx, req.Slug, req.AccountId, permEditGroup)
@@ -271,7 +275,7 @@ func (db *groupDB) UpdateGroup(ctx context.Context, req *pb.UpdateGroupReq) (*pb
 			WHERE id = $1`,
 			groupID, req.Name, nullifyStr(req.Description), defaultVisibilityValue(req.Visibility),
 			nullifyStr(req.City), nullifyStr(req.Region), nullifyStr(req.Country), timezone,
-			nullifyCoord(req.Latitude), nullifyCoord(req.Longitude),
+			nullifyCoord(lat), nullifyCoord(lng),
 			nullifyStr(req.CoverImage), nullifyStr(req.LogoImage)); err != nil {
 			return status.Errorf(codes.Internal, "failed to update group: %v", err)
 		}

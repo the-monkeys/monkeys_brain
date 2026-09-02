@@ -53,6 +53,9 @@ const (
 	EventService_RemoveCoHost_FullMethodName           = "/event_svc.EventService/RemoveCoHost"
 	EventService_GetCalendarFile_FullMethodName        = "/event_svc.EventService/GetCalendarFile"
 	EventService_Authorize_FullMethodName              = "/event_svc.EventService/Authorize"
+	EventService_CloneEvent_FullMethodName             = "/event_svc.EventService/CloneEvent"
+	EventService_CreateSeries_FullMethodName           = "/event_svc.EventService/CreateSeries"
+	EventService_CancelSeriesOccurrence_FullMethodName = "/event_svc.EventService/CancelSeriesOccurrence"
 )
 
 // EventServiceClient is the client API for EventService service.
@@ -103,6 +106,11 @@ type EventServiceClient interface {
 	GetCalendarFile(ctx context.Context, in *CalendarReq, opts ...grpc.CallOption) (*CalendarResp, error)
 	// Authorization
 	Authorize(ctx context.Context, in *AuthorizeReq, opts ...grpc.CallOption) (*AuthorizeResp, error)
+	// Clone a past event into a new draft (new slug, new times).
+	CloneEvent(ctx context.Context, in *CloneEventReq, opts ...grpc.CallOption) (*EventResp, error)
+	// Recurring series. Occurrences are normal events linked by series_id.
+	CreateSeries(ctx context.Context, in *CreateSeriesReq, opts ...grpc.CallOption) (*EventResp, error)
+	CancelSeriesOccurrence(ctx context.Context, in *EventActionReq, opts ...grpc.CallOption) (*BasicResp, error)
 }
 
 type eventServiceClient struct {
@@ -453,6 +461,36 @@ func (c *eventServiceClient) Authorize(ctx context.Context, in *AuthorizeReq, op
 	return out, nil
 }
 
+func (c *eventServiceClient) CloneEvent(ctx context.Context, in *CloneEventReq, opts ...grpc.CallOption) (*EventResp, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(EventResp)
+	err := c.cc.Invoke(ctx, EventService_CloneEvent_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *eventServiceClient) CreateSeries(ctx context.Context, in *CreateSeriesReq, opts ...grpc.CallOption) (*EventResp, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(EventResp)
+	err := c.cc.Invoke(ctx, EventService_CreateSeries_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *eventServiceClient) CancelSeriesOccurrence(ctx context.Context, in *EventActionReq, opts ...grpc.CallOption) (*BasicResp, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(BasicResp)
+	err := c.cc.Invoke(ctx, EventService_CancelSeriesOccurrence_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // EventServiceServer is the server API for EventService service.
 // All implementations must embed UnimplementedEventServiceServer
 // for forward compatibility.
@@ -501,6 +539,11 @@ type EventServiceServer interface {
 	GetCalendarFile(context.Context, *CalendarReq) (*CalendarResp, error)
 	// Authorization
 	Authorize(context.Context, *AuthorizeReq) (*AuthorizeResp, error)
+	// Clone a past event into a new draft (new slug, new times).
+	CloneEvent(context.Context, *CloneEventReq) (*EventResp, error)
+	// Recurring series. Occurrences are normal events linked by series_id.
+	CreateSeries(context.Context, *CreateSeriesReq) (*EventResp, error)
+	CancelSeriesOccurrence(context.Context, *EventActionReq) (*BasicResp, error)
 	mustEmbedUnimplementedEventServiceServer()
 }
 
@@ -612,6 +655,15 @@ func (UnimplementedEventServiceServer) GetCalendarFile(context.Context, *Calenda
 }
 func (UnimplementedEventServiceServer) Authorize(context.Context, *AuthorizeReq) (*AuthorizeResp, error) {
 	return nil, status.Error(codes.Unimplemented, "method Authorize not implemented")
+}
+func (UnimplementedEventServiceServer) CloneEvent(context.Context, *CloneEventReq) (*EventResp, error) {
+	return nil, status.Error(codes.Unimplemented, "method CloneEvent not implemented")
+}
+func (UnimplementedEventServiceServer) CreateSeries(context.Context, *CreateSeriesReq) (*EventResp, error) {
+	return nil, status.Error(codes.Unimplemented, "method CreateSeries not implemented")
+}
+func (UnimplementedEventServiceServer) CancelSeriesOccurrence(context.Context, *EventActionReq) (*BasicResp, error) {
+	return nil, status.Error(codes.Unimplemented, "method CancelSeriesOccurrence not implemented")
 }
 func (UnimplementedEventServiceServer) mustEmbedUnimplementedEventServiceServer() {}
 func (UnimplementedEventServiceServer) testEmbeddedByValue()                      {}
@@ -1246,6 +1298,60 @@ func _EventService_Authorize_Handler(srv interface{}, ctx context.Context, dec f
 	return interceptor(ctx, in, info, handler)
 }
 
+func _EventService_CloneEvent_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(CloneEventReq)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(EventServiceServer).CloneEvent(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: EventService_CloneEvent_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(EventServiceServer).CloneEvent(ctx, req.(*CloneEventReq))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _EventService_CreateSeries_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(CreateSeriesReq)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(EventServiceServer).CreateSeries(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: EventService_CreateSeries_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(EventServiceServer).CreateSeries(ctx, req.(*CreateSeriesReq))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _EventService_CancelSeriesOccurrence_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(EventActionReq)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(EventServiceServer).CancelSeriesOccurrence(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: EventService_CancelSeriesOccurrence_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(EventServiceServer).CancelSeriesOccurrence(ctx, req.(*EventActionReq))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // EventService_ServiceDesc is the grpc.ServiceDesc for EventService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -1388,6 +1494,18 @@ var EventService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "Authorize",
 			Handler:    _EventService_Authorize_Handler,
+		},
+		{
+			MethodName: "CloneEvent",
+			Handler:    _EventService_CloneEvent_Handler,
+		},
+		{
+			MethodName: "CreateSeries",
+			Handler:    _EventService_CreateSeries_Handler,
+		},
+		{
+			MethodName: "CancelSeriesOccurrence",
+			Handler:    _EventService_CancelSeriesOccurrence_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

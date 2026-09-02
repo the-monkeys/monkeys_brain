@@ -44,6 +44,10 @@ type OccurrenceTemplate struct {
 	CoverImage  string
 	Visibility  string
 	Duration    time.Duration
+	Tags        []string
+	Tiers       []*pb.TicketTierInput
+	Latitude    float64
+	Longitude   float64
 }
 
 // CreateSeries records a recurring-event definition and returns its id. The
@@ -156,12 +160,13 @@ func (db *eventDB) GenerateSeriesOccurrences(ctx context.Context, seriesID int64
 					title, description, slug, start_time, end_time, timezone,
 					event_type, location, meeting_link, capacity, cover_image,
 					organizer_id, group_id, visibility, status,
-					series_id, series_occurrence_at
-				) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)
+					series_id, series_occurrence_at, latitude, longitude
+				) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19)
 				RETURNING id`,
 				title, description, slug, occ, occ.Add(tmpl.Duration), defaultTimezone(timezone),
 				tmpl.EventType, tmpl.Location, tmpl.MeetingLink, tmpl.Capacity, tmpl.CoverImage,
 				organizerID, groupCol, visibility, StatusPublished, seriesID, occ,
+				nullCoord(tmpl.Latitude), nullCoord(tmpl.Longitude),
 			).Scan(&eventID); err != nil {
 				return status.Errorf(codes.Internal, "failed to create occurrence: %v", err)
 			}
@@ -169,11 +174,20 @@ func (db *eventDB) GenerateSeriesOccurrences(ctx context.Context, seriesID int64
 			if err := grantPermissions(ctx, tx, eventID, organizerID); err != nil {
 				return err
 			}
-			// A published event needs a tier for RSVP to attach to; mirror the
-			// default tier the publish path creates for free events.
-			if _, err := insertTier(ctx, tx, eventID,
-				&pb.TicketTierInput{Name: "General", Currency: defaultCurrency}, 0); err != nil {
+			if err := replaceTags(ctx, tx, eventID, tmpl.Tags); err != nil {
 				return err
+			}
+			if len(tmpl.Tiers) == 0 {
+				if _, err := insertTier(ctx, tx, eventID,
+					&pb.TicketTierInput{Name: "General", Currency: defaultCurrency}, 0); err != nil {
+					return err
+				}
+			} else {
+				for i, tier := range tmpl.Tiers {
+					if _, err := insertTier(ctx, tx, eventID, tier, int32(i)); err != nil {
+						return err
+					}
+				}
 			}
 			created = append(created, slug)
 		}
@@ -270,4 +284,78 @@ func defaultVisibility(v string) string {
 		return "public"
 	}
 	return v
+}
+
+func (db *eventDB) MaterializeSeries(ctx context.Context, req *pb.CreateSeriesReq, occs []time.Time, rule string) (*pb.Event, error) {
+	if strings.TrimSpace(req.Title) == "" {
+		return nil, status.Error(codes.InvalidArgument, "title is required")
+	}
+	if len(occs) == 0 {
+		return nil, status.Error(codes.InvalidArgument, "recurrence produced no dates")
+	}
+	if req.StartTime == nil || req.EndTime == nil || !req.EndTime.AsTime().After(req.StartTime.AsTime()) {
+		return nil, status.Error(codes.InvalidArgument, "end_time must be after start_time")
+	}
+
+	var endsAt *time.Time
+	if req.Recurrence != nil && req.Recurrence.Until != nil {
+		t := req.Recurrence.Until.AsTime()
+		endsAt = &t
+	}
+
+	var groupID int64
+	if strings.TrimSpace(req.GroupSlug) != "" {
+		err := db.inTx(ctx, func(tx *sql.Tx) error {
+			organizerID, err := resolveAccount(ctx, tx, req.AccountId)
+			if err != nil {
+				return err
+			}
+			gid, err := resolveGroupForOrganizer(ctx, tx, req.GroupSlug, organizerID)
+			if err != nil {
+				return err
+			}
+			groupID = gid
+			return nil
+		})
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	seriesID, err := db.CreateSeries(ctx, SeriesInput{
+		OrganizerAccountID: req.AccountId,
+		GroupID:            groupID,
+		Title:              req.Title,
+		Description:        req.Description,
+		Timezone:           req.Timezone,
+		RecurrenceRule:     rule,
+		RecurrenceStartsAt: req.StartTime.AsTime(),
+		RecurrenceEndsAt:   endsAt,
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	lat, lng := Geocode(req.Location)
+	slugs, err := db.GenerateSeriesOccurrences(ctx, seriesID, occs, OccurrenceTemplate{
+		EventType:   req.EventType,
+		Location:    req.Location,
+		MeetingLink: req.MeetingLink,
+		Capacity:    req.Capacity,
+		CoverImage:  req.CoverImage,
+		Visibility:  req.Visibility,
+		Duration:    req.EndTime.AsTime().Sub(req.StartTime.AsTime()),
+		Tags:        req.Tags,
+		Tiers:       req.TicketTiers,
+		Latitude:    lat,
+		Longitude:   lng,
+	})
+	if err != nil {
+		return nil, err
+	}
+	if len(slugs) == 0 {
+		return nil, status.Error(codes.Internal, "failed to create series occurrences")
+	}
+	event, _, err := db.GetEvent(ctx, slugs[0], req.AccountId)
+	return event, err
 }

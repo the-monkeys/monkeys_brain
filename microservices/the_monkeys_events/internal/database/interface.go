@@ -12,6 +12,7 @@ import (
 // implementation resolves those to numeric ids and enforces host permissions.
 type EventDB interface {
 	// Events
+	CloneEvent(ctx context.Context, req *pb.CloneEventReq) (*pb.Event, error)
 	CreateEvent(ctx context.Context, req *pb.CreateEventReq) (*pb.Event, error)
 	UpdateEvent(ctx context.Context, req *pb.UpdateEventReq) (*pb.Event, error)
 	DeleteEvent(ctx context.Context, req *pb.EventActionReq) error
@@ -82,6 +83,7 @@ type EventDB interface {
 	GenerateSeriesOccurrences(ctx context.Context, seriesID int64, occurrences []time.Time, tmpl OccurrenceTemplate) ([]string, error)
 	CancelSeriesOccurrence(ctx context.Context, slug, accountID string) error
 	UpdateSeriesFutureOccurrences(ctx context.Context, seriesID int64, actorAccountID string, cutoff time.Time, tmpl OccurrenceTemplate) (int64, error)
+	MaterializeSeries(ctx context.Context, req *pb.CreateSeriesReq, occs []time.Time, rule string) (*pb.Event, error)
 
 	// Background upkeep
 	ClaimDueReminders(ctx context.Context, offset string, earliest, latest time.Duration) ([]Reminder, error)

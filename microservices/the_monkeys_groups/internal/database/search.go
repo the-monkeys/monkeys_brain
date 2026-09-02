@@ -3,6 +3,7 @@ package database
 import (
 	"context"
 	"database/sql"
+	"fmt"
 	"strconv"
 	"strings"
 
@@ -109,6 +110,19 @@ func (db *groupDB) ListGroups(ctx context.Context, req *pb.ListGroupsReq) ([]*pb
 			"WHERE t.group_id = g.id AND t.topic_name = ANY($"+strconv.Itoa(len(args))+"))")
 	}
 
+	// Spatial radius filter: only include groups within `radius` km of the user.
+	if req.UserLat != 0 && req.UserLng != 0 && req.Radius > 0 {
+		args = append(args, req.UserLat, req.UserLng, req.UserLat, req.Radius)
+		latPos := len(args) - 3
+		lngPos := len(args) - 2
+		lat2Pos := len(args) - 1
+		radiusPos := len(args)
+		conds = append(conds, fmt.Sprintf(
+			"g.latitude IS NOT NULL AND g.longitude IS NOT NULL AND "+
+				"(6371 * acos(LEAST(GREATEST(cos(radians($%d)) * cos(radians(g.latitude)) * cos(radians(g.longitude) - radians($%d)) + sin(radians($%d)) * sin(radians(g.latitude)), -1), 1))) <= $%d",
+			latPos, lngPos, lat2Pos, radiusPos))
+	}
+
 	where := " WHERE " + strings.Join(conds, " AND ")
 
 	var total int32
@@ -123,9 +137,18 @@ func (db *groupDB) ListGroups(ctx context.Context, req *pb.ListGroupsReq) ([]*pb
 	args = append(args, req.Offset)
 	offsetPos := len(args)
 
+	orderBy := "g.member_count DESC, g.created_at DESC"
+	if req.UserLat != 0 && req.UserLng != 0 {
+		orderBy = fmt.Sprintf(
+			`(CASE WHEN g.latitude IS NULL OR g.longitude IS NULL THEN 1 ELSE 0 END),
+			 (6371 * acos(LEAST(GREATEST(cos(radians(%f)) * cos(radians(g.latitude)) * cos(radians(g.longitude) - radians(%f)) + sin(radians(%f)) * sin(radians(g.latitude)), -1), 1))) ASC NULLS LAST,
+			 g.member_count DESC`,
+			req.UserLat, req.UserLng, req.UserLat)
+	}
+
 	rows, err := db.db.QueryContext(ctx,
 		"SELECT"+groupListColumns+groupFrom+where+
-			" ORDER BY g.member_count DESC, g.created_at DESC"+
+			" ORDER BY "+orderBy+
 			" LIMIT $"+strconv.Itoa(limitPos)+" OFFSET $"+strconv.Itoa(offsetPos), args...)
 	if err != nil {
 		return nil, 0, status.Error(codes.Internal, "failed to list groups")
@@ -148,10 +171,10 @@ func (db *groupDB) GetUserGroups(ctx context.Context, req *pb.ListGroupsReq) ([]
 		err    error
 	)
 	switch {
-	case strings.TrimSpace(req.AccountId) != "":
-		userID, err = resolveAccount(ctx, db.db, req.AccountId)
 	case strings.TrimSpace(req.Username) != "":
 		userID, err = resolveUsername(ctx, db.db, req.Username)
+	case strings.TrimSpace(req.AccountId) != "":
+		userID, err = resolveAccount(ctx, db.db, req.AccountId)
 	default:
 		return nil, 0, status.Error(codes.InvalidArgument, "account id or username is required")
 	}
@@ -162,15 +185,20 @@ func (db *groupDB) GetUserGroups(ctx context.Context, req *pb.ListGroupsReq) ([]
 	const membershipJoin = ` JOIN group_members gm ON gm.group_id = g.id
 		AND gm.user_id = $1 AND gm.status = 'active'`
 
+	publicFilter := ""
+	if req.PublicOnly {
+		publicFilter = " AND g.visibility = 'public' AND g.status = 'published'"
+	}
+
 	var total int32
 	if err = db.db.QueryRowContext(ctx,
-		"SELECT COUNT(1)"+groupFrom+membershipJoin, userID).Scan(&total); err != nil {
+		"SELECT COUNT(1)"+groupFrom+membershipJoin+publicFilter, userID).Scan(&total); err != nil {
 		return nil, 0, status.Error(codes.Internal, "failed to count user groups")
 	}
 
 	limit := clampLimit(req.Limit)
 	rows, err := db.db.QueryContext(ctx,
-		"SELECT"+groupListColumns+", gm.role"+groupFrom+membershipJoin+
+		"SELECT"+groupListColumns+", gm.role"+groupFrom+membershipJoin+publicFilter+
 			" ORDER BY g.name ASC LIMIT $2 OFFSET $3", userID, limit, req.Offset)
 	if err != nil {
 		return nil, 0, status.Error(codes.Internal, "failed to list user groups")

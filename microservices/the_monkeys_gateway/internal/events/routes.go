@@ -73,7 +73,9 @@ func RegisterEventRouter(router *gin.Engine, cfg *config.Config, authClient *aut
 	// Event lifecycle. Deleting an event is destructive enough to stay with
 	// the organizer rather than delegate to co-hosts.
 	write.POST("", esc.CreateEvent)
+	write.POST("/series", esc.CreateSeries)
 	write.PUT("/:slug", guard.Require(authx.PermEditEvent), esc.UpdateEvent)
+	write.POST("/:slug/clone", guard.Require(authx.PermEditEvent), esc.CloneEvent)
 	write.DELETE("/:slug", guard.RequireOrganizer(), esc.DeleteEvent)
 	write.POST("/:slug/publish", guard.Require(authx.PermEditEvent), esc.PublishEvent)
 	write.POST("/:slug/cancel", guard.Require(authx.PermEditEvent), esc.CancelEvent)

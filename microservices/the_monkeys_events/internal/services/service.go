@@ -501,3 +501,30 @@ func (s *EventService) GetCalendarFile(ctx context.Context, req *pb.CalendarReq)
 func (s *EventService) Authorize(ctx context.Context, req *pb.AuthorizeReq) (*pb.AuthorizeResp, error) {
 	return s.db.Authorize(ctx, req)
 }
+
+func (s *EventService) CloneEvent(ctx context.Context, req *pb.CloneEventReq) (*pb.EventResp, error) {
+	event, err := s.db.CloneEvent(ctx, req)
+	if err != nil {
+		return nil, err
+	}
+	return &pb.EventResp{Message: "event cloned as draft", Event: event}, nil
+}
+
+func (s *EventService) CreateSeries(ctx context.Context, req *pb.CreateSeriesReq) (*pb.EventResp, error) {
+	occs, rule, err := expandRecurrence(req.Recurrence, req.GetStartTime().AsTime())
+	if err != nil {
+		return nil, err
+	}
+	event, err := s.db.MaterializeSeries(ctx, req, occs, rule)
+	if err != nil {
+		return nil, err
+	}
+	return &pb.EventResp{Message: "series created", Event: event}, nil
+}
+
+func (s *EventService) CancelSeriesOccurrence(ctx context.Context, req *pb.EventActionReq) (*pb.BasicResp, error) {
+	if err := s.db.CancelSeriesOccurrence(ctx, req.Slug, req.AccountId); err != nil {
+		return nil, err
+	}
+	return &pb.BasicResp{Message: "occurrence cancelled", Success: true}, nil
+}

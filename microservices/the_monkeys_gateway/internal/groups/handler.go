@@ -61,8 +61,20 @@ func (gsc *GroupServiceClient) ListGroups(ctx *gin.Context) {
 		City:       ctx.Query("city"),
 		Query:      ctx.Query("q"),
 		AccountId:  accountID(ctx),
+		Username:   ctx.Param("username"),
 		ClientInfo: clientInfo(ctx),
 	}
+
+	if lat, err := strconv.ParseFloat(ctx.Query("user_lat"), 64); err == nil {
+		req.UserLat = lat
+	}
+	if lng, err := strconv.ParseFloat(ctx.Query("user_lng"), 64); err == nil {
+		req.UserLng = lng
+	}
+	if radius, err := strconv.Atoi(ctx.DefaultQuery("radius", "0")); err == nil {
+		req.Radius = int32(radius)
+	}
+
 	if topics := ctx.QueryArray("topics"); len(topics) > 0 {
 		req.Topics = topics
 	}
@@ -82,6 +94,7 @@ func (gsc *GroupServiceClient) GetUserGroups(ctx *gin.Context) {
 		Limit:      limit,
 		Offset:     offset,
 		Status:     ctx.Query("status"),
+		PublicOnly: ctx.Query("public_only") == "1" || ctx.Query("public_only") == "true",
 		AccountId:  accountID(ctx),
 		Username:   ctx.Param("username"),
 		ClientInfo: clientInfo(ctx),
