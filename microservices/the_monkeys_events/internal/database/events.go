@@ -674,23 +674,20 @@ func (db *eventDB) list(ctx context.Context, req *pb.ListEventsReq, f *filter, j
 
 // ListEvents is the public discovery feed; drafts are never exposed.
 func (db *eventDB) ListEvents(ctx context.Context, req *pb.ListEventsReq) ([]*pb.Event, int32, error) {
-	date := req.DateFilter
-	if date == "" {
-		date = DateFilterUpcoming
+	if req.DateFilter == "" {
+		req.DateFilter = DateFilterUpcoming
 	}
-	filtered := *req
-	filtered.DateFilter = date
 
 	f := &filter{}
 	if req.Status != "" && req.Status != StatusDraft {
 		f.add("e.status = $%d", req.Status)
-	} else if date == DateFilterPast {
+	} else if req.DateFilter == DateFilterPast {
 		f.add("e.status = ANY($%d)", publicStatuses)
 	} else {
 		f.add("e.status = ANY($%d)", liveStatuses)
 	}
 	f.addRaw("e.visibility = 'public'")
-	commonFilters(f, &filtered)
+	commonFilters(f, req)
 	return db.list(ctx, req, f, "")
 }
 
