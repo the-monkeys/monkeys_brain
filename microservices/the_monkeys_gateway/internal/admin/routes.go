@@ -148,6 +148,14 @@ func RegisterAdminRouter(router *gin.Engine, cfg *config.Config, logg *zap.Sugar
 		adminRoutes.POST("/backup/execute", asc.ExecuteBackup)
 	}
 
+	// New admin apis
+	// GEt all the registered ussers with numbers of users
+	// GEt all blogs, published blogs, draft blogs, orphan blogs(available in elasticsearch but not present in postgres)
+	// Get VErification requests with stats of pending review, approved, rejected including pics available (make sure pics and videos are available local to admin and doesn't display on the homepage)
+	// Approve verification from daashboard itself
+	// CAn mark posts/images/accounts/events NSFW
+	// Add more looking at he db in postgrsss and elasticsearch in docker-compose.yaml
+
 	return asc
 }
 

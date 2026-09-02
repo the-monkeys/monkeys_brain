@@ -35,6 +35,8 @@ const (
 	DateFilterThisWeek  = "this-week"
 	DateFilterThisMonth = "this-month"
 	DateFilterAll       = "all"
+	DateFilterUpcoming  = "upcoming"
+	DateFilterPast      = "past"
 )
 
 // Sort order values passed by the discovery UI.
@@ -46,6 +48,9 @@ const (
 
 // publicStatuses are the states an event is visible in to non-hosts.
 var publicStatuses = []string{StatusPublished, StatusLive, StatusCompleted}
+
+// liveStatuses are upcoming discovery states; completed events are history.
+var liveStatuses = []string{StatusPublished, StatusLive}
 
 // eventVisibilities mirrors the events.visibility CHECK constraint.
 var eventVisibilities = map[string]struct{}{
@@ -141,18 +146,19 @@ func (db *eventDB) CreateEvent(ctx context.Context, req *pb.CreateEventReq) (*pb
 		}
 
 		slug = slugify(req.Title)
+		lat, lng := Geocode(req.Location)
 
 		var eventID int64
 		if err := tx.QueryRowContext(ctx, `
 			INSERT INTO events (
 				title, description, slug, start_time, end_time, timezone,
 				event_type, location, meeting_link, capacity, cover_image, organizer_id,
-				group_id, visibility
-			) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
+				group_id, visibility, latitude, longitude
+			) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)
 			RETURNING id`,
 			req.Title, req.Description, slug, req.StartTime.AsTime(), req.EndTime.AsTime(),
 			defaultTimezone(req.Timezone), req.EventType, req.Location, req.MeetingLink,
-			req.Capacity, req.CoverImage, organizerID, groupCol, visibility,
+			req.Capacity, req.CoverImage, organizerID, groupCol, visibility, nullCoord(lat), nullCoord(lng),
 		).Scan(&eventID); err != nil {
 			return status.Errorf(codes.Internal, "failed to create event: %v", err)
 		}
@@ -204,6 +210,36 @@ func (db *eventDB) UpdateEvent(ctx context.Context, req *pb.UpdateEventReq) (*pb
 			return err
 		}
 
+		var (
+			curStatus, curType, curLoc, curLink, curVis string
+			curStart, curEnd                            time.Time
+			curCap                                      int32
+		)
+		if err := tx.QueryRowContext(ctx, `
+			SELECT status, start_time, end_time, event_type, COALESCE(location, ''),
+			       COALESCE(meeting_link, ''), capacity, COALESCE(visibility, 'public')
+			FROM events WHERE id = $1`, eventID,
+		).Scan(&curStatus, &curStart, &curEnd, &curType, &curLoc, &curLink, &curCap, &curVis); err != nil {
+			return status.Error(codes.Internal, "failed to load event")
+		}
+		if eventHasEnded(curStatus, curEnd) {
+			vis := req.Visibility
+			if vis == "" {
+				vis = curVis
+			}
+			frozen := !sameInstant(req.StartTime.AsTime(), curStart) ||
+				!sameInstant(req.EndTime.AsTime(), curEnd) ||
+				req.EventType != curType ||
+				req.Location != curLoc ||
+				req.MeetingLink != curLink ||
+				req.Capacity != curCap ||
+				vis != curVis
+			if frozen {
+				return status.Error(codes.FailedPrecondition,
+					"ended events can only update title, description, cover, and tags")
+			}
+		}
+
 		// Visibility is optional on update; when supplied it must be consistent
 		// with the event's current group attachment. NULLIF preserves the stored
 		// value when the caller omits it.
@@ -222,16 +258,19 @@ func (db *eventDB) UpdateEvent(ctx context.Context, req *pb.UpdateEventReq) (*pb
 			}
 		}
 
+		lat, lng := Geocode(req.Location)
+
 		if _, err := tx.ExecContext(ctx, `
 			UPDATE events SET
 				title = $1, description = $2, start_time = $3, end_time = $4, timezone = $5,
 				event_type = $6, location = $7, meeting_link = $8, capacity = $9,
 				cover_image = $10, visibility = COALESCE(NULLIF($11, ''), visibility),
+				latitude = $12, longitude = $13,
 				updated_at = NOW()
-			WHERE id = $12`,
+			WHERE id = $14`,
 			req.Title, req.Description, req.StartTime.AsTime(), req.EndTime.AsTime(),
 			defaultTimezone(req.Timezone), req.EventType, req.Location, req.MeetingLink,
-			req.Capacity, req.CoverImage, req.Visibility, eventID,
+			req.Capacity, req.CoverImage, req.Visibility, nullCoord(lat), nullCoord(lng), eventID,
 		); err != nil {
 			return status.Errorf(codes.Internal, "failed to update event: %v", err)
 		}
@@ -276,6 +315,111 @@ func (db *eventDB) DeleteEvent(ctx context.Context, req *pb.EventActionReq) erro
 		}
 		return nil
 	})
+}
+
+func (db *eventDB) CloneEvent(ctx context.Context, req *pb.CloneEventReq) (*pb.Event, error) {
+	if err := validateWindow(req.StartTime, req.EndTime); err != nil {
+		return nil, err
+	}
+
+	var slug string
+	err := db.inTx(ctx, func(tx *sql.Tx) error {
+		srcID, organizerID, err := authorize(ctx, tx, req.Slug, req.AccountId, permEditEvent)
+		if err != nil {
+			return err
+		}
+
+		var (
+			title, desc, tz, eventType, loc, link, cover, vis string
+			capacity                                          int32
+			groupID                                           sql.NullInt64
+		)
+		if err := tx.QueryRowContext(ctx, `
+			SELECT title, COALESCE(description, ''), COALESCE(timezone, 'UTC'), event_type,
+			       COALESCE(location, ''), COALESCE(meeting_link, ''), capacity,
+			       COALESCE(cover_image, ''), COALESCE(visibility, 'public'), group_id
+			FROM events WHERE id = $1`, srcID,
+		).Scan(&title, &desc, &tz, &eventType, &loc, &link, &capacity, &cover, &vis, &groupID); err != nil {
+			return status.Error(codes.Internal, "failed to load event")
+		}
+
+		var groupCol any
+		if groupID.Valid {
+			groupCol = groupID.Int64
+		}
+		lat, lng := Geocode(loc)
+		slug = slugify(title)
+
+		var eventID int64
+		if err := tx.QueryRowContext(ctx, `
+			INSERT INTO events (
+				title, description, slug, start_time, end_time, timezone,
+				event_type, location, meeting_link, capacity, cover_image, organizer_id,
+				group_id, visibility, latitude, longitude
+			) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)
+			RETURNING id`,
+			title, desc, slug, req.StartTime.AsTime(), req.EndTime.AsTime(), tz,
+			eventType, loc, link, capacity, cover, organizerID, groupCol, vis,
+			nullCoord(lat), nullCoord(lng),
+		).Scan(&eventID); err != nil {
+			return status.Errorf(codes.Internal, "failed to clone event: %v", err)
+		}
+		if err := grantPermissions(ctx, tx, eventID, organizerID); err != nil {
+			return err
+		}
+
+		rows, err := tx.QueryContext(ctx,
+			"SELECT tag_name FROM event_tags WHERE event_id = $1", srcID)
+		if err != nil {
+			return status.Error(codes.Internal, "failed to copy tags")
+		}
+		var tags []string
+		for rows.Next() {
+			var t string
+			if err := rows.Scan(&t); err != nil {
+				rows.Close()
+				return err
+			}
+			tags = append(tags, t)
+		}
+		rows.Close()
+		if err := replaceTags(ctx, tx, eventID, tags); err != nil {
+			return err
+		}
+
+		trows, err := tx.QueryContext(ctx, `
+			SELECT name, COALESCE(description, ''), price, COALESCE(currency, $2), capacity, sort_order
+			FROM event_ticket_tiers WHERE event_id = $1 ORDER BY sort_order`, srcID, defaultCurrency)
+		if err != nil {
+			return status.Error(codes.Internal, "failed to copy ticket tiers")
+		}
+		defer trows.Close()
+		i := int32(0)
+		copied := false
+		for trows.Next() {
+			in := &pb.TicketTierInput{}
+			if err := trows.Scan(&in.Name, &in.Description, &in.Price, &in.Currency, &in.Capacity, &in.SortOrder); err != nil {
+				return err
+			}
+			if _, err := insertTier(ctx, tx, eventID, in, i); err != nil {
+				return err
+			}
+			copied = true
+			i++
+		}
+		if !copied {
+			if _, err := insertTier(ctx, tx, eventID,
+				&pb.TicketTierInput{Name: "General", Currency: defaultCurrency}, 0); err != nil {
+				return err
+			}
+		}
+		return trows.Err()
+	})
+	if err != nil {
+		return nil, err
+	}
+	event, _, err := db.GetEvent(ctx, slug, req.AccountId)
+	return event, err
 }
 
 // SetEventStatus performs a lifecycle transition. Cancelling also releases
@@ -421,19 +565,46 @@ func commonFilters(f *filter, req *pb.ListEventsReq) {
 	if req.Query != "" {
 		f.add("e.title ILIKE '%%' || $%d || '%%'", req.Query)
 	}
-	if req.Location != "" {
+	// Legacy string search fallback, if no radius is given
+	if req.Location != "" && req.Radius == 0 {
 		f.add("e.location ILIKE '%%' || $%d || '%%'", req.Location)
 	}
+
+	if req.UserLat != 0 && req.UserLng != 0 && req.Radius > 0 &&
+		req.EventType != EventTypeOnline && req.EventType != EventTypeHybrid {
+		// Virtual/hybrid skip the radius: they are reachable from anywhere.
+		// In-person must sit inside the requested radius; the UI expands that
+		// from city up to country, never worldwide.
+		f.args = append(f.args, req.UserLat, req.UserLng, req.UserLat, req.Radius)
+		latPos := len(f.args) - 3
+		lngPos := len(f.args) - 2
+		lat2Pos := len(f.args) - 1
+		radiusPos := len(f.args)
+		inRange := fmt.Sprintf(
+			"e.latitude IS NOT NULL AND e.longitude IS NOT NULL AND "+
+				"(6371 * acos(LEAST(GREATEST(cos(radians($%d)) * cos(radians(e.latitude)) * cos(radians(e.longitude) - radians($%d)) + sin(radians($%d)) * sin(radians(e.latitude)), -1), 1))) <= $%d",
+			latPos, lngPos, lat2Pos, radiusPos)
+		if req.EventType == EventTypeInPerson {
+			f.conds = append(f.conds, inRange)
+		} else {
+			f.conds = append(f.conds, fmt.Sprintf(
+				"(e.event_type IN ('%s', '%s') OR (%s))",
+				EventTypeOnline, EventTypeHybrid, inRange))
+		}
+	}
+
 	if len(req.Tags) > 0 {
 		f.add("EXISTS (SELECT 1 FROM event_tags t WHERE t.event_id = e.id AND t.tag_name = ANY($%d))", req.Tags)
 	}
 	switch req.DateFilter {
 	case DateFilterThisWeek:
-		f.addRaw("e.start_time >= CURRENT_DATE AND e.start_time < date_trunc('week', CURRENT_DATE + interval '1 week')")
+		f.addRaw("e.end_time >= NOW() AND e.start_time >= CURRENT_DATE AND e.start_time < date_trunc('week', CURRENT_DATE + interval '1 week')")
 	case DateFilterThisMonth:
-		f.addRaw("e.start_time >= CURRENT_DATE AND e.start_time < date_trunc('month', CURRENT_DATE + interval '1 month')")
-	case DateFilterAll:
-		f.addRaw("e.start_time >= CURRENT_DATE")
+		f.addRaw("e.end_time >= NOW() AND e.start_time >= CURRENT_DATE AND e.start_time < date_trunc('month', CURRENT_DATE + interval '1 month')")
+	case DateFilterAll, DateFilterUpcoming:
+		f.addRaw("e.end_time >= NOW()")
+	case DateFilterPast:
+		f.addRaw("e.end_time < NOW()")
 	}
 }
 
@@ -464,6 +635,11 @@ func (db *eventDB) list(ctx context.Context, req *pb.ListEventsReq, f *filter, j
 		orderBy = "e.created_at DESC"
 	case SortByPopular:
 		orderBy = "(SELECT COUNT(1) FROM event_attendees a WHERE a.event_id = e.id AND a.status = 'confirmed') DESC, e.start_time ASC"
+	case "nearest":
+		if req.UserLat != 0 && req.UserLng != 0 {
+			// Haversine sorting
+			orderBy = fmt.Sprintf(`(6371 * acos(cos(radians(%f)) * cos(radians(e.latitude)) * cos(radians(e.longitude) - radians(%f)) + sin(radians(%f)) * sin(radians(e.latitude)))) ASC, e.start_time ASC`, req.UserLat, req.UserLng, req.UserLat)
+		}
 	}
 
 	query := fmt.Sprintf("SELECT%s%s%s%s ORDER BY %s LIMIT $%d OFFSET $%d",
@@ -498,14 +674,18 @@ func (db *eventDB) list(ctx context.Context, req *pb.ListEventsReq, f *filter, j
 
 // ListEvents is the public discovery feed; drafts are never exposed.
 func (db *eventDB) ListEvents(ctx context.Context, req *pb.ListEventsReq) ([]*pb.Event, int32, error) {
+	if req.DateFilter == "" {
+		req.DateFilter = DateFilterUpcoming
+	}
+
 	f := &filter{}
 	if req.Status != "" && req.Status != StatusDraft {
 		f.add("e.status = $%d", req.Status)
-	} else {
+	} else if req.DateFilter == DateFilterPast {
 		f.add("e.status = ANY($%d)", publicStatuses)
+	} else {
+		f.add("e.status = ANY($%d)", liveStatuses)
 	}
-	// The global feed only ever surfaces public events; group_members, private
-	// and unlisted events must never leak into discovery.
 	f.addRaw("e.visibility = 'public'")
 	commonFilters(f, req)
 	return db.list(ctx, req, f, "")
@@ -576,6 +756,10 @@ func (db *eventDB) GetUserEvents(ctx context.Context, req *pb.ListEventsReq) ([]
 			return nil, 0, status.Error(codes.PermissionDenied, "drafts are private")
 		}
 		f.add("e.status = $%d", req.Status)
+	case req.DateFilter == DateFilterPast:
+		f.add("e.status = ANY($%d)", publicStatuses)
+	case req.DateFilter == DateFilterUpcoming:
+		f.add("e.status = ANY($%d)", liveStatuses)
 	case !self:
 		f.add("e.status = ANY($%d)", publicStatuses)
 	}
@@ -768,6 +952,26 @@ func defaultTimezone(tz string) string {
 		return "UTC"
 	}
 	return tz
+}
+
+func eventHasEnded(status string, end time.Time) bool {
+	if status == StatusCompleted || status == StatusCancelled {
+		return true
+	}
+	return !end.IsZero() && !end.After(time.Now())
+}
+
+func sameInstant(a, b time.Time) bool {
+	return a.UTC().Truncate(time.Second).Equal(b.UTC().Truncate(time.Second))
+}
+
+// nullCoord maps a failed geocode (0,0) to NULL so online or unresolvable
+// locations stay out of radius filters instead of anchoring to (0,0).
+func nullCoord(c float64) any {
+	if c == 0 {
+		return nil
+	}
+	return c
 }
 
 func validateWindow(start, end *timestamppb.Timestamp) error {

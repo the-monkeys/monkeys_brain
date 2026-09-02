@@ -68,10 +68,11 @@ func (db *eventDB) CreateRSVP(ctx context.Context, req *pb.RSVPReq) (*RSVPResult
 		var eventID, organizerID int64
 		var eventStatus string
 		var capacity int32
+		var endTime time.Time
 		if err := tx.QueryRowContext(ctx, `
-			SELECT e.id, e.organizer_id, e.status, e.capacity, e.title, e.slug
+			SELECT e.id, e.organizer_id, e.status, e.capacity, e.title, e.slug, e.end_time
 			FROM events e WHERE e.slug = $1 FOR UPDATE`, req.EventSlug,
-		).Scan(&eventID, &organizerID, &eventStatus, &capacity, &out.EventTitle, &out.EventSlug); err != nil {
+		).Scan(&eventID, &organizerID, &eventStatus, &capacity, &out.EventTitle, &out.EventSlug, &endTime); err != nil {
 			if err == sql.ErrNoRows {
 				return status.Error(codes.NotFound, "event not found")
 			}
@@ -79,6 +80,9 @@ func (db *eventDB) CreateRSVP(ctx context.Context, req *pb.RSVPReq) (*RSVPResult
 		}
 		if eventStatus != StatusPublished && eventStatus != StatusLive {
 			return status.Errorf(codes.FailedPrecondition, "event is not open for rsvp (%s)", eventStatus)
+		}
+		if eventHasEnded(eventStatus, endTime) {
+			return status.Error(codes.FailedPrecondition, "event is not open for rsvp (ended)")
 		}
 		if userID == organizerID {
 			return status.Error(codes.FailedPrecondition, "the organizer is already attending")
@@ -305,13 +309,18 @@ func (db *eventDB) CancelRSVP(ctx context.Context, req *pb.CancelRSVPReq) (*Canc
 		}
 
 		var eventID int64
+		var endTime time.Time
+		var eventStatus string
 		if err := tx.QueryRowContext(ctx,
-			"SELECT id, title FROM events WHERE slug = $1 FOR UPDATE", req.EventSlug).
-			Scan(&eventID, &out.EventTitle); err != nil {
+			"SELECT id, title, end_time, status FROM events WHERE slug = $1 FOR UPDATE", req.EventSlug).
+			Scan(&eventID, &out.EventTitle, &endTime, &eventStatus); err != nil {
 			if err == sql.ErrNoRows {
 				return status.Error(codes.NotFound, "event not found")
 			}
 			return status.Error(codes.Internal, "failed to load event")
+		}
+		if eventHasEnded(eventStatus, endTime) {
+			return status.Error(codes.FailedPrecondition, "event has ended")
 		}
 
 		var attendeeID int64

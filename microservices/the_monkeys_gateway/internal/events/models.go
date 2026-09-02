@@ -24,8 +24,39 @@ type EventBody struct {
 	TicketTiers     []TierBody `json:"ticket_tiers"`
 	// GroupSlug attaches the event to a community the caller organizes; empty
 	// means a standalone event. Visibility defaults to public server-side.
-	GroupSlug  string `json:"group_slug"`
-	Visibility string `json:"visibility" binding:"omitempty,oneof=public group_members private unlisted"`
+	GroupSlug  string          `json:"group_slug"`
+	Visibility string          `json:"visibility" binding:"omitempty,oneof=public group_members private unlisted"`
+	Recurrence *RecurrenceBody `json:"recurrence"`
+}
+
+type RecurrenceBody struct {
+	Freq     string     `json:"freq"`
+	Interval int32      `json:"interval"`
+	ByDay    []string   `json:"by_day"`
+	Count    int32      `json:"count"`
+	Until    *time.Time `json:"until"`
+}
+
+func (r *RecurrenceBody) toProto() *pb.Recurrence {
+	if r == nil || r.Freq == "" || r.Freq == "off" {
+		return nil
+	}
+	interval := r.Interval
+	if interval < 1 {
+		interval = 1
+	}
+	return &pb.Recurrence{
+		Freq:     r.Freq,
+		Interval: interval,
+		ByDay:    r.ByDay,
+		Count:    r.Count,
+		Until:    toTimestamp(r.Until),
+	}
+}
+
+type CloneBody struct {
+	StartTime time.Time `json:"start_time" binding:"required"`
+	EndTime   time.Time `json:"end_time" binding:"required"`
 }
 
 // TierBody is the JSON payload for a ticket tier.

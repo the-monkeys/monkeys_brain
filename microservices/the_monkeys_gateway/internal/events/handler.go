@@ -59,6 +59,16 @@ func listQuery(ctx *gin.Context) *pb.ListEventsReq {
 		DateFilter: ctx.Query("date"),
 		SortBy:     ctx.Query("sort"),
 	}
+
+	if lat, err := strconv.ParseFloat(ctx.Query("user_lat"), 64); err == nil {
+		req.UserLat = lat
+	}
+	if lng, err := strconv.ParseFloat(ctx.Query("user_lng"), 64); err == nil {
+		req.UserLng = lng
+	}
+	if radius, err := strconv.Atoi(ctx.DefaultQuery("radius", "0")); err == nil {
+		req.Radius = int32(radius)
+	}
 	if tags := ctx.Query("tags"); tags != "" {
 		req.Tags = strings.Split(tags, ",")
 	}
@@ -95,6 +105,61 @@ func (esc *EventServiceClient) CreateEvent(ctx *gin.Context) {
 		ClientInfo:      clientInfo(ctx),
 	})
 	if esc.fail(ctx, err, "create event") {
+		return
+	}
+	ctx.JSON(http.StatusCreated, res)
+}
+
+func (esc *EventServiceClient) CreateSeries(ctx *gin.Context) {
+	body, ok := bind[EventBody](ctx)
+	if !ok {
+		return
+	}
+	rec := body.Recurrence.toProto()
+	if rec == nil {
+		ctx.AbortWithStatusJSON(http.StatusBadRequest, gin.H{"error": "recurrence is required"})
+		return
+	}
+
+	res, err := esc.Client.CreateSeries(ctx, &pb.CreateSeriesReq{
+		AccountId:   accountID(ctx),
+		Title:       body.Title,
+		Description: body.Description,
+		StartTime:   toTimestamp(&body.StartTime),
+		EndTime:     toTimestamp(&body.EndTime),
+		Timezone:    body.Timezone,
+		EventType:   body.EventType,
+		Location:    body.Location,
+		MeetingLink: body.MeetingLink,
+		Capacity:    body.Capacity,
+		CoverImage:  body.CoverImage,
+		Tags:        body.Tags,
+		TicketTiers: tiersToProto(body.TicketTiers),
+		GroupSlug:   body.GroupSlug,
+		Visibility:  body.Visibility,
+		Recurrence:  rec,
+		ClientInfo:  clientInfo(ctx),
+	})
+	if esc.fail(ctx, err, "create series") {
+		return
+	}
+	ctx.JSON(http.StatusCreated, res)
+}
+
+func (esc *EventServiceClient) CloneEvent(ctx *gin.Context) {
+	body, ok := bind[CloneBody](ctx)
+	if !ok {
+		return
+	}
+
+	res, err := esc.Client.CloneEvent(ctx, &pb.CloneEventReq{
+		Slug:       ctx.Param("slug"),
+		AccountId:  accountID(ctx),
+		StartTime:  toTimestamp(&body.StartTime),
+		EndTime:    toTimestamp(&body.EndTime),
+		ClientInfo: clientInfo(ctx),
+	})
+	if esc.fail(ctx, err, "clone event") {
 		return
 	}
 	ctx.JSON(http.StatusCreated, res)

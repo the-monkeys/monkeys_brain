@@ -272,8 +272,11 @@ message ListEventsReq {
     string location = 9;     // city / venue filter for in-person events
     ClientInfo client_info = 10;
     string group_slug = 11;  // target community for GetGroupEvents
-    string date_filter = 12; // "this-week", "this-month", "all"
+    string date_filter = 12; // "upcoming", "past", "this-week", "this-month", "all"
     string sort_by = 13;     // "soonest", "popular", "newest"
+    double user_lat = 14;    // for distance calculations
+    double user_lng = 15;    // for distance calculations
+    int32 radius = 16;       // search radius in km
 }
 
 message ListEventsResp {
@@ -531,6 +534,42 @@ message AuthorizeResp {
     bool owns_comment = 6;        // set only when comment_id was supplied
 }
 
+message CloneEventReq {
+    string slug = 1;
+    string account_id = 2;
+    google.protobuf.Timestamp start_time = 3;
+    google.protobuf.Timestamp end_time = 4;
+    ClientInfo client_info = 5;
+}
+
+message Recurrence {
+    string freq = 1;             // daily | weekly | monthly | yearly
+    int32 interval = 2;          // every N units; 0 means 1
+    repeated string by_day = 3;  // MO,TU,... for weekly
+    int32 count = 4;             // stop after N occurrences; 0 = unused
+    google.protobuf.Timestamp until = 5;
+}
+
+message CreateSeriesReq {
+    string account_id = 1;
+    string title = 2;
+    string description = 3;
+    google.protobuf.Timestamp start_time = 4;
+    google.protobuf.Timestamp end_time = 5;
+    string timezone = 6;
+    string event_type = 7;
+    string location = 8;
+    string meeting_link = 9;
+    int32 capacity = 10;
+    string cover_image = 11;
+    repeated string tags = 12;
+    repeated TicketTierInput ticket_tiers = 13;
+    string group_slug = 14;
+    string visibility = 15;
+    Recurrence recurrence = 16;
+    ClientInfo client_info = 17;
+}
+
 // -----------------------------------------------------------------------------
 // Service Definition
 // -----------------------------------------------------------------------------
@@ -589,4 +628,11 @@ service EventService {
 
     // Authorization
     rpc Authorize(AuthorizeReq) returns (AuthorizeResp);
+
+    // Clone a past event into a new draft (new slug, new times).
+    rpc CloneEvent(CloneEventReq) returns (EventResp);
+
+    // Recurring series. Occurrences are normal events linked by series_id.
+    rpc CreateSeries(CreateSeriesReq) returns (EventResp);
+    rpc CancelSeriesOccurrence(EventActionReq) returns (BasicResp);
 }

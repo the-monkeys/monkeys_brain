@@ -148,6 +148,10 @@ message ListGroupsReq {
     string account_id = 9;   // viewer / owner depending on the RPC
     string username = 10;    // target user for "groups I organize/belong to"
     ClientInfo client_info = 11;
+    double user_lat = 12;
+    double user_lng = 13;
+    int32 radius = 14;       // search radius in km
+    bool public_only = 15;   // profile: published public groups only
 }
 
 message ListGroupsResp {
