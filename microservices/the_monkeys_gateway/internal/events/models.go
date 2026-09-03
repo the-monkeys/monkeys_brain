@@ -5,6 +5,7 @@ import (
 
 	"github.com/the-monkeys/the_monkeys/apis/serviceconn/gateway_event/pb"
 	"google.golang.org/protobuf/types/known/timestamppb"
+	"google.golang.org/protobuf/types/known/wrapperspb"
 )
 
 // EventBody is the JSON payload for creating and updating an event.
@@ -27,14 +28,19 @@ type EventBody struct {
 	GroupSlug  string          `json:"group_slug"`
 	Visibility string          `json:"visibility" binding:"omitempty,oneof=public group_members private unlisted"`
 	Recurrence *RecurrenceBody `json:"recurrence"`
+	// One-off last day to RSVP. Empty = open until the event ends.
+	RsvpClosesAt *time.Time `json:"rsvp_closes_at"`
+	// Series edits: 0 = Off. Omitted on one-off updates.
+	RsvpCloseHoursBefore *int32 `json:"rsvp_close_hours_before"`
 }
 
 type RecurrenceBody struct {
-	Freq     string     `json:"freq"`
-	Interval int32      `json:"interval"`
-	ByDay    []string   `json:"by_day"`
-	Count    int32      `json:"count"`
-	Until    *time.Time `json:"until"`
+	Freq                 string     `json:"freq"`
+	Interval             int32      `json:"interval"`
+	ByDay                []string   `json:"by_day"`
+	Count                int32      `json:"count"`
+	Until                *time.Time `json:"until"`
+	RsvpCloseHoursBefore int32      `json:"rsvp_close_hours_before"`
 }
 
 func (r *RecurrenceBody) toProto() *pb.Recurrence {
@@ -46,11 +52,12 @@ func (r *RecurrenceBody) toProto() *pb.Recurrence {
 		interval = 1
 	}
 	return &pb.Recurrence{
-		Freq:     r.Freq,
-		Interval: interval,
-		ByDay:    r.ByDay,
-		Count:    r.Count,
-		Until:    toTimestamp(r.Until),
+		Freq:                 r.Freq,
+		Interval:             interval,
+		ByDay:                r.ByDay,
+		Count:                r.Count,
+		Until:                toTimestamp(r.Until),
+		RsvpCloseHoursBefore: r.RsvpCloseHoursBefore,
 	}
 }
 
@@ -101,6 +108,7 @@ type CouponBody struct {
 type RSVPBody struct {
 	TicketTierID int64  `json:"ticket_tier_id" binding:"required"`
 	CouponCode   string `json:"coupon_code"`
+	Scope        string `json:"scope" binding:"omitempty,oneof=this series"`
 }
 
 // CommentBody is the JSON payload for posting a comment.
@@ -134,4 +142,11 @@ func toTimestamp(t *time.Time) *timestamppb.Timestamp {
 		return nil
 	}
 	return timestamppb.New(*t)
+}
+
+func int32Value(p *int32) *wrapperspb.Int32Value {
+	if p == nil {
+		return nil
+	}
+	return wrapperspb.Int32(*p)
 }

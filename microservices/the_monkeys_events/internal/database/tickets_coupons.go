@@ -3,9 +3,11 @@ package database
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"strings"
 	"time"
 
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/the-monkeys/the_monkeys/apis/serviceconn/gateway_event/pb"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -50,7 +52,7 @@ func insertTier(ctx context.Context, q querier, eventID int64, in *pb.TicketTier
 		VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING id`,
 		eventID, tier.Name, tier.Description, tier.Price, tier.Currency, tier.Capacity, tier.SortOrder,
 	).Scan(&tier.Id); err != nil {
-		return nil, status.Errorf(codes.Internal, "failed to create ticket tier: %v", err)
+		return nil, status.Error(codes.Internal, "failed to create ticket tier")
 	}
 	return tier, nil
 }
@@ -122,7 +124,7 @@ func (db *eventDB) UpdateTicketTier(ctx context.Context, req *pb.UpdateTicketTie
 			req.Tier.Name, req.Tier.Description, req.Tier.Price, currency,
 			req.Tier.Capacity, req.Tier.SortOrder, req.TierId, eventID)
 		if err != nil {
-			return status.Errorf(codes.Internal, "failed to update ticket tier: %v", err)
+			return status.Error(codes.Internal, "failed to update ticket tier")
 		}
 		if n, _ := res.RowsAffected(); n == 0 {
 			return status.Error(codes.NotFound, "ticket tier not found")
@@ -159,7 +161,7 @@ func (db *eventDB) DeleteTicketTier(ctx context.Context, req *pb.TierActionReq) 
 		res, err := tx.ExecContext(ctx,
 			"DELETE FROM event_ticket_tiers WHERE id = $1 AND event_id = $2", req.TierId, eventID)
 		if err != nil {
-			return status.Errorf(codes.Internal, "failed to delete ticket tier: %v", err)
+			return status.Error(codes.Internal, "failed to delete ticket tier")
 		}
 		if n, _ := res.RowsAffected(); n == 0 {
 			return status.Error(codes.NotFound, "ticket tier not found")
@@ -202,7 +204,11 @@ func (db *eventDB) CreateCoupon(ctx context.Context, req *pb.CreateCouponReq) (*
 			eventID, code, req.DiscountPercent, req.MaxUses,
 			nullableTime(req.ValidFrom), nullableTime(req.ValidTo),
 		).Scan(&coupon.Id); err != nil {
-			return status.Errorf(codes.AlreadyExists, "failed to create coupon: %v", err)
+			if isUniqueViolation(err, "event_coupons_event_id_code_key") {
+				return status.Error(codes.AlreadyExists, "That coupon code is already on this event.")
+			}
+			db.log.Errorw("failed to create coupon", "err", err)
+			return status.Error(codes.Internal, "failed to create coupon")
 		}
 		return nil
 	})
@@ -219,7 +225,7 @@ func (db *eventDB) ListCoupons(ctx context.Context, req *pb.ListCouponsReq) ([]*
 		SELECT id, code, discount_percent, max_uses, current_uses, valid_from, valid_to
 		FROM event_coupons WHERE event_id = $1 ORDER BY id`, eventID)
 	if err != nil {
-		return nil, status.Errorf(codes.Internal, "failed to list coupons: %v", err)
+		return nil, status.Error(codes.Internal, "failed to list coupons")
 	}
 	defer rows.Close()
 
@@ -228,7 +234,7 @@ func (db *eventDB) ListCoupons(ctx context.Context, req *pb.ListCouponsReq) ([]*
 		c := &pb.Coupon{EventId: eventID}
 		var from, to sql.NullTime
 		if err := rows.Scan(&c.Id, &c.Code, &c.DiscountPercent, &c.MaxUses, &c.CurrentUses, &from, &to); err != nil {
-			return nil, status.Errorf(codes.Internal, "failed to scan coupon: %v", err)
+			return nil, status.Error(codes.Internal, "failed to scan coupon")
 		}
 		c.ValidFrom, c.ValidTo = fromNullTime(from), fromNullTime(to)
 		out = append(out, c)
@@ -244,7 +250,7 @@ func (db *eventDB) DeleteCoupon(ctx context.Context, req *pb.CouponActionReq) er
 	res, err := db.db.ExecContext(ctx,
 		"DELETE FROM event_coupons WHERE id = $1 AND event_id = $2", req.CouponId, eventID)
 	if err != nil {
-		return status.Errorf(codes.Internal, "failed to delete coupon: %v", err)
+		return status.Error(codes.Internal, "failed to delete coupon")
 	}
 	if n, _ := res.RowsAffected(); n == 0 {
 		return status.Error(codes.NotFound, "coupon not found")
@@ -334,4 +340,15 @@ func fromNullTime(t sql.NullTime) *timestamppb.Timestamp {
 		return nil
 	}
 	return timestamppb.New(t.Time)
+}
+
+func isUniqueViolation(err error, constraint string) bool {
+	var pgErr *pgconn.PgError
+	if !errors.As(err, &pgErr) || pgErr.Code != "23505" {
+		return false
+	}
+	if constraint == "" {
+		return true
+	}
+	return pgErr.ConstraintName == constraint
 }

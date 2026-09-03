@@ -80,15 +80,17 @@ func (esc *EventServiceClient) fail(ctx *gin.Context, err error, action string) 
 	st, ok := status.FromError(err)
 	if !ok {
 		esc.log.Errorw("events request failed", "action", action, "err", err)
-		ctx.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"error": "something went wrong"})
+		ctx.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"error": "Something went wrong. Try again."})
 		return true
 	}
 
 	code, mapped := grpcToHTTP[st.Code()]
+	msg := st.Message()
 	if !mapped {
 		code = http.StatusInternalServerError
 		esc.log.Errorw("events request failed", "action", action, "code", st.Code(), "err", st.Message())
+		msg = "Something went wrong. Try again."
 	}
-	ctx.AbortWithStatusJSON(code, gin.H{"error": st.Message()})
+	ctx.AbortWithStatusJSON(code, gin.H{"error": msg})
 	return true
 }

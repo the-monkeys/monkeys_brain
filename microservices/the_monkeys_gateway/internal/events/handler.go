@@ -102,6 +102,7 @@ func (esc *EventServiceClient) CreateEvent(ctx *gin.Context) {
 		TicketTiers:     tiersToProto(body.TicketTiers),
 		GroupSlug:       body.GroupSlug,
 		Visibility:      body.Visibility,
+		RsvpClosesAt:    toTimestamp(body.RsvpClosesAt),
 		ClientInfo:      clientInfo(ctx),
 	})
 	if esc.fail(ctx, err, "create event") {
@@ -172,21 +173,23 @@ func (esc *EventServiceClient) UpdateEvent(ctx *gin.Context) {
 	}
 
 	res, err := esc.Client.UpdateEvent(ctx, &pb.UpdateEventReq{
-		Slug:        ctx.Param("slug"),
-		AccountId:   accountID(ctx),
-		Title:       body.Title,
-		Description: body.Description,
-		StartTime:   toTimestamp(&body.StartTime),
-		EndTime:     toTimestamp(&body.EndTime),
-		Timezone:    body.Timezone,
-		EventType:   body.EventType,
-		Location:    body.Location,
-		MeetingLink: body.MeetingLink,
-		Capacity:    body.Capacity,
-		CoverImage:  body.CoverImage,
-		Tags:        body.Tags,
-		Visibility:  body.Visibility,
-		ClientInfo:  clientInfo(ctx),
+		Slug:                 ctx.Param("slug"),
+		AccountId:            accountID(ctx),
+		Title:                body.Title,
+		Description:          body.Description,
+		StartTime:            toTimestamp(&body.StartTime),
+		EndTime:              toTimestamp(&body.EndTime),
+		Timezone:             body.Timezone,
+		EventType:            body.EventType,
+		Location:             body.Location,
+		MeetingLink:          body.MeetingLink,
+		Capacity:             body.Capacity,
+		CoverImage:           body.CoverImage,
+		Tags:                 body.Tags,
+		Visibility:           body.Visibility,
+		RsvpClosesAt:         toTimestamp(body.RsvpClosesAt),
+		RsvpCloseHoursBefore: int32Value(body.RsvpCloseHoursBefore),
+		ClientInfo:           clientInfo(ctx),
 	})
 
 	if esc.fail(ctx, err, "update event") {
@@ -242,14 +245,6 @@ func (esc *EventServiceClient) GetEvent(ctx *gin.Context) {
 
 func (esc *EventServiceClient) ListEvents(ctx *gin.Context) {
 	req := listQuery(ctx)
-	esc.log.Debugw("[DEBUG] ListEvents filters",
-		"type", req.EventType,
-		"date", req.DateFilter,
-		"sort", req.SortBy,
-		"q", req.Query,
-		"location", req.Location,
-		"tags", req.Tags,
-	)
 	res, err := esc.Client.ListEvents(ctx, req)
 	if esc.fail(ctx, err, "list events") {
 		return
@@ -431,6 +426,7 @@ func (esc *EventServiceClient) RSVP(ctx *gin.Context) {
 		AccountId:    accountID(ctx),
 		TicketTierId: body.TicketTierID,
 		CouponCode:   body.CouponCode,
+		Scope:        body.Scope,
 		ClientInfo:   clientInfo(ctx),
 	})
 	if esc.fail(ctx, err, "rsvp") {
