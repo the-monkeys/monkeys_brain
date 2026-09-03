@@ -78,19 +78,25 @@ func sanitizeVisibility(v string, groupID int64) (string, error) {
 const eventColumns = `
 	e.id, e.title, COALESCE(e.description, ''), e.slug, e.start_time, e.end_time,
 	COALESCE(e.timezone, 'UTC'), e.event_type, COALESCE(e.location, ''),
-	COALESCE(e.meeting_link, ''), e.capacity, e.status, COALESCE(e.cover_image, ''),
+	COALESCE(e.meeting_link, ''), e.capacity, e.status,
+	COALESCE(NULLIF(e.cover_image, ''), es.cover_image, ''),
 	u.account_id, u.username, e.created_at, e.updated_at,
-	(SELECT COUNT(1) FROM event_attendees a WHERE a.event_id = e.id AND a.status = 'confirmed'),
-	e.group_id, COALESCE(g.slug, ''), COALESCE(g.name, ''), COALESCE(e.visibility, 'public')`
+	(SELECT COUNT(1) FROM event_attendees a WHERE a.event_id = e.id AND a.status = 'confirmed') AS attendee_count,
+	e.group_id, COALESCE(g.slug, ''), COALESCE(g.name, ''), COALESCE(e.visibility, 'public'),
+	e.series_id, e.series_occurrence_at, COALESCE(es.recurrence_rule, ''),
+	e.rsvp_closes_at, COALESCE(es.rsvp_close_hours_before, 0)`
 
-const eventFrom = ` FROM events e JOIN user_account u ON u.id = e.organizer_id LEFT JOIN groups g ON g.id = e.group_id`
+const eventFrom = ` FROM events e JOIN user_account u ON u.id = e.organizer_id LEFT JOIN groups g ON g.id = e.group_id LEFT JOIN event_series es ON es.id = e.series_id`
 
 type rowScanner interface{ Scan(dest ...any) error }
 
 func scanEvent(row rowScanner) (*pb.Event, error) {
 	var e pb.Event
 	var start, end, created, updated time.Time
-	var groupID sql.NullInt64
+	var groupID, seriesID sql.NullInt64
+	var occAt, rsvpCloses sql.NullTime
+	var rule string
+	var closeHours int32
 	if err := row.Scan(
 		&e.Id, &e.Title, &e.Description, &e.Slug, &start, &end,
 		&e.Timezone, &e.EventType, &e.Location, &e.MeetingLink,
@@ -98,11 +104,23 @@ func scanEvent(row rowScanner) (*pb.Event, error) {
 		&e.OrganizerAccountId, &e.OrganizerUsername, &created, &updated,
 		&e.AttendeeCount,
 		&groupID, &e.GroupSlug, &e.GroupName, &e.Visibility,
+		&seriesID, &occAt, &rule, &rsvpCloses, &closeHours,
 	); err != nil {
 		return nil, err
 	}
 	if groupID.Valid {
 		e.GroupId = groupID.Int64
+	}
+	if seriesID.Valid {
+		e.SeriesId = seriesID.Int64
+		e.RecurrenceText = recurrenceText(rule)
+		e.RsvpCloseHoursBefore = closeHours
+	}
+	if occAt.Valid {
+		e.SeriesOccurrenceAt = timestamppb.New(occAt.Time)
+	}
+	if rsvpCloses.Valid {
+		e.RsvpClosesAt = timestamppb.New(rsvpCloses.Time)
 	}
 	e.StartTime = timestamppb.New(start)
 	e.EndTime = timestamppb.New(end)
@@ -124,6 +142,9 @@ func (db *eventDB) CreateEvent(ctx context.Context, req *pb.CreateEventReq) (*pb
 			return err
 		}
 		if err := validateWindow(req.StartTime, req.EndTime); err != nil {
+			return err
+		}
+		if err := validateRsvpClosesAt(req.StartTime.AsTime(), req.RsvpClosesAt); err != nil {
 			return err
 		}
 		if err := requireVerifiedForPaidTiers(ctx, tx, organizerID, req.TicketTiers); err != nil {
@@ -153,12 +174,13 @@ func (db *eventDB) CreateEvent(ctx context.Context, req *pb.CreateEventReq) (*pb
 			INSERT INTO events (
 				title, description, slug, start_time, end_time, timezone,
 				event_type, location, meeting_link, capacity, cover_image, organizer_id,
-				group_id, visibility, latitude, longitude
-			) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)
+				group_id, visibility, latitude, longitude, rsvp_closes_at
+			) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)
 			RETURNING id`,
 			req.Title, req.Description, slug, req.StartTime.AsTime(), req.EndTime.AsTime(),
 			defaultTimezone(req.Timezone), req.EventType, req.Location, req.MeetingLink,
 			req.Capacity, req.CoverImage, organizerID, groupCol, visibility, nullCoord(lat), nullCoord(lng),
+			nullableTime(req.RsvpClosesAt),
 		).Scan(&eventID); err != nil {
 			return status.Errorf(codes.Internal, "failed to create event: %v", err)
 		}
@@ -214,15 +236,20 @@ func (db *eventDB) UpdateEvent(ctx context.Context, req *pb.UpdateEventReq) (*pb
 			curStatus, curType, curLoc, curLink, curVis string
 			curStart, curEnd                            time.Time
 			curCap                                      int32
+			curSeries                                   sql.NullInt64
+			curRsvpCloses                               sql.NullTime
 		)
 		if err := tx.QueryRowContext(ctx, `
 			SELECT status, start_time, end_time, event_type, COALESCE(location, ''),
-			       COALESCE(meeting_link, ''), capacity, COALESCE(visibility, 'public')
+			       COALESCE(meeting_link, ''), capacity, COALESCE(visibility, 'public'),
+			       series_id, rsvp_closes_at
 			FROM events WHERE id = $1`, eventID,
-		).Scan(&curStatus, &curStart, &curEnd, &curType, &curLoc, &curLink, &curCap, &curVis); err != nil {
+		).Scan(&curStatus, &curStart, &curEnd, &curType, &curLoc, &curLink, &curCap, &curVis,
+			&curSeries, &curRsvpCloses); err != nil {
 			return status.Error(codes.Internal, "failed to load event")
 		}
-		if eventHasEnded(curStatus, curEnd) {
+		ended := eventHasEnded(curStatus, curEnd)
+		if ended {
 			vis := req.Visibility
 			if vis == "" {
 				vis = curVis
@@ -260,19 +287,53 @@ func (db *eventDB) UpdateEvent(ctx context.Context, req *pb.UpdateEventReq) (*pb
 
 		lat, lng := Geocode(req.Location)
 
+		rsvpClose := any(nil)
+		if curRsvpCloses.Valid {
+			rsvpClose = curRsvpCloses.Time
+		}
+		if !ended {
+			if curSeries.Valid {
+				if w := req.GetRsvpCloseHoursBefore(); w != nil {
+					rsvpClose = rsvpClosesValue(req.StartTime.AsTime(), w.GetValue())
+				}
+			} else {
+				if err := validateRsvpClosesAt(req.StartTime.AsTime(), req.RsvpClosesAt); err != nil {
+					return err
+				}
+				rsvpClose = nullableTime(req.RsvpClosesAt)
+			}
+		}
+
 		if _, err := tx.ExecContext(ctx, `
 			UPDATE events SET
 				title = $1, description = $2, start_time = $3, end_time = $4, timezone = $5,
 				event_type = $6, location = $7, meeting_link = $8, capacity = $9,
 				cover_image = $10, visibility = COALESCE(NULLIF($11, ''), visibility),
-				latitude = $12, longitude = $13,
+				latitude = $12, longitude = $13, rsvp_closes_at = $14,
 				updated_at = NOW()
-			WHERE id = $14`,
+			WHERE id = $15`,
 			req.Title, req.Description, req.StartTime.AsTime(), req.EndTime.AsTime(),
 			defaultTimezone(req.Timezone), req.EventType, req.Location, req.MeetingLink,
-			req.Capacity, req.CoverImage, req.Visibility, nullCoord(lat), nullCoord(lng), eventID,
+			req.Capacity, req.CoverImage, req.Visibility, nullCoord(lat), nullCoord(lng),
+			rsvpClose, eventID,
 		); err != nil {
 			return status.Errorf(codes.Internal, "failed to update event: %v", err)
+		}
+
+		if !ended && curSeries.Valid {
+			if w := req.GetRsvpCloseHoursBefore(); w != nil {
+				if err := applySeriesRsvpClose(ctx, tx, curSeries.Int64, w.GetValue()); err != nil {
+					return err
+				}
+			}
+		}
+
+		// Series covers are one stored object. Persist the same URL on the
+		// series row and every sibling — do not copy blobs in MinIO.
+		if url := strings.TrimSpace(req.CoverImage); url != "" && curSeries.Valid {
+			if err := applySeriesCover(ctx, tx, curSeries.Int64, url); err != nil {
+				return err
+			}
 		}
 		return replaceTags(ctx, tx, eventID, req.Tags)
 	})
@@ -608,8 +669,37 @@ func commonFilters(f *filter, req *pb.ListEventsReq) {
 	}
 }
 
-// list executes the count + page queries for a built filter.
-func (db *eventDB) list(ctx context.Context, req *pb.ListEventsReq, f *filter, join string) ([]*pb.Event, int32, error) {
+// seriesCollapseCond keeps at most one upcoming row per series: the soonest
+// published/live occurrence that has not ended. One-offs (series_id IS NULL)
+// pass through unchanged.
+const seriesCollapseCond = `(e.series_id IS NULL OR e.id = (
+	SELECT e2.id FROM events e2
+	WHERE e2.series_id = e.series_id
+	  AND e2.status IN ('published', 'live')
+	  AND e2.end_time >= NOW()
+	ORDER BY e2.start_time ASC
+	LIMIT 1
+))`
+
+func collapseDiscoverySeries(req *pb.ListEventsReq) bool {
+	return req.DateFilter != DateFilterPast
+}
+
+func collapseProfileSeries(req *pb.ListEventsReq) bool {
+	switch req.DateFilter {
+	case DateFilterUpcoming, DateFilterThisWeek, DateFilterThisMonth, DateFilterAll:
+		return true
+	default:
+		return false
+	}
+}
+
+// list executes the count + page queries for a built filter. When collapse is
+// set, series siblings share one row and total counts the collapsed set.
+func (db *eventDB) list(ctx context.Context, req *pb.ListEventsReq, f *filter, join string, collapse bool) ([]*pb.Event, int32, error) {
+	if collapse {
+		f.addRaw(seriesCollapseCond)
+	}
 	where := f.where()
 
 	var total int32
@@ -634,7 +724,7 @@ func (db *eventDB) list(ctx context.Context, req *pb.ListEventsReq, f *filter, j
 	case SortByNewest:
 		orderBy = "e.created_at DESC"
 	case SortByPopular:
-		orderBy = "(SELECT COUNT(1) FROM event_attendees a WHERE a.event_id = e.id AND a.status = 'confirmed') DESC, e.start_time ASC"
+		orderBy = "attendee_count DESC, e.start_time ASC"
 	case "nearest":
 		if req.UserLat != 0 && req.UserLng != 0 {
 			// Haversine sorting
@@ -644,8 +734,6 @@ func (db *eventDB) list(ctx context.Context, req *pb.ListEventsReq, f *filter, j
 
 	query := fmt.Sprintf("SELECT%s%s%s%s ORDER BY %s LIMIT $%d OFFSET $%d",
 		eventColumns, eventFrom, join, where, orderBy, len(args)-1, len(args))
-
-	db.log.Debugw("[DEBUG] list query", "sql", query, "args", args)
 
 	rows, err := db.db.QueryContext(ctx, query, args...)
 	if err != nil {
@@ -669,6 +757,11 @@ func (db *eventDB) list(ctx context.Context, req *pb.ListEventsReq, f *filter, j
 	if err := db.hydrate(ctx, events, false); err != nil {
 		return nil, 0, err
 	}
+	if collapse {
+		if err := db.hydrateUpcomingDates(ctx, events); err != nil {
+			return nil, 0, err
+		}
+	}
 	return events, total, nil
 }
 
@@ -688,7 +781,7 @@ func (db *eventDB) ListEvents(ctx context.Context, req *pb.ListEventsReq) ([]*pb
 	}
 	f.addRaw("e.visibility = 'public'")
 	commonFilters(f, req)
-	return db.list(ctx, req, f, "")
+	return db.list(ctx, req, f, "", collapseDiscoverySeries(req))
 }
 
 // GetGroupEvents lists the events attached to a community. Members (any active
@@ -737,7 +830,7 @@ func (db *eventDB) GetGroupEvents(ctx context.Context, req *pb.ListEventsReq) ([
 	}
 
 	commonFilters(f, req)
-	return db.list(ctx, req, f, "")
+	return db.list(ctx, req, f, "", false)
 }
 
 // GetUserEvents lists events organized by req.Username. Drafts are included
@@ -765,7 +858,7 @@ func (db *eventDB) GetUserEvents(ctx context.Context, req *pb.ListEventsReq) ([]
 	}
 
 	commonFilters(f, req)
-	return db.list(ctx, req, f, "")
+	return db.list(ctx, req, f, "", collapseProfileSeries(req))
 }
 
 // GetUserAttendingEvents lists events the user holds an active RSVP for.
@@ -778,7 +871,7 @@ func (db *eventDB) GetUserAttendingEvents(ctx context.Context, req *pb.ListEvent
 
 	join := ` JOIN event_attendees ea ON ea.event_id = e.id
 			  JOIN user_account au ON au.id = ea.user_id`
-	return db.list(ctx, req, f, join)
+	return db.list(ctx, req, f, join, false)
 }
 
 // isSelf reports whether the account id belongs to the given username.
@@ -798,6 +891,68 @@ func (db *eventDB) isSelf(ctx context.Context, accountID, username string) (bool
 // -----------------------------------------------------------------------------
 // Hydration
 // -----------------------------------------------------------------------------
+
+const maxUpcomingDates = 3
+
+// upcomingDatesQuery loads at most maxUpcomingDates starts per series so a
+// weekly series does not stream every future occurrence into the list path.
+const upcomingDatesQuery = `
+		SELECT series_id, start_time FROM (
+			SELECT series_id, start_time,
+				ROW_NUMBER() OVER (PARTITION BY series_id ORDER BY start_time ASC) AS rn
+			FROM events
+			WHERE series_id = ANY($1)
+			  AND status = ANY($2)
+			  AND end_time >= NOW()
+		) upcoming
+		WHERE rn <= $3`
+
+// hydrateUpcomingDates fills Event.UpcomingDates (max 3 starts) for collapsed
+// series rows so the card can show "Sep 5 · 12 · 19" without extra round trips.
+func (db *eventDB) hydrateUpcomingDates(ctx context.Context, events []*pb.Event) error {
+	seriesIDs := make([]int64, 0)
+	seen := make(map[int64]struct{})
+	bySeries := make(map[int64][]*pb.Event)
+	for _, e := range events {
+		if e.SeriesId == 0 {
+			continue
+		}
+		if _, ok := seen[e.SeriesId]; !ok {
+			seen[e.SeriesId] = struct{}{}
+			seriesIDs = append(seriesIDs, e.SeriesId)
+		}
+		bySeries[e.SeriesId] = append(bySeries[e.SeriesId], e)
+	}
+	if len(seriesIDs) == 0 {
+		return nil
+	}
+
+	rows, err := db.db.QueryContext(ctx, upcomingDatesQuery, seriesIDs, liveStatuses, maxUpcomingDates)
+	if err != nil {
+		return status.Errorf(codes.Internal, "failed to load series dates")
+	}
+	defer rows.Close()
+
+	dates := make(map[int64][]*timestamppb.Timestamp, len(seriesIDs))
+	for rows.Next() {
+		var id int64
+		var start time.Time
+		if err := rows.Scan(&id, &start); err != nil {
+			return status.Errorf(codes.Internal, "failed to load series dates")
+		}
+		dates[id] = append(dates[id], timestamppb.New(start))
+	}
+	if err := rows.Err(); err != nil {
+		return status.Errorf(codes.Internal, "failed to load series dates")
+	}
+
+	for id, evs := range bySeries {
+		for _, e := range evs {
+			e.UpcomingDates = dates[id]
+		}
+	}
+	return nil
+}
 
 // hydrate attaches tags to every event and, when detail is set, also the
 // ticket tiers, co-hosts and reaction tallies. Each attribute is fetched with

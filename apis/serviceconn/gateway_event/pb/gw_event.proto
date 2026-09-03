@@ -3,6 +3,7 @@ syntax = "proto3";
 package event_svc;
 
 import "google/protobuf/timestamp.proto";
+import "google/protobuf/wrappers.proto";
 
 option go_package = "./apis/serviceconn/gateway_event/pb";
 
@@ -74,6 +75,15 @@ message Event {
     // can restore its selected/highlighted state on load. Empty for anonymous
     // callers or when the viewer has not reacted.
     repeated string viewer_reactions = 37;
+    // Human label derived from event_series.recurrence_rule (e.g. "Every week on Sat").
+    // Empty when the event is a one-off. Additive; clients that ignore it stay valid.
+    string recurrence_text = 38;
+    // Next 1–3 occurrence starts on a collapsed discovery/profile card
+    // (representative date plus up to two more). Empty for one-offs and uncollapsed lists.
+    repeated google.protobuf.Timestamp upcoming_dates = 39;
+    // Series offset in hours before each occurrence start (0 = no extra close).
+    // Empty/zero on one-offs; hosts pick Off / 12h / 1d / 3d / 1w.
+    int32 rsvp_close_hours_before = 40;
 }
 
 message ReactionCount {
@@ -238,6 +248,9 @@ message UpdateEventReq {
     int64 venue_id = 20;
     string how_to_find_us = 21;
     repeated EventQuestion questions = 22;
+    // Present on series edits: 0 = Off (clear per-occurrence close). Omitted
+    // on one-off updates so an empty JSON field does not wipe a series window.
+    google.protobuf.Int32Value rsvp_close_hours_before = 23;
 }
 
 // EventActionReq drives the slug-scoped verbs: delete, publish and cancel.
@@ -384,6 +397,9 @@ message RSVPReq {
     // The service only rejects empty answers when required questions exist.
     int32 guest_count = 6;
     repeated RSVPAnswer answers = 7;
+    // this (default) | series. series RSVPs every open future occurrence
+    // in the same series; paid tiers are refused for series scope.
+    string scope = 8;
 }
 
 message RSVPResp {
@@ -548,6 +564,8 @@ message Recurrence {
     repeated string by_day = 3;  // MO,TU,... for weekly
     int32 count = 4;             // stop after N occurrences; 0 = unused
     google.protobuf.Timestamp until = 5;
+    // Hours before each occurrence start to close RSVP. 0 = no extra close.
+    int32 rsvp_close_hours_before = 6;
 }
 
 message CreateSeriesReq {

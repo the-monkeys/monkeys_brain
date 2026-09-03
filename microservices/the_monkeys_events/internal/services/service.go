@@ -27,6 +27,29 @@ type EventService struct {
 	pay   *razorpay
 }
 
+const paidTicketsDisabled = "Paid tickets aren't enabled yet. Add a free ticket, or use ₹0 until payments are turned on."
+
+func (s *EventService) requirePayments(price float64) error {
+	if price <= 0 || s.pay.enabled() {
+		return nil
+	}
+	s.log.Warnw("razorpay disabled")
+	return status.Error(codes.FailedPrecondition, paidTicketsDisabled)
+}
+
+func (s *EventService) rejectIfPaymentsDisabled() error {
+	return s.requirePayments(1)
+}
+
+func hasPaidTier(tiers []*pb.TicketTierInput) bool {
+	for _, t := range tiers {
+		if t != nil && t.Price > 0 {
+			return true
+		}
+	}
+	return false
+}
+
 func NewEventService(db database.EventDB, log *zap.SugaredLogger, cfg *config.Config, qConn *rabbitmq.ConnManager) *EventService {
 	return &EventService{
 		db:    db,
@@ -42,6 +65,11 @@ func NewEventService(db database.EventDB, log *zap.SugaredLogger, cfg *config.Co
 // -----------------------------------------------------------------------------
 
 func (s *EventService) CreateEvent(ctx context.Context, req *pb.CreateEventReq) (*pb.EventResp, error) {
+	if hasPaidTier(req.TicketTiers) {
+		if err := s.rejectIfPaymentsDisabled(); err != nil {
+			return nil, err
+		}
+	}
 	event, err := s.db.CreateEvent(ctx, req)
 	if err != nil {
 		return nil, err
@@ -174,8 +202,8 @@ func listResp(events []*pb.Event, total int32, err error) (*pb.ListEventsResp, e
 // -----------------------------------------------------------------------------
 
 func (s *EventService) CreateTicketTier(ctx context.Context, req *pb.CreateTicketTierReq) (*pb.TicketTierResp, error) {
-	if req.Tier.GetPrice() > 0 && !s.pay.enabled() {
-		return nil, status.Error(codes.FailedPrecondition, "payments are not configured on this deployment")
+	if err := s.requirePayments(req.Tier.GetPrice()); err != nil {
+		return nil, err
 	}
 	tier, err := s.db.CreateTicketTier(ctx, req)
 	if err != nil {
@@ -185,6 +213,9 @@ func (s *EventService) CreateTicketTier(ctx context.Context, req *pb.CreateTicke
 }
 
 func (s *EventService) UpdateTicketTier(ctx context.Context, req *pb.UpdateTicketTierReq) (*pb.TicketTierResp, error) {
+	if err := s.requirePayments(req.Tier.GetPrice()); err != nil {
+		return nil, err
+	}
 	tier, err := s.db.UpdateTicketTier(ctx, req)
 	if err != nil {
 		return nil, err
@@ -268,9 +299,9 @@ func (s *EventService) RSVPEvent(ctx context.Context, req *pb.RSVPReq) (*pb.RSVP
 		})
 
 	case database.RSVPPendingPayment:
-		if !s.pay.enabled() {
+		if err := s.requirePayments(result.AmountDue); err != nil {
 			_ = s.db.ReleaseReservation(ctx, result.AttendeeID)
-			return nil, status.Error(codes.FailedPrecondition, "payments are not configured on this deployment")
+			return nil, err
 		}
 		orderID, err := s.pay.createOrder(ctx, result.AmountDue, result.Currency,
 			fmt.Sprintf("evt-rsvp-%d", result.AttendeeID))
@@ -287,6 +318,10 @@ func (s *EventService) RSVPEvent(ctx context.Context, req *pb.RSVPReq) (*pb.RSVP
 		resp.PaymentOrderId = orderID
 		resp.AmountDue = result.AmountDue
 		resp.RazorpayKeyId = s.cfg.Keys.RazorpayKeyID
+	}
+
+	if msg := database.SeriesRSVPMessage(result.DatesSaved, result.WaitlistedDates); msg != "" {
+		resp.Message = msg
 	}
 
 	return resp, nil
@@ -511,6 +546,11 @@ func (s *EventService) CloneEvent(ctx context.Context, req *pb.CloneEventReq) (*
 }
 
 func (s *EventService) CreateSeries(ctx context.Context, req *pb.CreateSeriesReq) (*pb.EventResp, error) {
+	if hasPaidTier(req.TicketTiers) {
+		if err := s.rejectIfPaymentsDisabled(); err != nil {
+			return nil, err
+		}
+	}
 	occs, rule, err := expandRecurrence(req.Recurrence, req.GetStartTime().AsTime())
 	if err != nil {
 		return nil, err

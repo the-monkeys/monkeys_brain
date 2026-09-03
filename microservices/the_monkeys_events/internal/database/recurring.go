@@ -3,6 +3,7 @@ package database
 import (
 	"context"
 	"database/sql"
+	"fmt"
 	"strings"
 	"time"
 
@@ -23,14 +24,16 @@ const (
 // expansion into concrete datetimes is a service-layer concern; GroupID is 0
 // for a standalone series and is resolved from a slug by the caller.
 type SeriesInput struct {
-	OrganizerAccountID string
-	GroupID            int64
-	Title              string
-	Description        string
-	Timezone           string
-	RecurrenceRule     string
-	RecurrenceStartsAt time.Time
-	RecurrenceEndsAt   *time.Time
+	OrganizerAccountID   string
+	GroupID              int64
+	Title                string
+	Description          string
+	Timezone             string
+	RecurrenceRule       string
+	RecurrenceStartsAt   time.Time
+	RecurrenceEndsAt     *time.Time
+	CoverImage           string
+	RsvpCloseHoursBefore int32
 }
 
 // OccurrenceTemplate carries the event-shaped fields stamped onto every
@@ -83,12 +86,14 @@ func (db *eventDB) CreateSeries(ctx context.Context, in SeriesInput) (int64, err
 		if err := tx.QueryRowContext(ctx, `
 			INSERT INTO event_series (
 				group_id, organizer_id, title, description, timezone,
-				recurrence_rule, recurrence_starts_at, recurrence_ends_at, status
-			) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
+				recurrence_rule, recurrence_starts_at, recurrence_ends_at, status,
+				cover_image, rsvp_close_hours_before
+			) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
 			RETURNING id`,
 			groupID, organizerID, strings.TrimSpace(in.Title), in.Description,
 			defaultTimezone(in.Timezone), in.RecurrenceRule, in.RecurrenceStartsAt,
-			endsAt, seriesActive,
+			endsAt, seriesActive, strings.TrimSpace(in.CoverImage),
+			nullHours(in.RsvpCloseHoursBefore),
 		).Scan(&seriesID); err != nil {
 			return status.Errorf(codes.Internal, "failed to create series: %v", err)
 		}
@@ -123,11 +128,13 @@ func (db *eventDB) GenerateSeriesOccurrences(ctx context.Context, seriesID int64
 		// occurrence is missing and insert it twice.
 		var organizerID int64
 		var groupID sql.NullInt64
-		var title, description, timezone, seriesStatus string
+		var title, description, timezone, seriesStatus, seriesCover string
+		var rsvpCloseHours int32
 		if err := tx.QueryRowContext(ctx, `
-			SELECT organizer_id, group_id, title, COALESCE(description, ''), timezone, status
+			SELECT organizer_id, group_id, title, COALESCE(description, ''), timezone, status,
+			       COALESCE(cover_image, ''), COALESCE(rsvp_close_hours_before, 0)
 			FROM event_series WHERE id = $1 FOR UPDATE`, seriesID,
-		).Scan(&organizerID, &groupID, &title, &description, &timezone, &seriesStatus); err != nil {
+		).Scan(&organizerID, &groupID, &title, &description, &timezone, &seriesStatus, &seriesCover, &rsvpCloseHours); err != nil {
 			if err == sql.ErrNoRows {
 				return status.Error(codes.NotFound, "series not found")
 			}
@@ -135,6 +142,9 @@ func (db *eventDB) GenerateSeriesOccurrences(ctx context.Context, seriesID int64
 		}
 		if seriesStatus == seriesCancelled || seriesStatus == seriesCompleted {
 			return status.Errorf(codes.FailedPrecondition, "series is %s", seriesStatus)
+		}
+		if strings.TrimSpace(tmpl.CoverImage) == "" {
+			tmpl.CoverImage = seriesCover
 		}
 
 		var groupCol any
@@ -160,13 +170,14 @@ func (db *eventDB) GenerateSeriesOccurrences(ctx context.Context, seriesID int64
 					title, description, slug, start_time, end_time, timezone,
 					event_type, location, meeting_link, capacity, cover_image,
 					organizer_id, group_id, visibility, status,
-					series_id, series_occurrence_at, latitude, longitude
-				) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19)
+					series_id, series_occurrence_at, latitude, longitude, rsvp_closes_at
+				) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20)
 				RETURNING id`,
 				title, description, slug, occ, occ.Add(tmpl.Duration), defaultTimezone(timezone),
 				tmpl.EventType, tmpl.Location, tmpl.MeetingLink, tmpl.Capacity, tmpl.CoverImage,
 				organizerID, groupCol, visibility, StatusPublished, seriesID, occ,
 				nullCoord(tmpl.Latitude), nullCoord(tmpl.Longitude),
+				rsvpClosesValue(occ, rsvpCloseHours),
 			).Scan(&eventID); err != nil {
 				return status.Errorf(codes.Internal, "failed to create occurrence: %v", err)
 			}
@@ -246,8 +257,9 @@ func (db *eventDB) UpdateSeriesFutureOccurrences(ctx context.Context, seriesID i
 		}
 
 		var organizerID int64
+		var seriesCover string
 		if err := tx.QueryRowContext(ctx,
-			"SELECT organizer_id FROM event_series WHERE id = $1", seriesID).Scan(&organizerID); err != nil {
+			"SELECT organizer_id, COALESCE(cover_image, '') FROM event_series WHERE id = $1", seriesID).Scan(&organizerID, &seriesCover); err != nil {
 			if err == sql.ErrNoRows {
 				return status.Error(codes.NotFound, "series not found")
 			}
@@ -255,6 +267,9 @@ func (db *eventDB) UpdateSeriesFutureOccurrences(ctx context.Context, seriesID i
 		}
 		if organizerID != actorID {
 			return status.Error(codes.PermissionDenied, "only the series organizer can edit the series")
+		}
+		if strings.TrimSpace(tmpl.CoverImage) == "" {
+			tmpl.CoverImage = seriesCover
 		}
 
 		res, err := tx.ExecContext(ctx, `
@@ -284,6 +299,27 @@ func defaultVisibility(v string) string {
 		return "public"
 	}
 	return v
+}
+
+// applySeriesCover writes the same cover URL onto the series and every
+// occurrence. The URL points at the one v2 object that was uploaded; siblings
+// do not get their own MinIO copies.
+func applySeriesCover(ctx context.Context, tx *sql.Tx, seriesID int64, url string) error {
+	url = strings.TrimSpace(url)
+	if seriesID == 0 || url == "" {
+		return nil
+	}
+	if _, err := tx.ExecContext(ctx,
+		"UPDATE event_series SET cover_image = $1, updated_at = NOW() WHERE id = $2",
+		url, seriesID); err != nil {
+		return status.Error(codes.Internal, "failed to update series cover")
+	}
+	if _, err := tx.ExecContext(ctx,
+		"UPDATE events SET cover_image = $1, updated_at = NOW() WHERE series_id = $2",
+		url, seriesID); err != nil {
+		return status.Error(codes.Internal, "failed to update series cover")
+	}
+	return nil
 }
 
 func (db *eventDB) MaterializeSeries(ctx context.Context, req *pb.CreateSeriesReq, occs []time.Time, rule string) (*pb.Event, error) {
@@ -322,15 +358,26 @@ func (db *eventDB) MaterializeSeries(ctx context.Context, req *pb.CreateSeriesRe
 		}
 	}
 
+	hours := int32(0)
+	if req.Recurrence != nil {
+		hours = req.Recurrence.GetRsvpCloseHoursBefore()
+	}
+	hours, err := normalizeRsvpCloseHours(hours)
+	if err != nil {
+		return nil, err
+	}
+
 	seriesID, err := db.CreateSeries(ctx, SeriesInput{
-		OrganizerAccountID: req.AccountId,
-		GroupID:            groupID,
-		Title:              req.Title,
-		Description:        req.Description,
-		Timezone:           req.Timezone,
-		RecurrenceRule:     rule,
-		RecurrenceStartsAt: req.StartTime.AsTime(),
-		RecurrenceEndsAt:   endsAt,
+		OrganizerAccountID:   req.AccountId,
+		GroupID:              groupID,
+		Title:                req.Title,
+		Description:          req.Description,
+		Timezone:             req.Timezone,
+		RecurrenceRule:       rule,
+		RecurrenceStartsAt:   req.StartTime.AsTime(),
+		RecurrenceEndsAt:     endsAt,
+		CoverImage:           req.CoverImage,
+		RsvpCloseHoursBefore: hours,
 	})
 	if err != nil {
 		return nil, err
@@ -358,4 +405,66 @@ func (db *eventDB) MaterializeSeries(ctx context.Context, req *pb.CreateSeriesRe
 	}
 	event, _, err := db.GetEvent(ctx, slugs[0], req.AccountId)
 	return event, err
+}
+
+// recurrenceText turns a stored RRULE into a short card label. Called only when
+// the event belongs to a series; unknown/empty rules still get a generic line.
+func recurrenceText(rule string) string {
+	freq, interval, byDay := parseRRULE(rule)
+	if freq == "" {
+		return "Part of a recurring series"
+	}
+	n := interval
+	if n < 1 {
+		n = 1
+	}
+	unit := map[string][2]string{
+		"DAILY":   {"day", "days"},
+		"WEEKLY":  {"week", "weeks"},
+		"MONTHLY": {"month", "months"},
+		"YEARLY":  {"year", "years"},
+	}[freq]
+	if unit[0] == "" {
+		return "Part of a recurring series"
+	}
+	var b strings.Builder
+	if n == 1 {
+		b.WriteString("Every ")
+		b.WriteString(unit[0])
+	} else {
+		fmt.Fprintf(&b, "Every %d %s", n, unit[1])
+	}
+	if freq == "WEEKLY" && len(byDay) > 0 {
+		b.WriteString(" on ")
+		b.WriteString(strings.Join(byDay, ", "))
+	}
+	return b.String()
+}
+
+func parseRRULE(rule string) (freq string, interval int, byDay []string) {
+	interval = 1
+	dayName := map[string]string{
+		"MO": "Mon", "TU": "Tue", "WE": "Wed", "TH": "Thu",
+		"FR": "Fri", "SA": "Sat", "SU": "Sun",
+	}
+	for _, part := range strings.Split(rule, ";") {
+		k, v, ok := strings.Cut(strings.TrimSpace(part), "=")
+		if !ok || v == "" {
+			continue
+		}
+		switch strings.ToUpper(k) {
+		case "FREQ":
+			freq = strings.ToUpper(v)
+		case "INTERVAL":
+			fmt.Sscanf(v, "%d", &interval)
+		case "BYDAY":
+			for _, d := range strings.Split(v, ",") {
+				d = strings.ToUpper(strings.TrimSpace(d))
+				if n, ok := dayName[d]; ok {
+					byDay = append(byDay, n)
+				}
+			}
+		}
+	}
+	return freq, interval, byDay
 }
