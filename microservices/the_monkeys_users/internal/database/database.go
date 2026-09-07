@@ -96,6 +96,17 @@ type UserDb interface {
 	DeleteBlogAndReferences(blogId string) error
 	UnFollowAUser(followingUsername, followersUsername string) error
 	UnlikeBlog(username string, blogID string) error
+
+	AdminListUsers(ctx context.Context, q string, limit, offset int32) ([]*pb.AdminUserRow, int32, error)
+	AdminSetUserRole(ctx context.Context, username, role string, actor *pb.AdminActor) error
+	AdminFlagUser(ctx context.Context, username, flagType, reason string, actor *pb.AdminActor) error
+	AdminUnflagUser(ctx context.Context, username, flagType, reason string, actor *pb.AdminActor) error
+	AdminSuspendUser(ctx context.Context, username, reason string, actor *pb.AdminActor) error
+	AdminUserStats(ctx context.Context) (*pb.AdminUserStatsResp, error)
+	AdminListBlogs(ctx context.Context, q, status string, limit, offset int32) ([]*pb.AdminBlogRow, int32, error)
+	AdminBlogStats(ctx context.Context) (*pb.AdminBlogStatsResp, error)
+	AdminMissingBlogIds(ctx context.Context, ids []string) ([]string, error)
+	AdminWriteAudit(ctx context.Context, req *pb.AdminWriteAuditReq) error
 }
 
 type uDBHandler struct {
@@ -407,6 +418,12 @@ func (uh *uDBHandler) DeleteUserProfile(username string) error {
 	_, err = tx.Exec(`DELETE FROM co_author_invites WHERE invitee_id = $1`, id)
 	if err != nil {
 		uh.log.Errorf("Failed to delete co-author invites for user ID %d, error: %+v", id, err)
+		return err
+	}
+
+	_, err = tx.Exec(`DELETE FROM blog_permissions WHERE user_id = $1`, id)
+	if err != nil {
+		uh.log.Errorf("Failed to delete blog permission links for user ID %d, error: %+v", id, err)
 		return err
 	}
 

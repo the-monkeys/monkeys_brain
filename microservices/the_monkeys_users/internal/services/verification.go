@@ -15,6 +15,15 @@ import (
 	timestamp "google.golang.org/protobuf/types/known/timestamppb"
 )
 
+// verificationObjectKey derives the private-bucket CAS key from a checksum.
+// Empty checksum → empty key. Duplicated from gateway storage_v2 (do not import).
+func verificationObjectKey(checksum string) string {
+	if checksum == "" {
+		return ""
+	}
+	return "verifications/sha256/" + checksum
+}
+
 func toPbVerificationRequest(v *models.VerificationRequest) *pb.VerificationRequest {
 	out := &pb.VerificationRequest{
 		Id:               v.Id,
@@ -26,6 +35,9 @@ func toPbVerificationRequest(v *models.VerificationRequest) *pb.VerificationRequ
 		SelfieChecksum:   v.SelfieChecksum.String,
 		IdFrontChecksum:  v.IDFrontChecksum.String,
 		IdBackChecksum:   v.IDBackChecksum.String,
+		SelfieObjectKey:  verificationObjectKey(v.SelfieChecksum.String),
+		IdFrontObjectKey: verificationObjectKey(v.IDFrontChecksum.String),
+		IdBackObjectKey:  verificationObjectKey(v.IDBackChecksum.String),
 		AdditionalInfo:   v.AdditionalInfo.String,
 		ReviewerUsername: v.ReviewerUsername.String,
 		RejectionReason:  v.RejectionReason.String,

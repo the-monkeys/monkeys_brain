@@ -8,6 +8,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/the-monkeys/the_monkeys/apis/serviceconn/gateway_authz/pb"
+	"github.com/the-monkeys/the_monkeys/constants"
 	"go.uber.org/zap"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -55,7 +56,7 @@ func (c *AuthMiddlewareConfig) validateToken(ctx *gin.Context) (*pb.ValidateResp
 		return nil, err
 	}
 
-	res, err := c.svc.Client.Validate(context.Background(), &pb.ValidateRequest{Token: token})
+	res, err := c.svc.Client.Validate(ctx.Request.Context(), &pb.ValidateRequest{Token: token})
 	if err != nil {
 		ctx.AbortWithStatusJSON(http.StatusUnauthorized, Authorization{AuthorizationStatus: false, Error: "unauthorized"})
 		return nil, err
@@ -63,6 +64,7 @@ func (c *AuthMiddlewareConfig) validateToken(ctx *gin.Context) (*pb.ValidateResp
 
 	ctx.Set("userName", res.UserName)
 	ctx.Set("accountId", res.AccountId)
+	ctx.Set("user_role", res.Role)
 	return res, nil
 }
 
@@ -85,7 +87,7 @@ func (c *AuthMiddlewareConfig) AuthOptional(ctx *gin.Context) {
 		return
 	}
 
-	res, err := c.svc.Client.Validate(context.Background(), &pb.ValidateRequest{Token: token})
+	res, err := c.svc.Client.Validate(ctx.Request.Context(), &pb.ValidateRequest{Token: token})
 	if err != nil {
 		ctx.Next()
 		return
@@ -93,6 +95,7 @@ func (c *AuthMiddlewareConfig) AuthOptional(ctx *gin.Context) {
 
 	ctx.Set("userName", res.UserName)
 	ctx.Set("accountId", res.AccountId)
+	ctx.Set("user_role", res.Role)
 	ctx.Next()
 }
 
@@ -183,4 +186,43 @@ func (c *AuthMiddlewareConfig) CheckWriteAccess(ctx *gin.Context) {
 	// TODO: Check if the user can publish access
 	c.log.Infof("The user has write/edit access to the blog!")
 	ctx.Next()
+}
+
+// HasBlogAccess reports whether the optional JWT caller may read an unpublished
+// blog. It never aborts the request (draft GETs must 404, not 401).
+func (c *AuthMiddlewareConfig) HasBlogAccess(ctx *gin.Context, blogID string) bool {
+	if c == nil || c.svc == nil || c.svc.Client == nil {
+		return false
+	}
+	token, err := c.extractToken(ctx)
+	if err != nil {
+		return false
+	}
+	res, err := c.svc.Client.Validate(ctx.Request.Context(), &pb.ValidateRequest{Token: token})
+	if err != nil {
+		return false
+	}
+	accessResp, err := c.svc.Client.CheckAccessLevel(context.Background(), &pb.AccessCheckReq{
+		Email:     res.Email,
+		AccountId: res.AccountId,
+		UserName:  res.UserName,
+		BlogId:    blogID,
+	})
+	if err != nil || accessResp.StatusCode != http.StatusOK {
+		return false
+	}
+	return blogAccessAllowsDraftRead(accessResp.Access)
+}
+
+// blogAccessAllowsDraftRead is true when CheckAccessLevel granted Read or Edit.
+// Authz emits "Read"/"Edit"; constants.PermissionRead is "read". Create alone
+// is the missing-blog create-new path and must not unlock draft GET.
+func blogAccessAllowsDraftRead(access []string) bool {
+	for _, p := range access {
+		switch strings.ToLower(strings.TrimSpace(p)) {
+		case strings.ToLower(constants.PermissionRead), strings.ToLower(constants.PermissionEdit):
+			return true
+		}
+	}
+	return false
 }

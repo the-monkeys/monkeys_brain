@@ -35,6 +35,8 @@ import (
 const (
 	ownerTypeBlog    = "blog"
 	ownerTypeProfile = "profile"
+	ownerTypeEvent   = "event"
+	ownerTypeGroup   = "group"
 )
 
 func ConsumeFromQueue(mgr *rabbitmq.ConnManager, conf config.RabbitMQ, db database.StorageDB, log *zap.SugaredLogger) {
@@ -119,11 +121,19 @@ func consumeQueue(mgr *rabbitmq.ConnManager, queueName string, log *zap.SugaredL
 	}
 }
 
+func minioBucketForObjectKey(publicBucket, verificationBucket, objectKey string) string {
+	if strings.HasPrefix(objectKey, "verifications/") {
+		return verificationBucket
+	}
+	return publicBucket
+}
+
+const defaultVerificationBucket = "the-monkeys-verification"
+
 // softDeleteAssetRefs soft-deletes every active CAS asset reference for the
 // given (ownerType, ownerId). It is a no-op if db is nil or ownerId is blank.
-// The shared physical objects under assets/sha256/... are NEVER removed here;
-// only the storage GC may reclaim them once their active ref count hits zero.
-func softDeleteAssetRefs(db database.StorageDB, log *zap.SugaredLogger, ownerType, ownerId string) {
+// Last-ref GC deletes MinIO objects listed in orphans.
+func softDeleteAssetRefs(db database.StorageDB, log *zap.SugaredLogger, cfg *config.Config, mc *minio.Client, ownerType, ownerId string) {
 	if db == nil || strings.TrimSpace(ownerId) == "" {
 		return
 	}
@@ -138,6 +148,27 @@ func softDeleteAssetRefs(db database.StorageDB, log *zap.SugaredLogger, ownerTyp
 		return
 	}
 	log.Debugw("Soft-deleted asset refs", "owner_type", ownerType, "owner_id", ownerId, "deleted_count", res.GetDeletedCount())
+
+	if mc == nil || cfg == nil {
+		return
+	}
+	verBucket := strings.TrimSpace(cfg.Minio.VerificationBucket)
+	if verBucket == "" {
+		verBucket = defaultVerificationBucket
+	}
+	for _, o := range res.GetOrphans() {
+		if o == nil {
+			continue
+		}
+		key := o.GetObjectKey()
+		if key == "" {
+			continue
+		}
+		bucket := minioBucketForObjectKey(cfg.Minio.Bucket, verBucket, key)
+		if rmErr := mc.RemoveObject(ctx, bucket, key, minio.RemoveObjectOptions{}); rmErr != nil {
+			log.Errorw("Failed to remove orphaned MinIO object", "bucket", bucket, "object_key", key, "err", rmErr)
+		}
+	}
 }
 
 func handleUserAction(user models.TheMonkeysMessage, log *zap.SugaredLogger, cfg *config.Config, mc *minio.Client, db database.StorageDB) {
@@ -204,7 +235,7 @@ func handleUserAction(user models.TheMonkeysMessage, log *zap.SugaredLogger, cfg
 		)
 
 		// 0. Soft-delete CAS asset references owned by this profile.
-		softDeleteAssetRefs(db, log, ownerTypeProfile, user.Username)
+		softDeleteAssetRefs(db, log, cfg, mc, ownerTypeProfile, user.Username)
 
 		// 1. Delete profile folder from MinIO (legacy path-based objects only).
 		if mc != nil && cfg != nil {
@@ -221,7 +252,7 @@ func handleUserAction(user models.TheMonkeysMessage, log *zap.SugaredLogger, cfg
 			log.Debugw("Deleting blog files", "blog_index", i+1, "total", len(user.BlogIds), "blog_id", blogId)
 
 			// Soft-delete CAS asset references owned by this blog.
-			softDeleteAssetRefs(db, log, ownerTypeBlog, blogId)
+			softDeleteAssetRefs(db, log, cfg, mc, ownerTypeBlog, blogId)
 
 			// FS: blogs/{blogId}/ (legacy)
 			if err := DeleteBlogFolder(blogId); err != nil {
@@ -231,7 +262,7 @@ func handleUserAction(user models.TheMonkeysMessage, log *zap.SugaredLogger, cfg
 			}
 
 			// MinIO: posts/{blogId}/ (legacy path-based objects only;
-			// CAS keys live under assets/sha256/... and are untouched).
+			// last-ref GC deletes MinIO objects listed in orphans).
 			if mc != nil && cfg != nil {
 				if err := DeleteMinioBlogFolder(context.Background(), mc, cfg.Minio.Bucket, blogId); err != nil {
 					log.Errorw("Failed to delete blog folder (MinIO)", "blog_id", blogId, "err", err)
@@ -249,7 +280,7 @@ func handleUserAction(user models.TheMonkeysMessage, log *zap.SugaredLogger, cfg
 		log.Debugw("Handling BLOG_DELETE", "blog_id", user.BlogId)
 
 		// Soft-delete every active CAS asset reference owned by this blog.
-		softDeleteAssetRefs(db, log, ownerTypeBlog, user.BlogId)
+		softDeleteAssetRefs(db, log, cfg, mc, ownerTypeBlog, user.BlogId)
 
 		log.Debugw("Deleting blog folder (FS)", "blog_id", user.BlogId)
 		if err := DeleteBlogFolder(user.BlogId); err != nil {
@@ -258,7 +289,7 @@ func handleUserAction(user models.TheMonkeysMessage, log *zap.SugaredLogger, cfg
 			log.Debugw("Deleted blog folder (FS)", "blog_id", user.BlogId)
 		}
 
-		// Legacy posts/{blogId}/ prefix only. CAS keys (assets/sha256/...) are not affected.
+		// Legacy posts/{blogId}/ prefix only. Last-ref GC deletes MinIO objects listed in orphans.
 		if mc != nil && cfg != nil {
 			log.Debugw("Deleting blog folder (MinIO)", "blog_id", user.BlogId, "prefix", "posts/"+user.BlogId+"/")
 			if err := DeleteMinioBlogFolder(context.Background(), mc, cfg.Minio.Bucket, user.BlogId); err != nil {
@@ -269,6 +300,38 @@ func handleUserAction(user models.TheMonkeysMessage, log *zap.SugaredLogger, cfg
 		}
 
 		log.Debugw("BLOG_DELETE done", "blog_id", user.BlogId)
+	case constants.EVENT_DELETE:
+		slug := user.EventSlug
+		log.Debugw("Handling EVENT_DELETE", "event_slug", slug)
+		softDeleteAssetRefs(db, log, cfg, mc, ownerTypeEvent, slug)
+		if prefix, ok := entityStoragePrefix("events", slug); ok && mc != nil && cfg != nil {
+			if err := DeleteMinioPrefix(context.Background(), mc, cfg.Minio.Bucket, prefix); err != nil {
+				log.Errorw("Failed to delete event folder (MinIO)", "event_slug", slug, "err", err)
+			} else {
+				log.Debugw("Deleted event folder (MinIO)", "event_slug", slug, "prefix", prefix)
+			}
+		} else if slug != "" && (mc == nil || cfg == nil) {
+			log.Debugw("EVENT_DELETE skipped MinIO (client not configured)", "event_slug", slug)
+		} else if slug != "" {
+			log.Errorw("EVENT_DELETE rejected unsafe slug", "event_slug", slug)
+		}
+		log.Debugw("EVENT_DELETE done", "event_slug", slug)
+	case constants.GROUP_DELETE:
+		slug := user.GroupSlug
+		log.Debugw("Handling GROUP_DELETE", "group_slug", slug)
+		softDeleteAssetRefs(db, log, cfg, mc, ownerTypeGroup, slug)
+		if prefix, ok := entityStoragePrefix("groups", slug); ok && mc != nil && cfg != nil {
+			if err := DeleteMinioPrefix(context.Background(), mc, cfg.Minio.Bucket, prefix); err != nil {
+				log.Errorw("Failed to delete group folder (MinIO)", "group_slug", slug, "err", err)
+			} else {
+				log.Debugw("Deleted group folder (MinIO)", "group_slug", slug, "prefix", prefix)
+			}
+		} else if slug != "" && (mc == nil || cfg == nil) {
+			log.Debugw("GROUP_DELETE skipped MinIO (client not configured)", "group_slug", slug)
+		} else if slug != "" {
+			log.Errorw("GROUP_DELETE rejected unsafe slug", "group_slug", slug)
+		}
+		log.Debugw("GROUP_DELETE done", "group_slug", slug)
 	default:
 		log.Errorw("Unknown action", "action", user.Action)
 	}

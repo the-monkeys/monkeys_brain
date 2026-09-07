@@ -9,6 +9,7 @@ import (
 	"github.com/the-monkeys/the_monkeys/constants"
 	"github.com/the-monkeys/the_monkeys/microservices/rabbitmq"
 	"github.com/the-monkeys/the_monkeys/microservices/the_monkeys_events/internal/database"
+	"github.com/the-monkeys/the_monkeys/microservices/the_monkeys_events/internal/money"
 	"go.uber.org/zap"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -17,6 +18,9 @@ import (
 // notificationRoutingKey is the index of the notification consumer's key in
 // the shared RabbitMQ routing key list.
 const notificationRoutingKey = 4
+
+// storageRoutingKey is queue/key 0 — the storage consumer (same as account delete).
+const storageRoutingKey = 0
 
 type EventService struct {
 	pb.UnimplementedEventServiceServer
@@ -89,7 +93,42 @@ func (s *EventService) DeleteEvent(ctx context.Context, req *pb.EventActionReq) 
 	if err := s.db.DeleteEvent(ctx, req); err != nil {
 		return nil, err
 	}
+	s.publishStorageDelete(constants.EVENT_DELETE, req.GetSlug(), "")
 	return &pb.BasicResp{Message: "event deleted", Success: true}, nil
+}
+
+func (s *EventService) AdminDeleteEvent(ctx context.Context, req *pb.AdminEventActionReq) (*pb.BasicResp, error) {
+	if err := s.db.AdminDeleteEvent(ctx, req); err != nil {
+		return nil, err
+	}
+	s.publishStorageDelete(constants.EVENT_DELETE, req.GetSlug(), "")
+	return &pb.BasicResp{Message: "event deleted", Success: true}, nil
+}
+
+func (s *EventService) CheckUserEventRemoval(ctx context.Context, req *pb.AccountIdReq) (*pb.UserRemovalCheckResp, error) {
+	slugs, err := s.db.CheckUserEventRemoval(ctx, req.GetAccountId())
+	if err != nil {
+		return nil, err
+	}
+	if len(slugs) == 0 {
+		return &pb.UserRemovalCheckResp{Allowed: true}, nil
+	}
+	return &pb.UserRemovalCheckResp{
+		Allowed:       false,
+		Reason:        "account still has captured or pending event payments; cancel or settle them first",
+		BlockingSlugs: slugs,
+	}, nil
+}
+
+func (s *EventService) RemoveUserFromEvents(ctx context.Context, req *pb.AccountIdReq) (*pb.BasicResp, error) {
+	slugs, err := s.db.RemoveUserFromEvents(ctx, req.GetAccountId())
+	if err != nil {
+		return nil, err
+	}
+	for _, slug := range slugs {
+		s.publishStorageDelete(constants.EVENT_DELETE, slug, "")
+	}
+	return &pb.BasicResp{Message: "user removed from events", Success: true}, nil
 }
 
 // PublishEvent opens the event for RSVPs and tells the organizer's followers.
@@ -151,20 +190,7 @@ func (s *EventService) GetEvent(ctx context.Context, req *pb.GetEventReq) (*pb.E
 	return &pb.EventResp{Event: event, ViewerRsvpStatus: viewerStatus}, nil
 }
 
-// redactForViewer enforces the two things a raw event row does not know about
-// the person reading it: a draft belongs to its hosts, and the join link
-// belongs to people holding a ticket. Handing the link to every visitor on the
-// detail page would make the ticket optional.
-//
-// The gateway rejects most of this earlier, but the check lives here too so
-// the rule holds for any caller that reaches the service directly.
-func (s *EventService) redactForViewer(ctx context.Context, event *pb.Event, accountID, viewerStatus string) error {
-	grant, err := s.db.Authorize(ctx, &pb.AuthorizeReq{AccountId: accountID, EventSlug: event.Slug})
-	if err != nil {
-		return err
-	}
-	isHost := grant.Role == "organizer" || grant.Role == "co_host"
-
+func applyEventRedaction(event *pb.Event, isHost bool, viewerStatus string) error {
 	if event.Status == "draft" && !isHost {
 		return status.Error(codes.NotFound, "event not found")
 	}
@@ -172,6 +198,21 @@ func (s *EventService) redactForViewer(ctx context.Context, event *pb.Event, acc
 		event.MeetingLink = ""
 	}
 	return nil
+}
+
+// redactForViewer enforces the two things a raw event row does not know about
+// the person reading it: a draft belongs to its hosts, and the join link
+// belongs to people holding a ticket. Handing the link to every visitor on the
+// detail page would make the ticket optional.
+//
+// Host standing is organizer match plus a single co-host EXISTS — not the
+// full Authorize RPC used on write paths.
+func (s *EventService) redactForViewer(ctx context.Context, event *pb.Event, accountID, viewerStatus string) error {
+	isHost, err := s.db.ViewerIsHost(ctx, event.Id, event.OrganizerAccountId, accountID)
+	if err != nil {
+		return err
+	}
+	return applyEventRedaction(event, isHost, viewerStatus)
 }
 
 func (s *EventService) ListEvents(ctx context.Context, req *pb.ListEventsReq) (*pb.ListEventsResp, error) {
@@ -303,7 +344,8 @@ func (s *EventService) RSVPEvent(ctx context.Context, req *pb.RSVPReq) (*pb.RSVP
 			_ = s.db.ReleaseReservation(ctx, result.AttendeeID)
 			return nil, err
 		}
-		orderID, err := s.pay.createOrder(ctx, result.AmountDue, result.Currency,
+		duePaise := money.ToPaise(result.AmountDue)
+		orderID, err := s.pay.createOrder(ctx, duePaise, money.CurrencyINR,
 			fmt.Sprintf("evt-rsvp-%d", result.AttendeeID))
 		if err != nil {
 			// Free the held seat so a failed checkout does not block others.
@@ -416,7 +458,7 @@ func (s *EventService) refundAll(ctx context.Context, slug, title string) {
 	}
 
 	for _, refund := range refunds {
-		refundID, err := s.pay.refund(ctx, refund.PaymentID, refund.Amount)
+		refundID, err := s.pay.refund(ctx, refund.PaymentID, refund.AmountPaise)
 		if err != nil {
 			s.log.Errorw("refund failed", "slug", slug, "payment", refund.PaymentID, "err", err)
 			continue
@@ -567,4 +609,69 @@ func (s *EventService) CancelSeriesOccurrence(ctx context.Context, req *pb.Event
 		return nil, err
 	}
 	return &pb.BasicResp{Message: "occurrence cancelled", Success: true}, nil
+}
+
+func (s *EventService) AdminListEventPayments(ctx context.Context, req *pb.AdminListEventPaymentsReq) (*pb.AdminListEventPaymentsResp, error) {
+	return s.db.AdminListEventPayments(ctx, req)
+}
+
+func (s *EventService) AdminGetEventPayments(ctx context.Context, req *pb.AdminGetEventPaymentsReq) (*pb.AdminGetEventPaymentsResp, error) {
+	return s.db.AdminGetEventPayments(ctx, req)
+}
+
+func (s *EventService) AdminCreateSettlement(ctx context.Context, req *pb.AdminCreateSettlementReq) (*pb.AdminSettlementResp, error) {
+	return s.db.AdminCreateSettlement(ctx, req)
+}
+
+func (s *EventService) AdminMarkSettlementPaid(ctx context.Context, req *pb.AdminMarkSettlementPaidReq) (*pb.AdminSettlementResp, error) {
+	return s.db.AdminMarkSettlementPaid(ctx, req)
+}
+
+func (s *EventService) AdminFlagNsfw(ctx context.Context, req *pb.AdminFlagNsfwReq) (*pb.BasicResp, error) {
+	if err := s.db.AdminFlagNsfw(ctx, req); err != nil {
+		return nil, err
+	}
+	return &pb.BasicResp{Message: "flagged", Success: true}, nil
+}
+
+func (s *EventService) AdminHideEventComment(ctx context.Context, req *pb.AdminHideEventCommentReq) (*pb.BasicResp, error) {
+	if err := s.db.AdminHideEventComment(ctx, req); err != nil {
+		return nil, err
+	}
+	return &pb.BasicResp{Message: "comment hidden", Success: true}, nil
+}
+
+func (s *EventService) AdminHideEventQuestion(ctx context.Context, req *pb.AdminHideEventQuestionReq) (*pb.BasicResp, error) {
+	if err := s.db.AdminHideEventQuestion(ctx, req); err != nil {
+		return nil, err
+	}
+	return &pb.BasicResp{Message: "question hidden", Success: true}, nil
+}
+
+func (s *EventService) AdminListEvents(ctx context.Context, req *pb.AdminListEventsReq) (*pb.AdminListEventsResp, error) {
+	return s.db.AdminListEvents(ctx, req)
+}
+
+func (s *EventService) AdminCancelEvent(ctx context.Context, req *pb.AdminEventActionReq) (*pb.EventResp, error) {
+	event, err := s.db.AdminCancelEvent(ctx, req)
+	if err != nil {
+		return nil, err
+	}
+	return &pb.EventResp{Message: "event cancelled", Event: event}, nil
+}
+
+func (s *EventService) AdminUnpublishEvent(ctx context.Context, req *pb.AdminEventActionReq) (*pb.EventResp, error) {
+	event, err := s.db.AdminUnpublishEvent(ctx, req)
+	if err != nil {
+		return nil, err
+	}
+	return &pb.EventResp{Message: "event unpublished", Event: event}, nil
+}
+
+func (s *EventService) AdminEventStats(ctx context.Context, _ *pb.AdminEmpty) (*pb.AdminEventStatsResp, error) {
+	return s.db.AdminEventStats(ctx)
+}
+
+func (s *EventService) AdminPaymentStats(ctx context.Context, _ *pb.AdminEmpty) (*pb.AdminPaymentStatsResp, error) {
+	return s.db.AdminPaymentStats(ctx)
 }

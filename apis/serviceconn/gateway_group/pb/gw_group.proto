@@ -384,4 +384,67 @@ service GroupService {
 
     // Authorization
     rpc Authorize(AuthorizeGroupReq) returns (AuthorizeGroupResp);
+
+    rpc AdminListGroups(AdminListGroupsReq) returns (AdminListGroupsResp);
+    rpc AdminSuspendGroup(AdminSuspendGroupReq) returns (GroupResp);
+    rpc AdminDeleteGroup(AdminSuspendGroupReq) returns (BasicResp);
+    rpc AdminGroupStats(AdminEmpty) returns (AdminGroupStatsResp);
+
+    // Internal: users service asks whether this account's group rows can be
+    // removed (paid-event gate) and then to delete created groups / unlink membership.
+    rpc CheckUserGroupRemoval(AccountIdReq) returns (UserRemovalCheckResp);
+    rpc RemoveUserFromGroups(AccountIdReq) returns (BasicResp);
+}
+
+message AdminEmpty {}
+
+message AdminActor {
+    string username = 1;
+    string account_id = 2;
+    string role = 3;
+    string ip = 4;
+}
+
+message AdminListGroupsReq {
+    int32 limit = 1;
+    int32 offset = 2;
+    string query = 3;
+    string status = 4;
+}
+
+message AdminGroupRow {
+    string slug = 1;
+    string name = 2;
+    string status = 3;
+    string visibility = 4;
+    string organizer_username = 5;
+    int32 member_count = 6;
+}
+
+message AdminListGroupsResp {
+    repeated AdminGroupRow groups = 1;
+    int32 total = 2;
+}
+
+message AdminSuspendGroupReq {
+    string slug = 1;
+    string reason = 2;
+    AdminActor actor = 3;
+}
+
+message AdminGroupStatsResp {
+    int32 draft = 1;
+    int32 published = 2;
+    int32 archived = 3;
+    int32 suspended = 4;
+}
+
+message AccountIdReq {
+    string account_id = 1;
+}
+
+message UserRemovalCheckResp {
+    bool allowed = 1;
+    string reason = 2;
+    repeated string blocking_slugs = 3;
 }

@@ -9,12 +9,26 @@ import (
 
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/the-monkeys/the_monkeys/apis/serviceconn/gateway_event/pb"
+	"github.com/the-monkeys/the_monkeys/microservices/the_monkeys_events/internal/money"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
 const defaultCurrency = "INR"
+
+func normalizeTicketCurrency(price float64, currency string) (string, error) {
+	if currency == "" {
+		currency = money.CurrencyINR
+	}
+	if price > 0 && !strings.EqualFold(currency, money.CurrencyINR) {
+		return "", status.Error(codes.InvalidArgument, "paid tickets must use INR")
+	}
+	if price > 0 {
+		return money.CurrencyINR, nil
+	}
+	return currency, nil
+}
 
 // -----------------------------------------------------------------------------
 // Ticket tiers
@@ -33,9 +47,9 @@ func insertTier(ctx context.Context, q querier, eventID int64, in *pb.TicketTier
 		sortOrder = in.SortOrder
 	}
 
-	currency := in.Currency
-	if currency == "" {
-		currency = defaultCurrency
+	currency, err := normalizeTicketCurrency(in.Price, in.Currency)
+	if err != nil {
+		return nil, err
 	}
 
 	tier := &pb.TicketTier{
@@ -112,9 +126,9 @@ func (db *eventDB) UpdateTicketTier(ctx context.Context, req *pb.UpdateTicketTie
 				"capacity cannot be below the %d tickets already taken", booked)
 		}
 
-		currency := req.Tier.Currency
-		if currency == "" {
-			currency = defaultCurrency
+		currency, err := normalizeTicketCurrency(req.Tier.Price, req.Tier.Currency)
+		if err != nil {
+			return err
 		}
 
 		res, err := tx.ExecContext(ctx, `

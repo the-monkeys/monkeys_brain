@@ -126,6 +126,7 @@ message ValidateResponse {
   string user_name = 4;
   Error error = 5;
   string account_id = 6;
+  string role = 7; // user_role.role_desc: Admin|Owner|Editor|Viewer|Support|Community
 }
 
 message DecodeSignedJWTRequest {

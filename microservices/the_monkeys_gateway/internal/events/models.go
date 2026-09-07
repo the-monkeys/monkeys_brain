@@ -17,6 +17,8 @@ type EventBody struct {
 	Timezone        string     `json:"timezone"`
 	EventType       string     `json:"event_type" binding:"required,oneof=virtual in_person hybrid"`
 	Location        string     `json:"location"`
+	Latitude        float64    `json:"latitude"`
+	Longitude       float64    `json:"longitude"`
 	MeetingLink     string     `json:"meeting_link"`
 	Capacity        int32      `json:"capacity"`
 	CoverImage      string     `json:"cover_image"`

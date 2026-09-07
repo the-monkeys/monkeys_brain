@@ -1,19 +1,25 @@
 package database
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
 	"net/url"
 	"strings"
 	"time"
+
+	"github.com/the-monkeys/the_monkeys/common/geo"
 )
 
 // Geocode converts a free-text location into coordinates via Nominatim.
 // Returns (0, 0) on empty input, miss, or error so callers can store NULL.
-func Geocode(location string) (float64, float64) {
+func Geocode(ctx context.Context, location string) (float64, float64) {
 	if strings.TrimSpace(location) == "" {
 		return 0, 0
+	}
+	if ctx == nil {
+		ctx = context.Background()
 	}
 
 	reqURL := fmt.Sprintf(
@@ -21,7 +27,7 @@ func Geocode(location string) (float64, float64) {
 		url.QueryEscape(location),
 	)
 
-	req, err := http.NewRequest("GET", reqURL, nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, reqURL, nil)
 	if err != nil {
 		return 0, 0
 	}
@@ -52,8 +58,8 @@ func Geocode(location string) (float64, float64) {
 
 // coordsFromPlace uses client-supplied coordinates when present, otherwise
 // geocodes city, region, country.
-func coordsFromPlace(lat, lng float64, city, region, country string) (float64, float64) {
-	if lat != 0 && lng != 0 {
+func coordsFromPlace(ctx context.Context, lat, lng float64, city, region, country string) (float64, float64) {
+	if geo.UseClientPin(lat, lng) {
 		return lat, lng
 	}
 	parts := make([]string, 0, 3)
@@ -62,5 +68,5 @@ func coordsFromPlace(lat, lng float64, city, region, country string) (float64, f
 			parts = append(parts, s)
 		}
 	}
-	return Geocode(strings.Join(parts, ", "))
+	return Geocode(ctx, strings.Join(parts, ", "))
 }

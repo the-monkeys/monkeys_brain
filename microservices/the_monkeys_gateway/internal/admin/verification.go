@@ -1,7 +1,6 @@
 package admin
 
 import (
-	"context"
 	"net/http"
 	"strconv"
 	"strings"
@@ -14,8 +13,7 @@ import (
 
 // ListVerifications handles GET /api/v1/admin/verifications
 // Query params: status (pending|under_review|approved|rejected), limit, offset.
-// Mounted behind LocalNetworkMiddleware + AdminKeyMiddleware at group level,
-// so no JWT role check is needed here.
+// Mounted behind AuthRequired + RequireRole(Admin, Support).
 func (asc *AdminServiceClient) ListVerifications(ctx *gin.Context) {
 	limit, err := strconv.Atoi(ctx.DefaultQuery("limit", "20"))
 	if err != nil || limit < 0 {
@@ -28,7 +26,7 @@ func (asc *AdminServiceClient) ListVerifications(ctx *gin.Context) {
 		return
 	}
 
-	res, gErr := asc.Client.ListVerificationRequests(context.Background(), &pb.ListVerificationReq{
+	res, gErr := asc.Client.ListVerificationRequests(ctx.Request.Context(), &pb.ListVerificationReq{
 		Status: strings.TrimSpace(ctx.Query("status")),
 		Limit:  int32(limit),
 		Offset: int32(offset),
@@ -70,9 +68,15 @@ func (asc *AdminServiceClient) ReviewVerification(ctx *gin.Context) {
 		return
 	}
 
-	res, err := asc.Client.ReviewVerificationRequest(context.Background(), &pb.ReviewVerificationReq{
+	reviewer := strings.TrimSpace(ctx.GetString("userName"))
+	if reviewer == "" {
+		ctx.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"message": "unauthorized"})
+		return
+	}
+
+	res, err := asc.Client.ReviewVerificationRequest(ctx.Request.Context(), &pb.ReviewVerificationReq{
 		RequestId:        requestID,
-		ReviewerUsername: "admin",
+		ReviewerUsername: reviewer,
 		Approve:          body.Approve,
 		RejectionReason:  body.RejectionReason,
 	})

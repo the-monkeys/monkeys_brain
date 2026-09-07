@@ -88,6 +88,7 @@ type ElasticsearchStorage interface {
 	GetBlogsMetadataByQuery(ctx context.Context, queryTexts []string, isDraft bool, limit, offset int32) ([]map[string]interface{}, int, error)
 	GetBlogsMetaByAccountId(ctx context.Context, accountId string, isDraft bool, isSchedule bool, limit, offset int32) ([]map[string]interface{}, int, error)
 	GetBlogsMetaByBlogIdsV2(ctx context.Context, blogIds []string, isDraft bool, limit, offset int32) ([]map[string]interface{}, int, error)
+	ListBlogIDs(ctx context.Context, limit, offset int32) ([]string, int, error)
 }
 
 type elasticsearchStorage struct {
@@ -1374,7 +1375,12 @@ func (es *elasticsearchStorage) DeleteABlogById(ctx context.Context, blogId stri
 		}
 	}()
 
-	// Check if the response indicates an error
+	// 404: document already gone — still a successful delete so callers can
+	// fan out BLOG_DELETE to Postgres and storage (orphan / replay).
+	if deleteResponse.StatusCode == http.StatusNotFound {
+		es.log.Infof("DeleteABlogById: blog %s not in ES (already gone)", blogId)
+		return deleteResponse, nil
+	}
 	if deleteResponse.IsError() {
 		err = fmt.Errorf("DeleteABlogById: delete query failed, response: %+v", deleteResponse)
 		es.log.Error(err)

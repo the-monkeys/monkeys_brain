@@ -19,31 +19,37 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	GroupService_CreateGroup_FullMethodName        = "/group_svc.GroupService/CreateGroup"
-	GroupService_UpdateGroup_FullMethodName        = "/group_svc.GroupService/UpdateGroup"
-	GroupService_DeleteGroup_FullMethodName        = "/group_svc.GroupService/DeleteGroup"
-	GroupService_PublishGroup_FullMethodName       = "/group_svc.GroupService/PublishGroup"
-	GroupService_GetGroup_FullMethodName           = "/group_svc.GroupService/GetGroup"
-	GroupService_ListGroups_FullMethodName         = "/group_svc.GroupService/ListGroups"
-	GroupService_GetUserGroups_FullMethodName      = "/group_svc.GroupService/GetUserGroups"
-	GroupService_JoinGroup_FullMethodName          = "/group_svc.GroupService/JoinGroup"
-	GroupService_LeaveGroup_FullMethodName         = "/group_svc.GroupService/LeaveGroup"
-	GroupService_ListMembers_FullMethodName        = "/group_svc.GroupService/ListMembers"
-	GroupService_UpdateMemberRole_FullMethodName   = "/group_svc.GroupService/UpdateMemberRole"
-	GroupService_RemoveMember_FullMethodName       = "/group_svc.GroupService/RemoveMember"
-	GroupService_BanMember_FullMethodName          = "/group_svc.GroupService/BanMember"
-	GroupService_ApproveJoinRequest_FullMethodName = "/group_svc.GroupService/ApproveJoinRequest"
-	GroupService_RejectJoinRequest_FullMethodName  = "/group_svc.GroupService/RejectJoinRequest"
-	GroupService_AddMember_FullMethodName          = "/group_svc.GroupService/AddMember"
-	GroupService_CreateInvite_FullMethodName       = "/group_svc.GroupService/CreateInvite"
-	GroupService_ListInvites_FullMethodName        = "/group_svc.GroupService/ListInvites"
-	GroupService_RevokeInvite_FullMethodName       = "/group_svc.GroupService/RevokeInvite"
-	GroupService_GetInvite_FullMethodName          = "/group_svc.GroupService/GetInvite"
-	GroupService_AcceptInvite_FullMethodName       = "/group_svc.GroupService/AcceptInvite"
-	GroupService_AddGroupRule_FullMethodName       = "/group_svc.GroupService/AddGroupRule"
-	GroupService_UpdateGroupRule_FullMethodName    = "/group_svc.GroupService/UpdateGroupRule"
-	GroupService_DeleteGroupRule_FullMethodName    = "/group_svc.GroupService/DeleteGroupRule"
-	GroupService_Authorize_FullMethodName          = "/group_svc.GroupService/Authorize"
+	GroupService_CreateGroup_FullMethodName           = "/group_svc.GroupService/CreateGroup"
+	GroupService_UpdateGroup_FullMethodName           = "/group_svc.GroupService/UpdateGroup"
+	GroupService_DeleteGroup_FullMethodName           = "/group_svc.GroupService/DeleteGroup"
+	GroupService_PublishGroup_FullMethodName          = "/group_svc.GroupService/PublishGroup"
+	GroupService_GetGroup_FullMethodName              = "/group_svc.GroupService/GetGroup"
+	GroupService_ListGroups_FullMethodName            = "/group_svc.GroupService/ListGroups"
+	GroupService_GetUserGroups_FullMethodName         = "/group_svc.GroupService/GetUserGroups"
+	GroupService_JoinGroup_FullMethodName             = "/group_svc.GroupService/JoinGroup"
+	GroupService_LeaveGroup_FullMethodName            = "/group_svc.GroupService/LeaveGroup"
+	GroupService_ListMembers_FullMethodName           = "/group_svc.GroupService/ListMembers"
+	GroupService_UpdateMemberRole_FullMethodName      = "/group_svc.GroupService/UpdateMemberRole"
+	GroupService_RemoveMember_FullMethodName          = "/group_svc.GroupService/RemoveMember"
+	GroupService_BanMember_FullMethodName             = "/group_svc.GroupService/BanMember"
+	GroupService_ApproveJoinRequest_FullMethodName    = "/group_svc.GroupService/ApproveJoinRequest"
+	GroupService_RejectJoinRequest_FullMethodName     = "/group_svc.GroupService/RejectJoinRequest"
+	GroupService_AddMember_FullMethodName             = "/group_svc.GroupService/AddMember"
+	GroupService_CreateInvite_FullMethodName          = "/group_svc.GroupService/CreateInvite"
+	GroupService_ListInvites_FullMethodName           = "/group_svc.GroupService/ListInvites"
+	GroupService_RevokeInvite_FullMethodName          = "/group_svc.GroupService/RevokeInvite"
+	GroupService_GetInvite_FullMethodName             = "/group_svc.GroupService/GetInvite"
+	GroupService_AcceptInvite_FullMethodName          = "/group_svc.GroupService/AcceptInvite"
+	GroupService_AddGroupRule_FullMethodName          = "/group_svc.GroupService/AddGroupRule"
+	GroupService_UpdateGroupRule_FullMethodName       = "/group_svc.GroupService/UpdateGroupRule"
+	GroupService_DeleteGroupRule_FullMethodName       = "/group_svc.GroupService/DeleteGroupRule"
+	GroupService_Authorize_FullMethodName             = "/group_svc.GroupService/Authorize"
+	GroupService_AdminListGroups_FullMethodName       = "/group_svc.GroupService/AdminListGroups"
+	GroupService_AdminSuspendGroup_FullMethodName     = "/group_svc.GroupService/AdminSuspendGroup"
+	GroupService_AdminDeleteGroup_FullMethodName      = "/group_svc.GroupService/AdminDeleteGroup"
+	GroupService_AdminGroupStats_FullMethodName       = "/group_svc.GroupService/AdminGroupStats"
+	GroupService_CheckUserGroupRemoval_FullMethodName = "/group_svc.GroupService/CheckUserGroupRemoval"
+	GroupService_RemoveUserFromGroups_FullMethodName  = "/group_svc.GroupService/RemoveUserFromGroups"
 )
 
 // GroupServiceClient is the client API for GroupService service.
@@ -80,6 +86,14 @@ type GroupServiceClient interface {
 	DeleteGroupRule(ctx context.Context, in *GroupRuleActionReq, opts ...grpc.CallOption) (*BasicResp, error)
 	// Authorization
 	Authorize(ctx context.Context, in *AuthorizeGroupReq, opts ...grpc.CallOption) (*AuthorizeGroupResp, error)
+	AdminListGroups(ctx context.Context, in *AdminListGroupsReq, opts ...grpc.CallOption) (*AdminListGroupsResp, error)
+	AdminSuspendGroup(ctx context.Context, in *AdminSuspendGroupReq, opts ...grpc.CallOption) (*GroupResp, error)
+	AdminDeleteGroup(ctx context.Context, in *AdminSuspendGroupReq, opts ...grpc.CallOption) (*BasicResp, error)
+	AdminGroupStats(ctx context.Context, in *AdminEmpty, opts ...grpc.CallOption) (*AdminGroupStatsResp, error)
+	// Internal: users service asks whether this account's group rows can be
+	// removed (paid-event gate) and then to delete created groups / unlink membership.
+	CheckUserGroupRemoval(ctx context.Context, in *AccountIdReq, opts ...grpc.CallOption) (*UserRemovalCheckResp, error)
+	RemoveUserFromGroups(ctx context.Context, in *AccountIdReq, opts ...grpc.CallOption) (*BasicResp, error)
 }
 
 type groupServiceClient struct {
@@ -340,6 +354,66 @@ func (c *groupServiceClient) Authorize(ctx context.Context, in *AuthorizeGroupRe
 	return out, nil
 }
 
+func (c *groupServiceClient) AdminListGroups(ctx context.Context, in *AdminListGroupsReq, opts ...grpc.CallOption) (*AdminListGroupsResp, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(AdminListGroupsResp)
+	err := c.cc.Invoke(ctx, GroupService_AdminListGroups_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *groupServiceClient) AdminSuspendGroup(ctx context.Context, in *AdminSuspendGroupReq, opts ...grpc.CallOption) (*GroupResp, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(GroupResp)
+	err := c.cc.Invoke(ctx, GroupService_AdminSuspendGroup_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *groupServiceClient) AdminDeleteGroup(ctx context.Context, in *AdminSuspendGroupReq, opts ...grpc.CallOption) (*BasicResp, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(BasicResp)
+	err := c.cc.Invoke(ctx, GroupService_AdminDeleteGroup_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *groupServiceClient) AdminGroupStats(ctx context.Context, in *AdminEmpty, opts ...grpc.CallOption) (*AdminGroupStatsResp, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(AdminGroupStatsResp)
+	err := c.cc.Invoke(ctx, GroupService_AdminGroupStats_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *groupServiceClient) CheckUserGroupRemoval(ctx context.Context, in *AccountIdReq, opts ...grpc.CallOption) (*UserRemovalCheckResp, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(UserRemovalCheckResp)
+	err := c.cc.Invoke(ctx, GroupService_CheckUserGroupRemoval_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *groupServiceClient) RemoveUserFromGroups(ctx context.Context, in *AccountIdReq, opts ...grpc.CallOption) (*BasicResp, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(BasicResp)
+	err := c.cc.Invoke(ctx, GroupService_RemoveUserFromGroups_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // GroupServiceServer is the server API for GroupService service.
 // All implementations must embed UnimplementedGroupServiceServer
 // for forward compatibility.
@@ -374,6 +448,14 @@ type GroupServiceServer interface {
 	DeleteGroupRule(context.Context, *GroupRuleActionReq) (*BasicResp, error)
 	// Authorization
 	Authorize(context.Context, *AuthorizeGroupReq) (*AuthorizeGroupResp, error)
+	AdminListGroups(context.Context, *AdminListGroupsReq) (*AdminListGroupsResp, error)
+	AdminSuspendGroup(context.Context, *AdminSuspendGroupReq) (*GroupResp, error)
+	AdminDeleteGroup(context.Context, *AdminSuspendGroupReq) (*BasicResp, error)
+	AdminGroupStats(context.Context, *AdminEmpty) (*AdminGroupStatsResp, error)
+	// Internal: users service asks whether this account's group rows can be
+	// removed (paid-event gate) and then to delete created groups / unlink membership.
+	CheckUserGroupRemoval(context.Context, *AccountIdReq) (*UserRemovalCheckResp, error)
+	RemoveUserFromGroups(context.Context, *AccountIdReq) (*BasicResp, error)
 	mustEmbedUnimplementedGroupServiceServer()
 }
 
@@ -458,6 +540,24 @@ func (UnimplementedGroupServiceServer) DeleteGroupRule(context.Context, *GroupRu
 }
 func (UnimplementedGroupServiceServer) Authorize(context.Context, *AuthorizeGroupReq) (*AuthorizeGroupResp, error) {
 	return nil, status.Error(codes.Unimplemented, "method Authorize not implemented")
+}
+func (UnimplementedGroupServiceServer) AdminListGroups(context.Context, *AdminListGroupsReq) (*AdminListGroupsResp, error) {
+	return nil, status.Error(codes.Unimplemented, "method AdminListGroups not implemented")
+}
+func (UnimplementedGroupServiceServer) AdminSuspendGroup(context.Context, *AdminSuspendGroupReq) (*GroupResp, error) {
+	return nil, status.Error(codes.Unimplemented, "method AdminSuspendGroup not implemented")
+}
+func (UnimplementedGroupServiceServer) AdminDeleteGroup(context.Context, *AdminSuspendGroupReq) (*BasicResp, error) {
+	return nil, status.Error(codes.Unimplemented, "method AdminDeleteGroup not implemented")
+}
+func (UnimplementedGroupServiceServer) AdminGroupStats(context.Context, *AdminEmpty) (*AdminGroupStatsResp, error) {
+	return nil, status.Error(codes.Unimplemented, "method AdminGroupStats not implemented")
+}
+func (UnimplementedGroupServiceServer) CheckUserGroupRemoval(context.Context, *AccountIdReq) (*UserRemovalCheckResp, error) {
+	return nil, status.Error(codes.Unimplemented, "method CheckUserGroupRemoval not implemented")
+}
+func (UnimplementedGroupServiceServer) RemoveUserFromGroups(context.Context, *AccountIdReq) (*BasicResp, error) {
+	return nil, status.Error(codes.Unimplemented, "method RemoveUserFromGroups not implemented")
 }
 func (UnimplementedGroupServiceServer) mustEmbedUnimplementedGroupServiceServer() {}
 func (UnimplementedGroupServiceServer) testEmbeddedByValue()                      {}
@@ -930,6 +1030,114 @@ func _GroupService_Authorize_Handler(srv interface{}, ctx context.Context, dec f
 	return interceptor(ctx, in, info, handler)
 }
 
+func _GroupService_AdminListGroups_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(AdminListGroupsReq)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(GroupServiceServer).AdminListGroups(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: GroupService_AdminListGroups_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(GroupServiceServer).AdminListGroups(ctx, req.(*AdminListGroupsReq))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _GroupService_AdminSuspendGroup_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(AdminSuspendGroupReq)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(GroupServiceServer).AdminSuspendGroup(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: GroupService_AdminSuspendGroup_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(GroupServiceServer).AdminSuspendGroup(ctx, req.(*AdminSuspendGroupReq))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _GroupService_AdminDeleteGroup_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(AdminSuspendGroupReq)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(GroupServiceServer).AdminDeleteGroup(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: GroupService_AdminDeleteGroup_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(GroupServiceServer).AdminDeleteGroup(ctx, req.(*AdminSuspendGroupReq))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _GroupService_AdminGroupStats_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(AdminEmpty)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(GroupServiceServer).AdminGroupStats(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: GroupService_AdminGroupStats_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(GroupServiceServer).AdminGroupStats(ctx, req.(*AdminEmpty))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _GroupService_CheckUserGroupRemoval_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(AccountIdReq)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(GroupServiceServer).CheckUserGroupRemoval(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: GroupService_CheckUserGroupRemoval_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(GroupServiceServer).CheckUserGroupRemoval(ctx, req.(*AccountIdReq))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _GroupService_RemoveUserFromGroups_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(AccountIdReq)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(GroupServiceServer).RemoveUserFromGroups(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: GroupService_RemoveUserFromGroups_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(GroupServiceServer).RemoveUserFromGroups(ctx, req.(*AccountIdReq))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // GroupService_ServiceDesc is the grpc.ServiceDesc for GroupService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -1036,6 +1244,30 @@ var GroupService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "Authorize",
 			Handler:    _GroupService_Authorize_Handler,
+		},
+		{
+			MethodName: "AdminListGroups",
+			Handler:    _GroupService_AdminListGroups_Handler,
+		},
+		{
+			MethodName: "AdminSuspendGroup",
+			Handler:    _GroupService_AdminSuspendGroup_Handler,
+		},
+		{
+			MethodName: "AdminDeleteGroup",
+			Handler:    _GroupService_AdminDeleteGroup_Handler,
+		},
+		{
+			MethodName: "AdminGroupStats",
+			Handler:    _GroupService_AdminGroupStats_Handler,
+		},
+		{
+			MethodName: "CheckUserGroupRemoval",
+			Handler:    _GroupService_CheckUserGroupRemoval_Handler,
+		},
+		{
+			MethodName: "RemoveUserFromGroups",
+			Handler:    _GroupService_RemoveUserFromGroups_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

@@ -266,3 +266,12 @@ func (fs *FileService) ReplaceAssetRef(ctx context.Context, req *pb.ReplaceAsset
 
 	return res, nil
 }
+
+func (fs *FileService) ResolveAssetRead(ctx context.Context, req *pb.ResolveAssetReadReq) (*pb.ResolveAssetReadResp, error) {
+	res, err := fs.db.ResolveAssetRead(ctx, req)
+	if err != nil {
+		fs.log.Errorf("failed to resolve asset read: %v", err)
+		return &pb.ResolveAssetReadResp{NotFound: true}, nil
+	}
+	return res, nil
+}

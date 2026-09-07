@@ -19,43 +19,58 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	EventService_CreateEvent_FullMethodName            = "/event_svc.EventService/CreateEvent"
-	EventService_UpdateEvent_FullMethodName            = "/event_svc.EventService/UpdateEvent"
-	EventService_DeleteEvent_FullMethodName            = "/event_svc.EventService/DeleteEvent"
-	EventService_PublishEvent_FullMethodName           = "/event_svc.EventService/PublishEvent"
-	EventService_CancelEvent_FullMethodName            = "/event_svc.EventService/CancelEvent"
-	EventService_GetEvent_FullMethodName               = "/event_svc.EventService/GetEvent"
-	EventService_ListEvents_FullMethodName             = "/event_svc.EventService/ListEvents"
-	EventService_GetUserEvents_FullMethodName          = "/event_svc.EventService/GetUserEvents"
-	EventService_GetUserAttendingEvents_FullMethodName = "/event_svc.EventService/GetUserAttendingEvents"
-	EventService_GetGroupEvents_FullMethodName         = "/event_svc.EventService/GetGroupEvents"
-	EventService_CreateTicketTier_FullMethodName       = "/event_svc.EventService/CreateTicketTier"
-	EventService_UpdateTicketTier_FullMethodName       = "/event_svc.EventService/UpdateTicketTier"
-	EventService_DeleteTicketTier_FullMethodName       = "/event_svc.EventService/DeleteTicketTier"
-	EventService_CreateCoupon_FullMethodName           = "/event_svc.EventService/CreateCoupon"
-	EventService_ListCoupons_FullMethodName            = "/event_svc.EventService/ListCoupons"
-	EventService_DeleteCoupon_FullMethodName           = "/event_svc.EventService/DeleteCoupon"
-	EventService_ValidateCoupon_FullMethodName         = "/event_svc.EventService/ValidateCoupon"
-	EventService_RSVPEvent_FullMethodName              = "/event_svc.EventService/RSVPEvent"
-	EventService_CancelRSVP_FullMethodName             = "/event_svc.EventService/CancelRSVP"
-	EventService_ProcessPaymentWebhook_FullMethodName  = "/event_svc.EventService/ProcessPaymentWebhook"
-	EventService_GetAttendees_FullMethodName           = "/event_svc.EventService/GetAttendees"
-	EventService_UpdateAttendance_FullMethodName       = "/event_svc.EventService/UpdateAttendance"
-	EventService_SaveEvent_FullMethodName              = "/event_svc.EventService/SaveEvent"
-	EventService_UnsaveEvent_FullMethodName            = "/event_svc.EventService/UnsaveEvent"
-	EventService_AddEventComment_FullMethodName        = "/event_svc.EventService/AddEventComment"
-	EventService_ListEventComments_FullMethodName      = "/event_svc.EventService/ListEventComments"
-	EventService_DeleteEventComment_FullMethodName     = "/event_svc.EventService/DeleteEventComment"
-	EventService_ReactToEvent_FullMethodName           = "/event_svc.EventService/ReactToEvent"
-	EventService_RemoveReaction_FullMethodName         = "/event_svc.EventService/RemoveReaction"
-	EventService_ReportEvent_FullMethodName            = "/event_svc.EventService/ReportEvent"
-	EventService_AddCoHost_FullMethodName              = "/event_svc.EventService/AddCoHost"
-	EventService_RemoveCoHost_FullMethodName           = "/event_svc.EventService/RemoveCoHost"
-	EventService_GetCalendarFile_FullMethodName        = "/event_svc.EventService/GetCalendarFile"
-	EventService_Authorize_FullMethodName              = "/event_svc.EventService/Authorize"
-	EventService_CloneEvent_FullMethodName             = "/event_svc.EventService/CloneEvent"
-	EventService_CreateSeries_FullMethodName           = "/event_svc.EventService/CreateSeries"
-	EventService_CancelSeriesOccurrence_FullMethodName = "/event_svc.EventService/CancelSeriesOccurrence"
+	EventService_CreateEvent_FullMethodName             = "/event_svc.EventService/CreateEvent"
+	EventService_UpdateEvent_FullMethodName             = "/event_svc.EventService/UpdateEvent"
+	EventService_DeleteEvent_FullMethodName             = "/event_svc.EventService/DeleteEvent"
+	EventService_PublishEvent_FullMethodName            = "/event_svc.EventService/PublishEvent"
+	EventService_CancelEvent_FullMethodName             = "/event_svc.EventService/CancelEvent"
+	EventService_GetEvent_FullMethodName                = "/event_svc.EventService/GetEvent"
+	EventService_ListEvents_FullMethodName              = "/event_svc.EventService/ListEvents"
+	EventService_GetUserEvents_FullMethodName           = "/event_svc.EventService/GetUserEvents"
+	EventService_GetUserAttendingEvents_FullMethodName  = "/event_svc.EventService/GetUserAttendingEvents"
+	EventService_GetGroupEvents_FullMethodName          = "/event_svc.EventService/GetGroupEvents"
+	EventService_CreateTicketTier_FullMethodName        = "/event_svc.EventService/CreateTicketTier"
+	EventService_UpdateTicketTier_FullMethodName        = "/event_svc.EventService/UpdateTicketTier"
+	EventService_DeleteTicketTier_FullMethodName        = "/event_svc.EventService/DeleteTicketTier"
+	EventService_CreateCoupon_FullMethodName            = "/event_svc.EventService/CreateCoupon"
+	EventService_ListCoupons_FullMethodName             = "/event_svc.EventService/ListCoupons"
+	EventService_DeleteCoupon_FullMethodName            = "/event_svc.EventService/DeleteCoupon"
+	EventService_ValidateCoupon_FullMethodName          = "/event_svc.EventService/ValidateCoupon"
+	EventService_RSVPEvent_FullMethodName               = "/event_svc.EventService/RSVPEvent"
+	EventService_CancelRSVP_FullMethodName              = "/event_svc.EventService/CancelRSVP"
+	EventService_ProcessPaymentWebhook_FullMethodName   = "/event_svc.EventService/ProcessPaymentWebhook"
+	EventService_GetAttendees_FullMethodName            = "/event_svc.EventService/GetAttendees"
+	EventService_UpdateAttendance_FullMethodName        = "/event_svc.EventService/UpdateAttendance"
+	EventService_SaveEvent_FullMethodName               = "/event_svc.EventService/SaveEvent"
+	EventService_UnsaveEvent_FullMethodName             = "/event_svc.EventService/UnsaveEvent"
+	EventService_AddEventComment_FullMethodName         = "/event_svc.EventService/AddEventComment"
+	EventService_ListEventComments_FullMethodName       = "/event_svc.EventService/ListEventComments"
+	EventService_DeleteEventComment_FullMethodName      = "/event_svc.EventService/DeleteEventComment"
+	EventService_ReactToEvent_FullMethodName            = "/event_svc.EventService/ReactToEvent"
+	EventService_RemoveReaction_FullMethodName          = "/event_svc.EventService/RemoveReaction"
+	EventService_ReportEvent_FullMethodName             = "/event_svc.EventService/ReportEvent"
+	EventService_AddCoHost_FullMethodName               = "/event_svc.EventService/AddCoHost"
+	EventService_RemoveCoHost_FullMethodName            = "/event_svc.EventService/RemoveCoHost"
+	EventService_GetCalendarFile_FullMethodName         = "/event_svc.EventService/GetCalendarFile"
+	EventService_Authorize_FullMethodName               = "/event_svc.EventService/Authorize"
+	EventService_CloneEvent_FullMethodName              = "/event_svc.EventService/CloneEvent"
+	EventService_CreateSeries_FullMethodName            = "/event_svc.EventService/CreateSeries"
+	EventService_CancelSeriesOccurrence_FullMethodName  = "/event_svc.EventService/CancelSeriesOccurrence"
+	EventService_AdminListEventPayments_FullMethodName  = "/event_svc.EventService/AdminListEventPayments"
+	EventService_AdminGetEventPayments_FullMethodName   = "/event_svc.EventService/AdminGetEventPayments"
+	EventService_AdminCreateSettlement_FullMethodName   = "/event_svc.EventService/AdminCreateSettlement"
+	EventService_AdminMarkSettlementPaid_FullMethodName = "/event_svc.EventService/AdminMarkSettlementPaid"
+	EventService_AdminFlagNsfw_FullMethodName           = "/event_svc.EventService/AdminFlagNsfw"
+	EventService_AdminHideEventComment_FullMethodName   = "/event_svc.EventService/AdminHideEventComment"
+	EventService_AdminHideEventQuestion_FullMethodName  = "/event_svc.EventService/AdminHideEventQuestion"
+	EventService_AdminListEvents_FullMethodName         = "/event_svc.EventService/AdminListEvents"
+	EventService_AdminCancelEvent_FullMethodName        = "/event_svc.EventService/AdminCancelEvent"
+	EventService_AdminUnpublishEvent_FullMethodName     = "/event_svc.EventService/AdminUnpublishEvent"
+	EventService_AdminDeleteEvent_FullMethodName        = "/event_svc.EventService/AdminDeleteEvent"
+	EventService_AdminEventStats_FullMethodName         = "/event_svc.EventService/AdminEventStats"
+	EventService_AdminPaymentStats_FullMethodName       = "/event_svc.EventService/AdminPaymentStats"
+	EventService_CheckUserEventRemoval_FullMethodName   = "/event_svc.EventService/CheckUserEventRemoval"
+	EventService_RemoveUserFromEvents_FullMethodName    = "/event_svc.EventService/RemoveUserFromEvents"
 )
 
 // EventServiceClient is the client API for EventService service.
@@ -111,6 +126,24 @@ type EventServiceClient interface {
 	// Recurring series. Occurrences are normal events linked by series_id.
 	CreateSeries(ctx context.Context, in *CreateSeriesReq, opts ...grpc.CallOption) (*EventResp, error)
 	CancelSeriesOccurrence(ctx context.Context, in *EventActionReq, opts ...grpc.CallOption) (*BasicResp, error)
+	// Staff payment ledger (Admin JWT at the gateway). Additive RPCs only.
+	AdminListEventPayments(ctx context.Context, in *AdminListEventPaymentsReq, opts ...grpc.CallOption) (*AdminListEventPaymentsResp, error)
+	AdminGetEventPayments(ctx context.Context, in *AdminGetEventPaymentsReq, opts ...grpc.CallOption) (*AdminGetEventPaymentsResp, error)
+	AdminCreateSettlement(ctx context.Context, in *AdminCreateSettlementReq, opts ...grpc.CallOption) (*AdminSettlementResp, error)
+	AdminMarkSettlementPaid(ctx context.Context, in *AdminMarkSettlementPaidReq, opts ...grpc.CallOption) (*AdminSettlementResp, error)
+	AdminFlagNsfw(ctx context.Context, in *AdminFlagNsfwReq, opts ...grpc.CallOption) (*BasicResp, error)
+	AdminHideEventComment(ctx context.Context, in *AdminHideEventCommentReq, opts ...grpc.CallOption) (*BasicResp, error)
+	AdminHideEventQuestion(ctx context.Context, in *AdminHideEventQuestionReq, opts ...grpc.CallOption) (*BasicResp, error)
+	AdminListEvents(ctx context.Context, in *AdminListEventsReq, opts ...grpc.CallOption) (*AdminListEventsResp, error)
+	AdminCancelEvent(ctx context.Context, in *AdminEventActionReq, opts ...grpc.CallOption) (*EventResp, error)
+	AdminUnpublishEvent(ctx context.Context, in *AdminEventActionReq, opts ...grpc.CallOption) (*EventResp, error)
+	AdminDeleteEvent(ctx context.Context, in *AdminEventActionReq, opts ...grpc.CallOption) (*BasicResp, error)
+	AdminEventStats(ctx context.Context, in *AdminEmpty, opts ...grpc.CallOption) (*AdminEventStatsResp, error)
+	AdminPaymentStats(ctx context.Context, in *AdminEmpty, opts ...grpc.CallOption) (*AdminPaymentStatsResp, error)
+	// Internal: users service asks whether this account's event rows can be
+	// removed (paid-event gate) and then to delete organized events / unlink RSVPs.
+	CheckUserEventRemoval(ctx context.Context, in *AccountIdReq, opts ...grpc.CallOption) (*UserRemovalCheckResp, error)
+	RemoveUserFromEvents(ctx context.Context, in *AccountIdReq, opts ...grpc.CallOption) (*BasicResp, error)
 }
 
 type eventServiceClient struct {
@@ -491,6 +524,156 @@ func (c *eventServiceClient) CancelSeriesOccurrence(ctx context.Context, in *Eve
 	return out, nil
 }
 
+func (c *eventServiceClient) AdminListEventPayments(ctx context.Context, in *AdminListEventPaymentsReq, opts ...grpc.CallOption) (*AdminListEventPaymentsResp, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(AdminListEventPaymentsResp)
+	err := c.cc.Invoke(ctx, EventService_AdminListEventPayments_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *eventServiceClient) AdminGetEventPayments(ctx context.Context, in *AdminGetEventPaymentsReq, opts ...grpc.CallOption) (*AdminGetEventPaymentsResp, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(AdminGetEventPaymentsResp)
+	err := c.cc.Invoke(ctx, EventService_AdminGetEventPayments_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *eventServiceClient) AdminCreateSettlement(ctx context.Context, in *AdminCreateSettlementReq, opts ...grpc.CallOption) (*AdminSettlementResp, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(AdminSettlementResp)
+	err := c.cc.Invoke(ctx, EventService_AdminCreateSettlement_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *eventServiceClient) AdminMarkSettlementPaid(ctx context.Context, in *AdminMarkSettlementPaidReq, opts ...grpc.CallOption) (*AdminSettlementResp, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(AdminSettlementResp)
+	err := c.cc.Invoke(ctx, EventService_AdminMarkSettlementPaid_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *eventServiceClient) AdminFlagNsfw(ctx context.Context, in *AdminFlagNsfwReq, opts ...grpc.CallOption) (*BasicResp, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(BasicResp)
+	err := c.cc.Invoke(ctx, EventService_AdminFlagNsfw_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *eventServiceClient) AdminHideEventComment(ctx context.Context, in *AdminHideEventCommentReq, opts ...grpc.CallOption) (*BasicResp, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(BasicResp)
+	err := c.cc.Invoke(ctx, EventService_AdminHideEventComment_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *eventServiceClient) AdminHideEventQuestion(ctx context.Context, in *AdminHideEventQuestionReq, opts ...grpc.CallOption) (*BasicResp, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(BasicResp)
+	err := c.cc.Invoke(ctx, EventService_AdminHideEventQuestion_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *eventServiceClient) AdminListEvents(ctx context.Context, in *AdminListEventsReq, opts ...grpc.CallOption) (*AdminListEventsResp, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(AdminListEventsResp)
+	err := c.cc.Invoke(ctx, EventService_AdminListEvents_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *eventServiceClient) AdminCancelEvent(ctx context.Context, in *AdminEventActionReq, opts ...grpc.CallOption) (*EventResp, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(EventResp)
+	err := c.cc.Invoke(ctx, EventService_AdminCancelEvent_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *eventServiceClient) AdminUnpublishEvent(ctx context.Context, in *AdminEventActionReq, opts ...grpc.CallOption) (*EventResp, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(EventResp)
+	err := c.cc.Invoke(ctx, EventService_AdminUnpublishEvent_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *eventServiceClient) AdminDeleteEvent(ctx context.Context, in *AdminEventActionReq, opts ...grpc.CallOption) (*BasicResp, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(BasicResp)
+	err := c.cc.Invoke(ctx, EventService_AdminDeleteEvent_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *eventServiceClient) AdminEventStats(ctx context.Context, in *AdminEmpty, opts ...grpc.CallOption) (*AdminEventStatsResp, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(AdminEventStatsResp)
+	err := c.cc.Invoke(ctx, EventService_AdminEventStats_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *eventServiceClient) AdminPaymentStats(ctx context.Context, in *AdminEmpty, opts ...grpc.CallOption) (*AdminPaymentStatsResp, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(AdminPaymentStatsResp)
+	err := c.cc.Invoke(ctx, EventService_AdminPaymentStats_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *eventServiceClient) CheckUserEventRemoval(ctx context.Context, in *AccountIdReq, opts ...grpc.CallOption) (*UserRemovalCheckResp, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(UserRemovalCheckResp)
+	err := c.cc.Invoke(ctx, EventService_CheckUserEventRemoval_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *eventServiceClient) RemoveUserFromEvents(ctx context.Context, in *AccountIdReq, opts ...grpc.CallOption) (*BasicResp, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(BasicResp)
+	err := c.cc.Invoke(ctx, EventService_RemoveUserFromEvents_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // EventServiceServer is the server API for EventService service.
 // All implementations must embed UnimplementedEventServiceServer
 // for forward compatibility.
@@ -544,6 +727,24 @@ type EventServiceServer interface {
 	// Recurring series. Occurrences are normal events linked by series_id.
 	CreateSeries(context.Context, *CreateSeriesReq) (*EventResp, error)
 	CancelSeriesOccurrence(context.Context, *EventActionReq) (*BasicResp, error)
+	// Staff payment ledger (Admin JWT at the gateway). Additive RPCs only.
+	AdminListEventPayments(context.Context, *AdminListEventPaymentsReq) (*AdminListEventPaymentsResp, error)
+	AdminGetEventPayments(context.Context, *AdminGetEventPaymentsReq) (*AdminGetEventPaymentsResp, error)
+	AdminCreateSettlement(context.Context, *AdminCreateSettlementReq) (*AdminSettlementResp, error)
+	AdminMarkSettlementPaid(context.Context, *AdminMarkSettlementPaidReq) (*AdminSettlementResp, error)
+	AdminFlagNsfw(context.Context, *AdminFlagNsfwReq) (*BasicResp, error)
+	AdminHideEventComment(context.Context, *AdminHideEventCommentReq) (*BasicResp, error)
+	AdminHideEventQuestion(context.Context, *AdminHideEventQuestionReq) (*BasicResp, error)
+	AdminListEvents(context.Context, *AdminListEventsReq) (*AdminListEventsResp, error)
+	AdminCancelEvent(context.Context, *AdminEventActionReq) (*EventResp, error)
+	AdminUnpublishEvent(context.Context, *AdminEventActionReq) (*EventResp, error)
+	AdminDeleteEvent(context.Context, *AdminEventActionReq) (*BasicResp, error)
+	AdminEventStats(context.Context, *AdminEmpty) (*AdminEventStatsResp, error)
+	AdminPaymentStats(context.Context, *AdminEmpty) (*AdminPaymentStatsResp, error)
+	// Internal: users service asks whether this account's event rows can be
+	// removed (paid-event gate) and then to delete organized events / unlink RSVPs.
+	CheckUserEventRemoval(context.Context, *AccountIdReq) (*UserRemovalCheckResp, error)
+	RemoveUserFromEvents(context.Context, *AccountIdReq) (*BasicResp, error)
 	mustEmbedUnimplementedEventServiceServer()
 }
 
@@ -664,6 +865,51 @@ func (UnimplementedEventServiceServer) CreateSeries(context.Context, *CreateSeri
 }
 func (UnimplementedEventServiceServer) CancelSeriesOccurrence(context.Context, *EventActionReq) (*BasicResp, error) {
 	return nil, status.Error(codes.Unimplemented, "method CancelSeriesOccurrence not implemented")
+}
+func (UnimplementedEventServiceServer) AdminListEventPayments(context.Context, *AdminListEventPaymentsReq) (*AdminListEventPaymentsResp, error) {
+	return nil, status.Error(codes.Unimplemented, "method AdminListEventPayments not implemented")
+}
+func (UnimplementedEventServiceServer) AdminGetEventPayments(context.Context, *AdminGetEventPaymentsReq) (*AdminGetEventPaymentsResp, error) {
+	return nil, status.Error(codes.Unimplemented, "method AdminGetEventPayments not implemented")
+}
+func (UnimplementedEventServiceServer) AdminCreateSettlement(context.Context, *AdminCreateSettlementReq) (*AdminSettlementResp, error) {
+	return nil, status.Error(codes.Unimplemented, "method AdminCreateSettlement not implemented")
+}
+func (UnimplementedEventServiceServer) AdminMarkSettlementPaid(context.Context, *AdminMarkSettlementPaidReq) (*AdminSettlementResp, error) {
+	return nil, status.Error(codes.Unimplemented, "method AdminMarkSettlementPaid not implemented")
+}
+func (UnimplementedEventServiceServer) AdminFlagNsfw(context.Context, *AdminFlagNsfwReq) (*BasicResp, error) {
+	return nil, status.Error(codes.Unimplemented, "method AdminFlagNsfw not implemented")
+}
+func (UnimplementedEventServiceServer) AdminHideEventComment(context.Context, *AdminHideEventCommentReq) (*BasicResp, error) {
+	return nil, status.Error(codes.Unimplemented, "method AdminHideEventComment not implemented")
+}
+func (UnimplementedEventServiceServer) AdminHideEventQuestion(context.Context, *AdminHideEventQuestionReq) (*BasicResp, error) {
+	return nil, status.Error(codes.Unimplemented, "method AdminHideEventQuestion not implemented")
+}
+func (UnimplementedEventServiceServer) AdminListEvents(context.Context, *AdminListEventsReq) (*AdminListEventsResp, error) {
+	return nil, status.Error(codes.Unimplemented, "method AdminListEvents not implemented")
+}
+func (UnimplementedEventServiceServer) AdminCancelEvent(context.Context, *AdminEventActionReq) (*EventResp, error) {
+	return nil, status.Error(codes.Unimplemented, "method AdminCancelEvent not implemented")
+}
+func (UnimplementedEventServiceServer) AdminUnpublishEvent(context.Context, *AdminEventActionReq) (*EventResp, error) {
+	return nil, status.Error(codes.Unimplemented, "method AdminUnpublishEvent not implemented")
+}
+func (UnimplementedEventServiceServer) AdminDeleteEvent(context.Context, *AdminEventActionReq) (*BasicResp, error) {
+	return nil, status.Error(codes.Unimplemented, "method AdminDeleteEvent not implemented")
+}
+func (UnimplementedEventServiceServer) AdminEventStats(context.Context, *AdminEmpty) (*AdminEventStatsResp, error) {
+	return nil, status.Error(codes.Unimplemented, "method AdminEventStats not implemented")
+}
+func (UnimplementedEventServiceServer) AdminPaymentStats(context.Context, *AdminEmpty) (*AdminPaymentStatsResp, error) {
+	return nil, status.Error(codes.Unimplemented, "method AdminPaymentStats not implemented")
+}
+func (UnimplementedEventServiceServer) CheckUserEventRemoval(context.Context, *AccountIdReq) (*UserRemovalCheckResp, error) {
+	return nil, status.Error(codes.Unimplemented, "method CheckUserEventRemoval not implemented")
+}
+func (UnimplementedEventServiceServer) RemoveUserFromEvents(context.Context, *AccountIdReq) (*BasicResp, error) {
+	return nil, status.Error(codes.Unimplemented, "method RemoveUserFromEvents not implemented")
 }
 func (UnimplementedEventServiceServer) mustEmbedUnimplementedEventServiceServer() {}
 func (UnimplementedEventServiceServer) testEmbeddedByValue()                      {}
@@ -1352,6 +1598,276 @@ func _EventService_CancelSeriesOccurrence_Handler(srv interface{}, ctx context.C
 	return interceptor(ctx, in, info, handler)
 }
 
+func _EventService_AdminListEventPayments_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(AdminListEventPaymentsReq)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(EventServiceServer).AdminListEventPayments(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: EventService_AdminListEventPayments_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(EventServiceServer).AdminListEventPayments(ctx, req.(*AdminListEventPaymentsReq))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _EventService_AdminGetEventPayments_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(AdminGetEventPaymentsReq)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(EventServiceServer).AdminGetEventPayments(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: EventService_AdminGetEventPayments_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(EventServiceServer).AdminGetEventPayments(ctx, req.(*AdminGetEventPaymentsReq))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _EventService_AdminCreateSettlement_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(AdminCreateSettlementReq)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(EventServiceServer).AdminCreateSettlement(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: EventService_AdminCreateSettlement_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(EventServiceServer).AdminCreateSettlement(ctx, req.(*AdminCreateSettlementReq))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _EventService_AdminMarkSettlementPaid_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(AdminMarkSettlementPaidReq)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(EventServiceServer).AdminMarkSettlementPaid(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: EventService_AdminMarkSettlementPaid_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(EventServiceServer).AdminMarkSettlementPaid(ctx, req.(*AdminMarkSettlementPaidReq))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _EventService_AdminFlagNsfw_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(AdminFlagNsfwReq)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(EventServiceServer).AdminFlagNsfw(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: EventService_AdminFlagNsfw_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(EventServiceServer).AdminFlagNsfw(ctx, req.(*AdminFlagNsfwReq))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _EventService_AdminHideEventComment_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(AdminHideEventCommentReq)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(EventServiceServer).AdminHideEventComment(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: EventService_AdminHideEventComment_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(EventServiceServer).AdminHideEventComment(ctx, req.(*AdminHideEventCommentReq))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _EventService_AdminHideEventQuestion_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(AdminHideEventQuestionReq)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(EventServiceServer).AdminHideEventQuestion(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: EventService_AdminHideEventQuestion_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(EventServiceServer).AdminHideEventQuestion(ctx, req.(*AdminHideEventQuestionReq))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _EventService_AdminListEvents_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(AdminListEventsReq)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(EventServiceServer).AdminListEvents(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: EventService_AdminListEvents_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(EventServiceServer).AdminListEvents(ctx, req.(*AdminListEventsReq))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _EventService_AdminCancelEvent_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(AdminEventActionReq)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(EventServiceServer).AdminCancelEvent(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: EventService_AdminCancelEvent_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(EventServiceServer).AdminCancelEvent(ctx, req.(*AdminEventActionReq))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _EventService_AdminUnpublishEvent_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(AdminEventActionReq)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(EventServiceServer).AdminUnpublishEvent(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: EventService_AdminUnpublishEvent_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(EventServiceServer).AdminUnpublishEvent(ctx, req.(*AdminEventActionReq))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _EventService_AdminDeleteEvent_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(AdminEventActionReq)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(EventServiceServer).AdminDeleteEvent(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: EventService_AdminDeleteEvent_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(EventServiceServer).AdminDeleteEvent(ctx, req.(*AdminEventActionReq))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _EventService_AdminEventStats_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(AdminEmpty)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(EventServiceServer).AdminEventStats(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: EventService_AdminEventStats_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(EventServiceServer).AdminEventStats(ctx, req.(*AdminEmpty))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _EventService_AdminPaymentStats_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(AdminEmpty)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(EventServiceServer).AdminPaymentStats(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: EventService_AdminPaymentStats_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(EventServiceServer).AdminPaymentStats(ctx, req.(*AdminEmpty))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _EventService_CheckUserEventRemoval_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(AccountIdReq)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(EventServiceServer).CheckUserEventRemoval(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: EventService_CheckUserEventRemoval_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(EventServiceServer).CheckUserEventRemoval(ctx, req.(*AccountIdReq))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _EventService_RemoveUserFromEvents_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(AccountIdReq)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(EventServiceServer).RemoveUserFromEvents(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: EventService_RemoveUserFromEvents_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(EventServiceServer).RemoveUserFromEvents(ctx, req.(*AccountIdReq))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // EventService_ServiceDesc is the grpc.ServiceDesc for EventService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -1506,6 +2022,66 @@ var EventService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "CancelSeriesOccurrence",
 			Handler:    _EventService_CancelSeriesOccurrence_Handler,
+		},
+		{
+			MethodName: "AdminListEventPayments",
+			Handler:    _EventService_AdminListEventPayments_Handler,
+		},
+		{
+			MethodName: "AdminGetEventPayments",
+			Handler:    _EventService_AdminGetEventPayments_Handler,
+		},
+		{
+			MethodName: "AdminCreateSettlement",
+			Handler:    _EventService_AdminCreateSettlement_Handler,
+		},
+		{
+			MethodName: "AdminMarkSettlementPaid",
+			Handler:    _EventService_AdminMarkSettlementPaid_Handler,
+		},
+		{
+			MethodName: "AdminFlagNsfw",
+			Handler:    _EventService_AdminFlagNsfw_Handler,
+		},
+		{
+			MethodName: "AdminHideEventComment",
+			Handler:    _EventService_AdminHideEventComment_Handler,
+		},
+		{
+			MethodName: "AdminHideEventQuestion",
+			Handler:    _EventService_AdminHideEventQuestion_Handler,
+		},
+		{
+			MethodName: "AdminListEvents",
+			Handler:    _EventService_AdminListEvents_Handler,
+		},
+		{
+			MethodName: "AdminCancelEvent",
+			Handler:    _EventService_AdminCancelEvent_Handler,
+		},
+		{
+			MethodName: "AdminUnpublishEvent",
+			Handler:    _EventService_AdminUnpublishEvent_Handler,
+		},
+		{
+			MethodName: "AdminDeleteEvent",
+			Handler:    _EventService_AdminDeleteEvent_Handler,
+		},
+		{
+			MethodName: "AdminEventStats",
+			Handler:    _EventService_AdminEventStats_Handler,
+		},
+		{
+			MethodName: "AdminPaymentStats",
+			Handler:    _EventService_AdminPaymentStats_Handler,
+		},
+		{
+			MethodName: "CheckUserEventRemoval",
+			Handler:    _EventService_CheckUserEventRemoval_Handler,
+		},
+		{
+			MethodName: "RemoveUserFromEvents",
+			Handler:    _EventService_RemoveUserFromEvents_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

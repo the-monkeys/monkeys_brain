@@ -7,22 +7,13 @@ import (
 	"testing"
 )
 
-func TestToPaiseRoundsToMinorUnit(t *testing.T) {
-	cases := []struct {
-		amount float64
-		want   int64
-	}{
-		{amount: 0, want: 0},
-		{amount: 1, want: 100},
-		{amount: 1.234, want: 123},
-		{amount: 1.235, want: 124},
-		{amount: 199.99, want: 19999},
+func TestOrderPayloadSendsPaise(t *testing.T) {
+	body := orderPayload(100000, "INR", "evt-rsvp-1")
+	if body["amount"] != int64(100000) {
+		t.Fatalf("amount = %v, want 100000 paise", body["amount"])
 	}
-
-	for _, tc := range cases {
-		if got := toPaise(tc.amount); got != tc.want {
-			t.Fatalf("toPaise(%v) = %d, want %d", tc.amount, got, tc.want)
-		}
+	if body["currency"] != "INR" {
+		t.Fatalf("currency = %v", body["currency"])
 	}
 }
 

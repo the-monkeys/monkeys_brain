@@ -221,6 +221,8 @@ message CreateEventReq {
     int64 venue_id = 22;
     string how_to_find_us = 23;
     repeated EventQuestion questions = 24;
+    double latitude = 25;
+    double longitude = 26;
 }
 
 message UpdateEventReq {
@@ -251,6 +253,8 @@ message UpdateEventReq {
     // Present on series edits: 0 = Off (clear per-occurrence close). Omitted
     // on one-off updates so an empty JSON field does not wipe a series window.
     google.protobuf.Int32Value rsvp_close_hours_before = 23;
+    double latitude = 24;
+    double longitude = 25;
 }
 
 // EventActionReq drives the slug-scoped verbs: delete, publish and cancel.
@@ -586,6 +590,8 @@ message CreateSeriesReq {
     string visibility = 15;
     Recurrence recurrence = 16;
     ClientInfo client_info = 17;
+    double latitude = 18;
+    double longitude = 19;
 }
 
 // -----------------------------------------------------------------------------
@@ -653,4 +659,180 @@ service EventService {
     // Recurring series. Occurrences are normal events linked by series_id.
     rpc CreateSeries(CreateSeriesReq) returns (EventResp);
     rpc CancelSeriesOccurrence(EventActionReq) returns (BasicResp);
+
+    // Staff payment ledger (Admin JWT at the gateway). Additive RPCs only.
+    rpc AdminListEventPayments(AdminListEventPaymentsReq) returns (AdminListEventPaymentsResp);
+    rpc AdminGetEventPayments(AdminGetEventPaymentsReq) returns (AdminGetEventPaymentsResp);
+    rpc AdminCreateSettlement(AdminCreateSettlementReq) returns (AdminSettlementResp);
+    rpc AdminMarkSettlementPaid(AdminMarkSettlementPaidReq) returns (AdminSettlementResp);
+    rpc AdminFlagNsfw(AdminFlagNsfwReq) returns (BasicResp);
+    rpc AdminHideEventComment(AdminHideEventCommentReq) returns (BasicResp);
+    rpc AdminHideEventQuestion(AdminHideEventQuestionReq) returns (BasicResp);
+    rpc AdminListEvents(AdminListEventsReq) returns (AdminListEventsResp);
+    rpc AdminCancelEvent(AdminEventActionReq) returns (EventResp);
+    rpc AdminUnpublishEvent(AdminEventActionReq) returns (EventResp);
+    rpc AdminDeleteEvent(AdminEventActionReq) returns (BasicResp);
+    rpc AdminEventStats(AdminEmpty) returns (AdminEventStatsResp);
+    rpc AdminPaymentStats(AdminEmpty) returns (AdminPaymentStatsResp);
+
+    // Internal: users service asks whether this account's event rows can be
+    // removed (paid-event gate) and then to delete organized events / unlink RSVPs.
+    rpc CheckUserEventRemoval(AccountIdReq) returns (UserRemovalCheckResp);
+    rpc RemoveUserFromEvents(AccountIdReq) returns (BasicResp);
+}
+
+message MoneyINR {
+    int64 paise = 1;
+    string inr = 2;
+}
+
+message AdminEventPaymentSummary {
+    int64 event_id = 1;
+    string slug = 2;
+    string title = 3;
+    string organizer_username = 4;
+    google.protobuf.Timestamp start_time = 5;
+    MoneyINR gross_captured = 6;
+    MoneyINR platform_fee = 7;
+    MoneyINR gst = 8;
+    MoneyINR host_payable_captured = 9;
+    MoneyINR refunded_gross = 10;
+    MoneyINR settled = 11;
+    MoneyINR open_payable = 12;
+}
+
+message AdminListEventPaymentsReq {
+    int32 limit = 1;
+    int32 offset = 2;
+    string query = 3;
+    string status = 4;
+}
+
+message AdminListEventPaymentsResp {
+    repeated AdminEventPaymentSummary events = 1;
+    int32 total = 2;
+}
+
+message AdminGetEventPaymentsReq { string slug = 1; }
+
+message AdminPaymentLine {
+    string attendee_username = 1;
+    string razorpay_order_id = 2;
+    string razorpay_payment_id = 3;
+    string status = 4;
+    MoneyINR gross = 5;
+    MoneyINR platform_fee = 6;
+    MoneyINR gst = 7;
+    MoneyINR host_payable = 8;
+}
+
+message AdminSettlementLine {
+    int64 id = 1;
+    MoneyINR payable = 2;
+    string status = 3;
+    string note = 4;
+}
+
+message AdminGetEventPaymentsResp {
+    AdminEventPaymentSummary event = 1;
+    repeated AdminPaymentLine payments = 2;
+    repeated AdminSettlementLine settlements = 3;
+}
+
+message AdminActor {
+    string username = 1;
+    string account_id = 2;
+    string role = 3;
+    string ip = 4;
+}
+
+message AdminCreateSettlementReq {
+    string slug = 1;
+    string note = 2;
+    AdminActor actor = 3;
+}
+
+message AdminMarkSettlementPaidReq {
+    int64 settlement_id = 1;
+    string note = 2;
+    AdminActor actor = 3;
+}
+
+message AdminSettlementResp {
+    AdminSettlementLine settlement = 1;
+    string error = 2;
+}
+
+message AdminFlagNsfwReq {
+    string entity_type = 1; // event|blog|group|user
+    string entity_id = 2;   // slug, blog_id, username/account_id
+    string reason = 3;
+    AdminActor actor = 4;
+}
+
+message AdminHideEventCommentReq {
+    string event_slug = 1;
+    int64 comment_id = 2;
+    AdminActor actor = 3;
+}
+
+message AdminHideEventQuestionReq {
+    string event_slug = 1;
+    int64 question_id = 2;
+    AdminActor actor = 3;
+}
+
+message AdminEmpty {}
+
+message AdminListEventsReq {
+    int32 limit = 1;
+    int32 offset = 2;
+    string query = 3;
+    string status = 4;
+    string group_slug = 5;
+}
+
+message AdminEventRow {
+    string slug = 1;
+    string title = 2;
+    string status = 3;
+    string organizer_username = 4;
+    string group_slug = 5;
+    google.protobuf.Timestamp start_time = 6;
+}
+
+message AdminListEventsResp {
+    repeated AdminEventRow events = 1;
+    int32 total = 2;
+}
+
+message AdminEventActionReq {
+    string slug = 1;
+    AdminActor actor = 2;
+}
+
+message AdminEventStatsResp {
+    int32 draft = 1;
+    int32 published = 2;
+    int32 live = 3;
+    int32 completed = 4;
+    int32 cancelled = 5;
+}
+
+message AdminPaymentStatsResp {
+    int64 captured_gross_paise = 1;
+    int64 platform_fee_paise = 2;
+    int64 gst_paise = 3;
+    int64 host_payable_open_paise = 4;
+    int64 refunded_gross_paise = 5;
+}
+
+message AccountIdReq {
+    string account_id = 1;
+}
+
+message UserRemovalCheckResp {
+    bool allowed = 1;
+    string reason = 2;
+    repeated string blocking_slugs = 3;
 }

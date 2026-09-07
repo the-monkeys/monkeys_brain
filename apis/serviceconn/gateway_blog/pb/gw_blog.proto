@@ -487,6 +487,8 @@ service BlogService {
     rpc UsersBlogData(BlogReq) returns (google.protobuf.Any);
     // Track user interaction with a blog (e.g. read duration)
     rpc TrackInteraction(TrackInteractionReq) returns (TrackInteractionResp);
+
+    rpc AdminListESBlogIds(AdminListESBlogIdsReq) returns (AdminListESBlogIdsResp);
 }
 
 message TrackInteractionReq {
@@ -501,4 +503,14 @@ message TrackInteractionReq {
 message TrackInteractionResp {
     bool success = 1;
     string message = 2;
+}
+
+message AdminListESBlogIdsReq {
+    int32 limit = 1;
+    int32 offset = 2;
+}
+
+message AdminListESBlogIdsResp {
+    repeated string blog_ids = 1;
+    int32 total = 2;
 }

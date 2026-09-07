@@ -86,15 +86,16 @@ func (adh *authDBHandler) CheckIfEmailExist(email string) (*models.TheMonkeysUse
 	if err := adh.db.QueryRow(`
             SELECT ua.id, ua.account_id, ua.username, ua.first_name, ua.last_name, 
             ua.email, uai.password_hash, evs.status, us.status, uai.email_validation_token,
-            uai.email_verification_timeout
+            uai.email_verification_timeout, COALESCE(ur.role_desc, '')
             FROM USER_ACCOUNT ua
             LEFT JOIN user_auth_info uai ON ua.id = uai.user_id
             LEFT JOIN email_validation_status evs ON uai.email_validation_status = evs.id
             LEFT JOIN user_status us ON ua.user_status = us.id
+            LEFT JOIN user_role ur ON ur.id = ua.role_id
             WHERE ua.email = $1;
         `, email).
 		Scan(&tmu.Id, &tmu.AccountId, &tmu.Username, &tmu.FirstName, &tmu.LastName, &tmu.Email, &tmu.Password,
-			&tmu.EmailVerificationStatus, &tmu.UserStatus, &tmu.EmailVerificationToken, &tmu.EmailVerificationTimeout); err != nil {
+			&tmu.EmailVerificationStatus, &tmu.UserStatus, &tmu.EmailVerificationToken, &tmu.EmailVerificationTimeout, &tmu.Role); err != nil {
 		adh.log.Errorf("can't find a user existing with email %s", email, err)
 		return nil, err
 	}
@@ -223,16 +224,18 @@ func (adh *authDBHandler) CheckIfUsernameExist(username string) (*models.TheMonk
 	if err := adh.db.QueryRow(`
 			SELECT ua.id, ua.account_id, ua.username, ua.first_name, ua.last_name, 
 			ua.email, uai.password_hash, uai.password_recovery_token, uai.password_recovery_timeout,
-			evs.status, ua.user_status, uai.email_validation_token, uai.email_verification_timeout
+			evs.status, ua.user_status, uai.email_validation_token, uai.email_verification_timeout,
+			COALESCE(ur.role_desc, '')
 			FROM user_account ua
 			LEFT JOIN user_auth_info uai ON ua.id = uai.user_id
 			LEFT JOIN email_validation_status evs ON uai.email_validation_status = evs.id
+			LEFT JOIN user_role ur ON ur.id = ua.role_id
 			WHERE ua.username = $1;	
 		`, username).
 		Scan(&tmu.Id, &tmu.AccountId, &tmu.Username, &tmu.FirstName, &tmu.LastName, &tmu.Email,
 			&tmu.Password, &tmu.PasswordVerificationToken, &tmu.PasswordVerificationTimeout,
 			&tmu.EmailVerificationStatus, &tmu.UserStatus, &tmu.EmailVerificationToken,
-			&tmu.EmailVerificationTimeout); err != nil {
+			&tmu.EmailVerificationTimeout, &tmu.Role); err != nil {
 		adh.log.Errorf("can't find a user existing with username %s, error: %+v", username, err)
 		return nil, err
 	}
@@ -245,15 +248,16 @@ func (adh *authDBHandler) CheckIfAccountIdExist(accountId string) (*models.TheMo
 	if err := adh.db.QueryRow(`
             SELECT ua.id, ua.account_id, ua.username, ua.first_name, ua.last_name, 
             ua.email, uai.password_hash, evs.status, us.status, uai.email_validation_token,
-            uai.email_verification_timeout
+            uai.email_verification_timeout, COALESCE(ur.role_desc, '')
             FROM USER_ACCOUNT ua
             LEFT JOIN user_auth_info uai ON ua.id = uai.user_id
             LEFT JOIN email_validation_status evs ON uai.email_validation_status = evs.id
             LEFT JOIN user_status us ON ua.user_status = us.id
+            LEFT JOIN user_role ur ON ur.id = ua.role_id
             WHERE ua.account_id = $1;
         `, accountId).
 		Scan(&tmu.Id, &tmu.AccountId, &tmu.Username, &tmu.FirstName, &tmu.LastName, &tmu.Email, &tmu.Password,
-			&tmu.EmailVerificationStatus, &tmu.UserStatus, &tmu.EmailVerificationToken, &tmu.EmailVerificationTimeout); err != nil {
+			&tmu.EmailVerificationStatus, &tmu.UserStatus, &tmu.EmailVerificationToken, &tmu.EmailVerificationTimeout, &tmu.Role); err != nil {
 		adh.log.Errorf("can't find a user existing with account_id %s, error %v", accountId, err)
 		return nil, err
 	}

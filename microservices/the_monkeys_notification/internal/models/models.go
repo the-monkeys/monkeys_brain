@@ -3,6 +3,8 @@ package models
 import (
 	"database/sql"
 	"time"
+
+	"github.com/the-monkeys/the_monkeys/common/interservice"
 )
 
 type Notification struct {
@@ -18,27 +20,7 @@ type Notification struct {
 	ChannelName        string    `json:"channel_name"`
 }
 
-type TheMonkeysMessage struct {
-	Id           int64    `json:"id"`
-	AccountId    string   `json:"account_id"`
-	Username     string   `json:"username"`
-	NewUsername  string   `json:"new_username"`
-	FirstName    string   `json:"first_name"`
-	LastName     string   `json:"last_name"`
-	Email        string   `json:"email"`
-	LoginMethod  string   `json:"login_method"`
-	ClientId     string   `json:"client_id"`
-	Client       string   `json:"client"`
-	IpAddress    string   `json:"ip"`
-	Action       string   `json:"action"`
-	Notification string   `json:"notification"`
-	BlogId       string   `json:"blog_id"`
-	BlogIds      []string `json:"blog_ids,omitempty"`
-	BlogStatus   string   `json:"blog_status"`
-	BlogTitle    string   `json:"blog_title"`
-	EventSlug    string   `json:"event_slug"`
-	EventTitle   string   `json:"event_title"`
-}
+type TheMonkeysMessage = interservice.Message
 
 type TheMonkeysUser struct {
 	Id                          int64          `json:"id"`

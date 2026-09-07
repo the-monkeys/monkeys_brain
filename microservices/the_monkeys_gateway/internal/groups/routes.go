@@ -17,11 +17,12 @@ import (
 // role and unlock private groups they belong to. Everything that mutates state
 // or exposes a member roster sits behind AuthRequired.
 //
-// Every route scoped to one group carries a guard from the authx package. It
-// is an early-reject layer only: the groups service still re-checks each
-// mutation against group_permissions inside its transaction, so a briefly
-// stale gateway grant cannot authorize anything the service would refuse. The
-// guard also keeps drafts and private groups out of read responses.
+// Write and roster routes scoped to one group carry a guard from the authx
+// package. It is an early-reject layer only: the groups service still
+// re-checks each mutation against group_permissions inside its transaction, so
+// a briefly stale gateway grant cannot authorize anything the service would
+// refuse. Public GET /:slug skips that Authorize hop; GetGroup itself 404s
+// drafts and private groups the caller cannot see.
 //
 // eventsClient is threaded in so a group-scoped event can be created through
 // the events service without the caller leaving the /groups surface.
@@ -56,7 +57,7 @@ func RegisterGroupRouter(
 
 	pub.GET("", mware.AuthOptional, gsc.ListGroups)
 	pub.GET("/user/:username", mware.AuthOptional, gsc.GetUserGroups)
-	pub.GET("/:slug", mware.AuthOptional, guard.RequireGroupVisible(), gsc.GetGroup)
+	pub.GET("/:slug", mware.AuthOptional, gsc.GetGroup)
 
 	// -------------------------------------------------------------------
 	// Authenticated

@@ -337,6 +337,18 @@ service UserService {
     // Admin review surface
   rpc ListVerificationRequests(ListVerificationReq) returns (ListVerificationRes) {}
   rpc ReviewVerificationRequest(ReviewVerificationReq) returns (VerificationRequest) {}
+
+  rpc AdminListUsers(AdminListUsersReq) returns (AdminListUsersResp) {}
+  rpc AdminSetUserRole(AdminSetUserRoleReq) returns (AdminUserActionResp) {}
+  rpc AdminFlagUser(AdminFlagUserReq) returns (AdminUserActionResp) {}
+  rpc AdminUnflagUser(AdminFlagUserReq) returns (AdminUserActionResp) {}
+  rpc AdminSuspendUser(AdminSuspendUserReq) returns (AdminUserActionResp) {}
+  rpc AdminDeleteUser(AdminDeleteUserReq) returns (DeleteUserProfileRes) {}
+  rpc AdminUserStats(AdminEmpty) returns (AdminUserStatsResp) {}
+  rpc AdminListBlogs(AdminListBlogsReq) returns (AdminListBlogsResp) {}
+  rpc AdminBlogStats(AdminEmpty) returns (AdminBlogStatsResp) {}
+  rpc AdminMissingBlogIds(AdminMissingBlogIdsReq) returns (AdminMissingBlogIdsResp) {}
+  rpc AdminWriteAudit(AdminWriteAuditReq) returns (AdminUserActionResp) {}
 }
 
 message GetBatchUserDetailsReq {
@@ -507,9 +519,12 @@ message VerificationRequest {
   string                    additional_info   = 10;
   string                    reviewer_username = 11;
   string                    rejection_reason  = 12;
-  google.protobuf.Timestamp created_at        = 13;
-  google.protobuf.Timestamp updated_at        = 14;
-  google.protobuf.Timestamp reviewed_at       = 15;
+  google.protobuf.Timestamp created_at          = 13;
+  google.protobuf.Timestamp updated_at          = 14;
+  google.protobuf.Timestamp reviewed_at         = 15;
+  string                    selfie_object_key   = 16; // verifications/sha256/{checksum}; empty if no checksum
+  string                    id_front_object_key = 17;
+  string                    id_back_object_key  = 18;
 }
 
 message SubmitVerificationReq {
@@ -551,4 +566,111 @@ message VerificationActionRes {
   string status  = 1;
   string message = 2;
   string error   = 3;
+}
+
+message AdminEmpty {}
+
+message AdminActor {
+  string username   = 1;
+  string account_id = 2;
+  string role       = 3;
+  string ip         = 4;
+}
+
+message AdminListUsersReq {
+  int32  limit  = 1;
+  int32  offset = 2;
+  string query  = 3;
+}
+
+message AdminUserRow {
+  string                    account_id = 1;
+  string                    username   = 2;
+  string                    email      = 3;
+  string                    status     = 4;
+  string                    role       = 5;
+  bool                      verified   = 6;
+  google.protobuf.Timestamp created_at = 7;
+  repeated string           flags      = 8;
+}
+
+message AdminListUsersResp {
+  repeated AdminUserRow users = 1;
+  int32                 total = 2;
+}
+
+message AdminSetUserRoleReq {
+  string     username = 1;
+  string     role     = 2;
+  AdminActor actor    = 3;
+}
+
+message AdminFlagUserReq {
+  string     username = 1;
+  string     flag_type = 2;
+  string     reason   = 3;
+  AdminActor actor    = 4;
+}
+
+message AdminSuspendUserReq {
+  string     username = 1;
+  string     reason   = 2;
+  AdminActor actor    = 3;
+}
+
+message AdminDeleteUserReq {
+  string     username = 1;
+  AdminActor actor    = 2;
+}
+
+message AdminUserActionResp {
+  string message = 1;
+  bool   success = 2;
+}
+
+message AdminUserStatsResp {
+  int32 total  = 1;
+  int32 new_7d = 2;
+}
+
+message AdminListBlogsReq {
+  int32  limit  = 1;
+  int32  offset = 2;
+  string query  = 3;
+  string status = 4;
+}
+
+message AdminBlogRow {
+  string                    blog_id    = 1;
+  string                    username   = 2;
+  string                    status     = 3;
+  google.protobuf.Timestamp created_at = 4;
+}
+
+message AdminListBlogsResp {
+  repeated AdminBlogRow blogs = 1;
+  int32                 total = 2;
+}
+
+message AdminBlogStatsResp {
+  int32 draft     = 1;
+  int32 published = 2;
+  int32 scheduled = 3;
+  int32 archived  = 4;
+}
+
+message AdminMissingBlogIdsReq {
+  repeated string blog_ids = 1;
+}
+
+message AdminMissingBlogIdsResp {
+  repeated string blog_ids = 1;
+}
+
+message AdminWriteAuditReq {
+  string action      = 1;
+  string entity_type = 2;
+  string entity_id   = 3;
+  string payload     = 4;
+  AdminActor actor   = 5;
 }

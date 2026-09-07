@@ -44,6 +44,10 @@ const (
 	EVENT_NEW_BY_FOLLOWED   = "event_new_by_followed"
 	EVENT_COMMENT_NEW       = "event_comment_new"
 	EVENT_PAYMENT_REFUND    = "event_payment_refund"
+
+	// Storage fan-out after a successful unpaid hard delete (RoutingKeys[0]).
+	EVENT_DELETE = "event_delete"
+	GROUP_DELETE = "group_delete"
 )
 
 // RestrictedUsernames contains usernames that are not allowed for user registration

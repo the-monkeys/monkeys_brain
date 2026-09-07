@@ -25,6 +25,7 @@ type jwtClaims struct {
 	Client                  string `json:"client"`
 	IpAddress               string `json:"ip"`
 	TokenType               string `json:"token_type"` // "access" or "refresh"
+	Role                    string `json:"role,omitempty"`
 }
 
 // TODO: Add Username, profile_name and client_id
@@ -38,6 +39,7 @@ func (w *JwtWrapper) GenerateToken(user *models.TheMonkeysUser) (signedToken str
 		Client:                  user.Client,
 		IpAddress:               user.IpAddress,
 		TokenType:               "access",
+		Role:                    user.Role,
 		StandardClaims: jwt.StandardClaims{
 			ExpiresAt: time.Now().Local().Add(time.Hour * time.Duration(w.ExpirationHours)).Unix(),
 			Issuer:    w.Issuer,

@@ -1,8 +1,8 @@
 # Monkeys — AI handoff context
 
-Read this first. Then read `docs/series-ux-rsvp-payments-plan.md` for the next slice (series discovery, covers, errors, payments, RSVP window, RSVP-one-vs-all, speed).
+Read this first. Series discovery / RSVP / payments slices **B1–B7 are shipped**. Current focus: **Events / Groups / Studio SEO + GEO** — see `docs/seo-geo-context.md` and `docs/seo-geo-plan.md`. Do not start new backend slices unless the user asks.
 
-Do **not** start coding that slice until the user says proceed. Existing `/api/v1/events` and `/api/v1/groups` contracts stay valid. Additive protobuf fields only. No new parallel tables if `event_series` already covers it.
+Existing `/api/v1/events` and `/api/v1/groups` contracts stay valid. Additive protobuf fields only.
 
 ---
 
@@ -24,7 +24,7 @@ Design bar: Meetup-style, DRY, modular, backward compatible, no bloat, few comme
 
 Frontend is **not** in engine `git status`. Edit it on disk; commit inside `local/the_monkeys`. Netlify builds `apps/the_monkeys` from that frontend repo (`npm run build` → turbo lint + next build).
 
-Typical branches: engine `events_upgrade` (events work) vs `main`. Frontend also used `events_upgrade`. Confirm `git branch` before committing.
+Typical branches: engine `event_enhancement_v2` (events backend). Frontend `events_upgrade` (events UI). Snapshot editor UX lives on PR [#690](https://github.com/the-monkeys/the_monkeys/pull/690) (`feat/snapshot-editor-ux`, fetched locally as `pr-690-snapshot-editor-ux`). Confirm `git branch` before committing.
 
 ---
 
@@ -94,7 +94,7 @@ Stack: React Query, axios instances (`axiosInstance` auth, `axiosInstanceNoAuth`
 
 ## Data model (events) — already in Postgres
 
-**`events`** (`schema/000010` + `000011` + `000014`): slug, times, timezone, type (`virtual` \| `in_person` \| `hybrid`), location, lat/lng, meeting_link, capacity, status (`draft` \| `published` \| `live` \| `completed` \| `cancelled`), cover_image, visibility, group_id, **series_id**, **series_occurrence_at**, **rsvp_opens_at / rsvp_closes_at** (columns exist; **create/update/RSVP code does not use them yet**).
+**`events`** (`schema/000010` + `000011` + `000014` + `000015` cover + `000016` rsvp close + `000017` list indexes): slug, times, timezone, type, location, lat/lng, meeting_link, capacity, status, cover_image, visibility, group_id, series_id, series_occurrence_at, rsvp_opens_at / rsvp_closes_at. List projection maps `event_series.cover_image` and RRULE → `recurrence_text`.
 
 **`event_series`**: organizer, optional group, title, `recurrence_rule` (RRULE string), starts/ends, status `active|paused|completed|cancelled`.
 
@@ -108,9 +108,9 @@ Each recurring date is a **normal event row**. RSVP, tickets, coupons, comments,
 
 ### Geo discovery
 
-- Events and groups have lat/lng. Events geocode `location` on create/update (`Geocode` in events DB). Failed geocode → NULL coords.
-- `ListEvents` Haversine radius. In-person: city → country, never worldwide. Virtual/hybrid: global (radius does not hide them).
-- UI: `geoSearch.ts` radius steps; `EventsDiscover` no longer expands to radius `0`.
+- Events and groups have lat/lng. Failed Nominatim → NULL coords (`nullCoord`). Optional client pin on event create/update/series skips Nominatim when both values are non-zero. Virtual events always store NULL coords. Clone copies source coordinates (no re-geocode).
+- `ListEvents` / `ListGroups` Haversine radius. Filter runs only with a pin **and** `radius > 0`, then clamped to **[2, 100] km**. `radius` 0/omitted = no geo filter (nationwide). Engine does **not** default 25 km; that is a frontend default. Virtual/hybrid events skip the radius predicate. NULL-coord rows are omitted from radius results only.
+- Do not backfill existing NULL coordinates. No PostGIS.
 
 ### Past / completed
 
@@ -120,12 +120,16 @@ Each recurring date is a **normal event row**. RSVP, tickets, coupons, comments,
 - Clone: `POST /api/v1/events/:slug/clone` → new **draft**. UI: Schedule again.
 - Gallery heading **Glimpses** when ended. Cap 4.
 
-### Recurring (create path lives; discovery still wrong)
+### Recurring (shipped)
 
-- `POST /api/v1/events/series` + gRPC `CreateSeries`. EventForm Repeat → `createSeries()` instead of `createEvent()`.
-- `rrule.go`: daily/weekly/monthly/yearly, horizon 12, cap 52. Stores RRULE; expands timestamps in service; `MaterializeSeries` inserts **published** occurrences immediately (not drafts).
-- `CloneEvent` / `CancelSeriesOccurrence` exist. GetSeries / UpdateSeries / “this and future” UI / scheduler horizon fill were **not** finished.
-- **List projection does not select `series_id` or recurrence text** (`eventColumns` in `events.go`). Discovery lists every occurrence as a separate card. That is the 12-card bug.
+- `POST /api/v1/events/series` + gRPC `CreateSeries`. EventForm Repeat → `createSeries()`.
+- Discovery / public profile **collapse** to one card per series (next upcoming). Group agenda and past lists stay per-date. Card may show `upcoming_dates` (max 3) and `recurrence_text`.
+- Series cover lives on `event_series.cover_image` and is mapped onto occurrences.
+- RSVP close: one-off datetime or series hours-before. `CreateRSVP` refuses after close.
+- Free series: `POST /events/:slug/rsvp` body `{ scope: "this" | "series" }`. Paid series: this date only.
+- After create, UI sends the host to `/events/:slug` (event home), not manage.
+- Shared event/group links: login keeps `callbackURL` (password + Google via sessionStorage) and returns to that page.
+- Left nav: For You (newspaper icon) → Events → Studio → Library → Settings → Topics. Old Feed item removed.
 
 ### Profile / groups
 
@@ -140,15 +144,11 @@ Each recurring date is a **normal event row**. RSVP, tickets, coupons, comments,
 
 ---
 
-## Known bugs / product gaps (next slice)
+## Known gaps (not current unless asked)
 
-1. **Discovery floods with series occurrences.** Weekly series of 12 shows 12 identical cards. Want 1 card (next date) plus “Repeats every …”, optionally up to 3 upcoming dates on that card — not 12 tiles.
-2. **Cover only on first occurrence.** Create series → 12 rows with empty `cover_image` → host uploads cover against the first slug only. `new/page.tsx` uploads after create to that one slug. Later dates show the calendar placeholder.
-3. **Slow discovery.** 12 cards, radius auto-step refetches, per-row attendee `COUNT` subquery, `log.Debugw` of full SQL, missing series collapse. UI feels heavy.
-4. **Coupon duplicate.** Unique `(event_id, code)`. `CreateCoupon` does `status.Errorf(AlreadyExists, "failed to create coupon: %v", err)` → toast shows `SQLSTATE 23505`. Need a human line: “That coupon code is already on this event.”
-5. **Paid ticket on a host machine without Razorpay keys.** Toast: “payments are not configured on this deployment.” Product question (answered in the plan): **Monkeys owns the Razorpay merchant for now**; organizers do not paste their own keys. Enable keys in `.env` for paid tickets; UI copy should be host-facing, not infra-facing.
-6. **Last date to RSVP** — columns exist, not wired in form, gateway body, CreateEvent/UpdateEvent, or CreateRSVP.
-7. **RSVP this occurrence vs entire series** — not built. Attendees are per `event_id`.
+- Paid “RSVP all dates” as one checkout; Redis for lists; per-date cover exceptions.
+- GetSeries calendar API beyond the 3 dates on the card.
+- Snapshot editor sticky-preview UX is in PR [#690](https://github.com/the-monkeys/the_monkeys/pull/690), not on `events_upgrade`.
 
 ---
 
@@ -185,10 +185,14 @@ Each recurring date is a **normal event row**. RSVP, tickets, coupons, comments,
 | File | Use |
 | --- | --- |
 | `docs/context.md` | This handoff |
-| `docs/series-ux-rsvp-payments-plan.md` | **Next work — wait for approval** |
-| `docs/recurring-past-events-profile-plan.md` | Previous slice (mostly done; discovery series collapse was not in that plan) |
+| `docs/seo-geo-context.md` | SEO/GEO handoff (events, groups, studio) |
+| `docs/seo-geo-plan.md` | SEO/GEO implementation slices |
+| `docs/series-ux-rsvp-payments-plan.md` | Series/RSVP/speed — **B1–B7 implemented** |
+| `docs/recurring-past-events-profile-plan.md` | Previous slice |
 | `docs/meetup-parity-implementation-plan.md` | Long-term Meetup parity (groups already largely done) |
 | `docs/meetup-parity-frontend-implementation-plan.md` | Frontend Meetup parity |
+| `docs/frontend-events-groups.md` | Public-site events/groups HTTP contract (modified + new fields) |
+| `docs/frontend-admin-dashboard.md` | Staff Dashboard + public 409/storage deltas |
 | Root `context.Md` | Stale geo/admin prompt — ignore |
 
 When in doubt: read the code in the tables above, not the stale root `context.Md`.

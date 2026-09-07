@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/the-monkeys/the_monkeys/apis/serviceconn/gateway_event/pb"
+	"github.com/the-monkeys/the_monkeys/common/geo"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/timestamppb"
@@ -81,12 +82,18 @@ const eventColumns = `
 	COALESCE(e.meeting_link, ''), e.capacity, e.status,
 	COALESCE(NULLIF(e.cover_image, ''), es.cover_image, ''),
 	u.account_id, u.username, e.created_at, e.updated_at,
-	(SELECT COUNT(1) FROM event_attendees a WHERE a.event_id = e.id AND a.status = 'confirmed') AS attendee_count,
+	COALESCE(ac.attendee_count, 0) AS attendee_count,
 	e.group_id, COALESCE(g.slug, ''), COALESCE(g.name, ''), COALESCE(e.visibility, 'public'),
 	e.series_id, e.series_occurrence_at, COALESCE(es.recurrence_rule, ''),
-	e.rsvp_closes_at, COALESCE(es.rsvp_close_hours_before, 0)`
+	e.rsvp_closes_at, COALESCE(es.rsvp_close_hours_before, 0),
+	e.latitude, e.longitude`
 
-const eventFrom = ` FROM events e JOIN user_account u ON u.id = e.organizer_id LEFT JOIN groups g ON g.id = e.group_id LEFT JOIN event_series es ON es.id = e.series_id`
+const eventFrom = ` FROM events e JOIN user_account u ON u.id = e.organizer_id LEFT JOIN groups g ON g.id = e.group_id LEFT JOIN event_series es ON es.id = e.series_id LEFT JOIN (
+	SELECT event_id, COUNT(*)::int AS attendee_count
+	FROM event_attendees
+	WHERE status = 'confirmed'
+	GROUP BY event_id
+) ac ON ac.event_id = e.id`
 
 type rowScanner interface{ Scan(dest ...any) error }
 
@@ -95,6 +102,7 @@ func scanEvent(row rowScanner) (*pb.Event, error) {
 	var start, end, created, updated time.Time
 	var groupID, seriesID sql.NullInt64
 	var occAt, rsvpCloses sql.NullTime
+	var lat, lng sql.NullFloat64
 	var rule string
 	var closeHours int32
 	if err := row.Scan(
@@ -105,6 +113,7 @@ func scanEvent(row rowScanner) (*pb.Event, error) {
 		&e.AttendeeCount,
 		&groupID, &e.GroupSlug, &e.GroupName, &e.Visibility,
 		&seriesID, &occAt, &rule, &rsvpCloses, &closeHours,
+		&lat, &lng,
 	); err != nil {
 		return nil, err
 	}
@@ -126,7 +135,21 @@ func scanEvent(row rowScanner) (*pb.Event, error) {
 	e.EndTime = timestamppb.New(end)
 	e.CreatedAt = timestamppb.New(created)
 	e.UpdatedAt = timestamppb.New(updated)
+	attachEventCoords(&e, lat, lng)
 	return &e, nil
+}
+
+// attachEventCoords copies a stored event pin onto Venue so GET JSON can
+// restore PlacePin without Event proto lat/lng fields (no protoc this pass).
+func attachEventCoords(e *pb.Event, lat, lng sql.NullFloat64) {
+	if e == nil || !lat.Valid || !lng.Valid || lat.Float64 == 0 || lng.Float64 == 0 {
+		return
+	}
+	if e.Venue == nil {
+		e.Venue = &pb.Venue{}
+	}
+	e.Venue.Latitude = lat.Float64
+	e.Venue.Longitude = lng.Float64
 }
 
 // -----------------------------------------------------------------------------
@@ -167,7 +190,7 @@ func (db *eventDB) CreateEvent(ctx context.Context, req *pb.CreateEventReq) (*pb
 		}
 
 		slug = slugify(req.Title)
-		lat, lng := Geocode(req.Location)
+		lat, lng := resolveEventCoords(ctx, req.EventType, req.Latitude, req.Longitude, req.Location)
 
 		var eventID int64
 		if err := tx.QueryRowContext(ctx, `
@@ -285,7 +308,7 @@ func (db *eventDB) UpdateEvent(ctx context.Context, req *pb.UpdateEventReq) (*pb
 			}
 		}
 
-		lat, lng := Geocode(req.Location)
+		lat, lng := resolveEventCoords(ctx, req.EventType, req.Latitude, req.Longitude, req.Location)
 
 		rsvpClose := any(nil)
 		if curRsvpCloses.Valid {
@@ -345,6 +368,41 @@ func (db *eventDB) UpdateEvent(ctx context.Context, req *pb.UpdateEventReq) (*pb
 	return event, err
 }
 
+// eventHasBlockingPaymentsSQL is true when an event must not be hard-deleted.
+// Any event_payments row blocks (ledger is ON DELETE RESTRICT and must not be
+// mutated). Pending checkout and pre-ledger captured attendees also block.
+const eventHasBlockingPaymentsSQL = `
+SELECT EXISTS (SELECT 1 FROM event_payments WHERE event_id = $1)
+    OR EXISTS (
+        SELECT 1 FROM event_attendees
+        WHERE event_id = $1 AND (
+            status = 'pending_payment'
+            OR (status = 'confirmed' AND (
+                payment_id IS NOT NULL
+                OR COALESCE(amount_captured_paise, 0) > 0
+                OR COALESCE(amount_paid, 0) > 0
+            ))
+        )
+    )`
+
+func eventHasBlockingPayments(ctx context.Context, tx *sql.Tx, eventID int64) (bool, error) {
+	var blocked bool
+	err := tx.QueryRowContext(ctx, eventHasBlockingPaymentsSQL, eventID).Scan(&blocked)
+	return blocked, err
+}
+
+func refuseIfPaidEvent(ctx context.Context, tx *sql.Tx, eventID int64) error {
+	blocked, err := eventHasBlockingPayments(ctx, tx, eventID)
+	if err != nil {
+		return status.Error(codes.Internal, "failed to check paid attendees")
+	}
+	if blocked {
+		return status.Error(codes.FailedPrecondition,
+			"event has captured or pending payments; cancel it instead so refunds are issued")
+	}
+	return nil
+}
+
 func (db *eventDB) DeleteEvent(ctx context.Context, req *pb.EventActionReq) error {
 	return db.inTx(ctx, func(tx *sql.Tx) error {
 		// Deleting is owner-only: co-hosts may edit but never destroy.
@@ -359,22 +417,36 @@ func (db *eventDB) DeleteEvent(ctx context.Context, req *pb.EventActionReq) erro
 		if organizerID != actorID {
 			return status.Error(codes.PermissionDenied, "only the organizer can delete an event")
 		}
-
-		var paid int
-		if err := tx.QueryRowContext(ctx, `
-			SELECT COUNT(1) FROM event_attendees
-			WHERE event_id = $1 AND status = 'confirmed' AND payment_id IS NOT NULL`, eventID).Scan(&paid); err != nil {
-			return status.Error(codes.Internal, "failed to check paid attendees")
+		if err := refuseIfPaidEvent(ctx, tx, eventID); err != nil {
+			return err
 		}
-		if paid > 0 {
-			return status.Error(codes.FailedPrecondition,
-				"event has paid attendees; cancel it instead so refunds are issued")
-		}
-
 		if _, err := tx.ExecContext(ctx, "DELETE FROM events WHERE id = $1", eventID); err != nil {
 			return status.Errorf(codes.Internal, "failed to delete event: %v", err)
 		}
 		return nil
+	})
+}
+
+func (db *eventDB) AdminDeleteEvent(ctx context.Context, req *pb.AdminEventActionReq) error {
+	slug := strings.TrimSpace(req.GetSlug())
+	if slug == "" {
+		return status.Error(codes.InvalidArgument, "slug is required")
+	}
+	return db.inTx(ctx, func(tx *sql.Tx) error {
+		var eventID int64
+		if err := tx.QueryRowContext(ctx, "SELECT id FROM events WHERE slug = $1 FOR UPDATE", slug).Scan(&eventID); err != nil {
+			if err == sql.ErrNoRows {
+				return status.Error(codes.NotFound, "event not found")
+			}
+			return status.Error(codes.Internal, "failed to load event")
+		}
+		if err := refuseIfPaidEvent(ctx, tx, eventID); err != nil {
+			return err
+		}
+		if _, err := tx.ExecContext(ctx, "DELETE FROM events WHERE id = $1", eventID); err != nil {
+			return status.Errorf(codes.Internal, "failed to delete event: %v", err)
+		}
+		return writeAudit(ctx, tx, req.GetActor(), "event.delete", "event", slug, nil)
 	})
 }
 
@@ -394,13 +466,15 @@ func (db *eventDB) CloneEvent(ctx context.Context, req *pb.CloneEventReq) (*pb.E
 			title, desc, tz, eventType, loc, link, cover, vis string
 			capacity                                          int32
 			groupID                                           sql.NullInt64
+			srcLat, srcLng                                    sql.NullFloat64
 		)
 		if err := tx.QueryRowContext(ctx, `
 			SELECT title, COALESCE(description, ''), COALESCE(timezone, 'UTC'), event_type,
 			       COALESCE(location, ''), COALESCE(meeting_link, ''), capacity,
-			       COALESCE(cover_image, ''), COALESCE(visibility, 'public'), group_id
+			       COALESCE(cover_image, ''), COALESCE(visibility, 'public'), group_id,
+			       latitude, longitude
 			FROM events WHERE id = $1`, srcID,
-		).Scan(&title, &desc, &tz, &eventType, &loc, &link, &capacity, &cover, &vis, &groupID); err != nil {
+		).Scan(&title, &desc, &tz, &eventType, &loc, &link, &capacity, &cover, &vis, &groupID, &srcLat, &srcLng); err != nil {
 			return status.Error(codes.Internal, "failed to load event")
 		}
 
@@ -408,7 +482,13 @@ func (db *eventDB) CloneEvent(ctx context.Context, req *pb.CloneEventReq) (*pb.E
 		if groupID.Valid {
 			groupCol = groupID.Int64
 		}
-		lat, lng := Geocode(loc)
+		var plat, plng float64
+		if srcLat.Valid {
+			plat = srcLat.Float64
+		}
+		if srcLng.Valid {
+			plng = srcLng.Float64
+		}
 		slug = slugify(title)
 
 		var eventID int64
@@ -421,7 +501,7 @@ func (db *eventDB) CloneEvent(ctx context.Context, req *pb.CloneEventReq) (*pb.E
 			RETURNING id`,
 			title, desc, slug, req.StartTime.AsTime(), req.EndTime.AsTime(), tz,
 			eventType, loc, link, capacity, cover, organizerID, groupCol, vis,
-			nullCoord(lat), nullCoord(lng),
+			nullCoord(plat), nullCoord(plng),
 		).Scan(&eventID); err != nil {
 			return status.Errorf(codes.Internal, "failed to clone event: %v", err)
 		}
@@ -626,31 +706,52 @@ func commonFilters(f *filter, req *pb.ListEventsReq) {
 	if req.Query != "" {
 		f.add("e.title ILIKE '%%' || $%d || '%%'", req.Query)
 	}
-	// Legacy string search fallback, if no radius is given
-	if req.Location != "" && req.Radius == 0 {
-		f.add("e.location ILIKE '%%' || $%d || '%%'", req.Location)
+	radiusKm, applyRadius := geo.ClampSearchRadius(req.Radius)
+	locationText := strings.TrimSpace(req.Location)
+	geoOn := req.UserLat != 0 && req.UserLng != 0 && applyRadius &&
+		req.EventType != EventTypeOnline && req.EventType != EventTypeHybrid
+	// Text city search when the client is not doing near-me. Combined with a
+	// pin+radius below so unpinned local events (Nominatim miss) still surface.
+	if locationText != "" && !geoOn {
+		f.add("e.location ILIKE '%%' || $%d || '%%'", locationText)
 	}
 
-	if req.UserLat != 0 && req.UserLng != 0 && req.Radius > 0 &&
-		req.EventType != EventTypeOnline && req.EventType != EventTypeHybrid {
+	if geoOn {
 		// Virtual/hybrid skip the radius: they are reachable from anywhere.
 		// In-person must sit inside the requested radius; the UI expands that
 		// from city up to country, never worldwide.
-		f.args = append(f.args, req.UserLat, req.UserLng, req.UserLat, req.Radius)
-		latPos := len(f.args) - 3
-		lngPos := len(f.args) - 2
-		lat2Pos := len(f.args) - 1
-		radiusPos := len(f.args)
+		var locPos int
+		if locationText != "" {
+			f.args = append(f.args, locationText)
+			locPos = len(f.args)
+		}
+		minLat, maxLat, minLng, maxLng := geoBox(req.UserLat, req.UserLng, radiusKm)
+		f.args = append(f.args, req.UserLat, req.UserLng, req.UserLat, radiusKm,
+			minLat, maxLat, minLng, maxLng)
+		latPos := len(f.args) - 7
+		lngPos := len(f.args) - 6
+		lat2Pos := len(f.args) - 5
+		radiusPos := len(f.args) - 4
+		minLatPos := len(f.args) - 3
+		maxLatPos := len(f.args) - 2
+		minLngPos := len(f.args) - 1
+		maxLngPos := len(f.args)
 		inRange := fmt.Sprintf(
 			"e.latitude IS NOT NULL AND e.longitude IS NOT NULL AND "+
+				"e.latitude BETWEEN $%d AND $%d AND e.longitude BETWEEN $%d AND $%d AND "+
 				"(6371 * acos(LEAST(GREATEST(cos(radians($%d)) * cos(radians(e.latitude)) * cos(radians(e.longitude) - radians($%d)) + sin(radians($%d)) * sin(radians(e.latitude)), -1), 1))) <= $%d",
-			latPos, lngPos, lat2Pos, radiusPos)
+			minLatPos, maxLatPos, minLngPos, maxLngPos, latPos, lngPos, lat2Pos, radiusPos)
+		pred := inRange
+		if locPos > 0 {
+			pred = fmt.Sprintf("((%s) OR ((e.latitude IS NULL OR e.longitude IS NULL) AND e.location ILIKE '%%' || $%d || '%%'))",
+				inRange, locPos)
+		}
 		if req.EventType == EventTypeInPerson {
-			f.conds = append(f.conds, inRange)
+			f.conds = append(f.conds, pred)
 		} else {
 			f.conds = append(f.conds, fmt.Sprintf(
 				"(e.event_type IN ('%s', '%s') OR (%s))",
-				EventTypeOnline, EventTypeHybrid, inRange))
+				EventTypeOnline, EventTypeHybrid, pred))
 		}
 	}
 
@@ -669,17 +770,7 @@ func commonFilters(f *filter, req *pb.ListEventsReq) {
 	}
 }
 
-// seriesCollapseCond keeps at most one upcoming row per series: the soonest
-// published/live occurrence that has not ended. One-offs (series_id IS NULL)
-// pass through unchanged.
-const seriesCollapseCond = `(e.series_id IS NULL OR e.id = (
-	SELECT e2.id FROM events e2
-	WHERE e2.series_id = e.series_id
-	  AND e2.status IN ('published', 'live')
-	  AND e2.end_time >= NOW()
-	ORDER BY e2.start_time ASC
-	LIMIT 1
-))`
+const seriesDistinctOn = "COALESCE(e.series_id, e.id)"
 
 func collapseDiscoverySeries(req *pb.ListEventsReq) bool {
 	return req.DateFilter != DateFilterPast
@@ -694,19 +785,58 @@ func collapseProfileSeries(req *pb.ListEventsReq) bool {
 	}
 }
 
+func listOrderBy(req *pb.ListEventsReq, collapse bool, args *[]any) string {
+	start := "e.start_time"
+	created := "e.created_at"
+	popular := "attendee_count"
+	lat := "e.latitude"
+	lng := "e.longitude"
+	if collapse {
+		start = "listed.start_time"
+		created = "listed.created_at"
+		popular = "listed.attendee_count"
+		lat = "listed.latitude"
+		lng = "listed.longitude"
+	}
+	switch req.SortBy {
+	case SortByNewest:
+		return created + " DESC"
+	case SortByPopular:
+		return popular + " DESC, " + start + " ASC"
+	case "nearest":
+		if req.UserLat != 0 && req.UserLng != 0 {
+			*args = append(*args, req.UserLat, req.UserLng, req.UserLat)
+			n := len(*args)
+			return fmt.Sprintf(
+				`(6371 * acos(cos(radians($%d)) * cos(radians(%s)) * cos(radians(%s) - radians($%d)) + sin(radians($%d)) * sin(radians(%s)))) ASC, %s ASC`,
+				n-2, lat, lng, n-1, n, lat, start)
+		}
+	}
+	return start + " ASC"
+}
+
+func listSQL(collapse bool, join, where, orderBy string, filterArgCount int) (countSQL, selectSQL string) {
+	from := eventFrom + join
+	limitPos := filterArgCount + 1
+	offsetPos := filterArgCount + 2
+	if !collapse {
+		countSQL = "SELECT COUNT(1)" + from + where
+		selectSQL = fmt.Sprintf("SELECT%s%s%s ORDER BY %s LIMIT $%d OFFSET $%d",
+			eventColumns, from, where, orderBy, limitPos, offsetPos)
+		return
+	}
+	inner := fmt.Sprintf("SELECT DISTINCT ON (%s)%s%s%s ORDER BY %s, e.start_time ASC",
+		seriesDistinctOn, eventColumns, from, where, seriesDistinctOn)
+	countSQL = "SELECT COUNT(*) FROM (" + inner + ") collapsed"
+	selectSQL = fmt.Sprintf("SELECT * FROM (%s) listed ORDER BY %s LIMIT $%d OFFSET $%d",
+		inner, orderBy, limitPos, offsetPos)
+	return
+}
+
 // list executes the count + page queries for a built filter. When collapse is
 // set, series siblings share one row and total counts the collapsed set.
 func (db *eventDB) list(ctx context.Context, req *pb.ListEventsReq, f *filter, join string, collapse bool) ([]*pb.Event, int32, error) {
-	if collapse {
-		f.addRaw(seriesCollapseCond)
-	}
 	where := f.where()
-
-	var total int32
-	if err := db.db.QueryRowContext(ctx,
-		"SELECT COUNT(1)"+eventFrom+join+where, f.args...).Scan(&total); err != nil {
-		return nil, 0, status.Errorf(codes.Internal, "failed to count events: %v", err)
-	}
 
 	limit := int32(20)
 	if req.Limit > 0 && req.Limit <= 100 {
@@ -717,25 +847,17 @@ func (db *eventDB) list(ctx context.Context, req *pb.ListEventsReq, f *filter, j
 		offset = 0
 	}
 
-	args := append(append([]any{}, f.args...), limit, offset)
+	args := append([]any{}, f.args...)
+	orderBy := listOrderBy(req, collapse, &args)
+	countSQL, selectSQL := listSQL(collapse, join, where, orderBy, len(args))
 
-	orderBy := "e.start_time ASC" // default: SortBySoonest
-	switch req.SortBy {
-	case SortByNewest:
-		orderBy = "e.created_at DESC"
-	case SortByPopular:
-		orderBy = "attendee_count DESC, e.start_time ASC"
-	case "nearest":
-		if req.UserLat != 0 && req.UserLng != 0 {
-			// Haversine sorting
-			orderBy = fmt.Sprintf(`(6371 * acos(cos(radians(%f)) * cos(radians(e.latitude)) * cos(radians(e.longitude) - radians(%f)) + sin(radians(%f)) * sin(radians(e.latitude)))) ASC, e.start_time ASC`, req.UserLat, req.UserLng, req.UserLat)
-		}
+	var total int32
+	if err := db.db.QueryRowContext(ctx, countSQL, f.args...).Scan(&total); err != nil {
+		return nil, 0, status.Errorf(codes.Internal, "failed to count events: %v", err)
 	}
 
-	query := fmt.Sprintf("SELECT%s%s%s%s ORDER BY %s LIMIT $%d OFFSET $%d",
-		eventColumns, eventFrom, join, where, orderBy, len(args)-1, len(args))
-
-	rows, err := db.db.QueryContext(ctx, query, args...)
+	pageArgs := append(append([]any{}, args...), limit, offset)
+	rows, err := db.db.QueryContext(ctx, selectSQL, pageArgs...)
 	if err != nil {
 		return nil, 0, status.Errorf(codes.Internal, "failed to list events: %v", err)
 	}
@@ -1118,6 +1240,18 @@ func eventHasEnded(status string, end time.Time) bool {
 
 func sameInstant(a, b time.Time) bool {
 	return a.UTC().Truncate(time.Second).Equal(b.UTC().Truncate(time.Second))
+}
+
+// resolveEventCoords picks persistence coords: virtual → 0,0 (SQL NULL via
+// nullCoord); otherwise a client pin wins; else Nominatim from location text.
+func resolveEventCoords(ctx context.Context, eventType string, pinLat, pinLng float64, location string) (float64, float64) {
+	if eventType == EventTypeOnline {
+		return 0, 0
+	}
+	if geo.UseClientPin(pinLat, pinLng) {
+		return pinLat, pinLng
+	}
+	return Geocode(ctx, location)
 }
 
 // nullCoord maps a failed geocode (0,0) to NULL so online or unresolvable
