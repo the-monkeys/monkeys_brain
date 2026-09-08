@@ -288,17 +288,26 @@ func (asc *UserServiceClient) DeleteUserProfile(ctx *gin.Context) {
 	})
 
 	if err != nil {
-		if status.Code(err) == codes.NotFound {
-			ctx.AbortWithStatusJSON(http.StatusNotFound, ReturnMessage{Message: "no user/activity found"})
-			return
-		} else {
-			ctx.AbortWithStatusJSON(http.StatusInternalServerError, ReturnMessage{Message: "couldn't get the user's activities"})
-			return
-		}
+		code, msg := mapDeleteAccountErr(err)
+		ctx.AbortWithStatusJSON(code, ReturnMessage{Message: msg})
+		return
 	}
 
 	ctx.SetCookie("mat", "", -1, "/", "", true, true)
 	ctx.JSON(http.StatusOK, res)
+}
+
+func mapDeleteAccountErr(err error) (int, string) {
+	switch status.Code(err) {
+	case codes.NotFound:
+		return http.StatusNotFound, "no user/activity found"
+	case codes.FailedPrecondition:
+		return http.StatusConflict, status.Convert(err).Message()
+	case codes.Unavailable:
+		return http.StatusServiceUnavailable, status.Convert(err).Message()
+	default:
+		return http.StatusInternalServerError, "couldn't delete the account"
+	}
 }
 
 func (asc *UserServiceClient) GetAllTopics(ctx *gin.Context) {

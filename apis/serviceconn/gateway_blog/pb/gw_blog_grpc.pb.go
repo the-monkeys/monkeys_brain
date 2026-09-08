@@ -48,6 +48,7 @@ const (
 	BlogService_MetaGetBlogsByBlogIds_FullMethodName          = "/blog_svc.BlogService/MetaGetBlogsByBlogIds"
 	BlogService_UsersBlogData_FullMethodName                  = "/blog_svc.BlogService/UsersBlogData"
 	BlogService_TrackInteraction_FullMethodName               = "/blog_svc.BlogService/TrackInteraction"
+	BlogService_AdminListESBlogIds_FullMethodName             = "/blog_svc.BlogService/AdminListESBlogIds"
 )
 
 // BlogServiceClient is the client API for BlogService service.
@@ -89,6 +90,7 @@ type BlogServiceClient interface {
 	UsersBlogData(ctx context.Context, in *BlogReq, opts ...grpc.CallOption) (*anypb.Any, error)
 	// Track user interaction with a blog (e.g. read duration)
 	TrackInteraction(ctx context.Context, in *TrackInteractionReq, opts ...grpc.CallOption) (*TrackInteractionResp, error)
+	AdminListESBlogIds(ctx context.Context, in *AdminListESBlogIdsReq, opts ...grpc.CallOption) (*AdminListESBlogIdsResp, error)
 }
 
 type blogServiceClient struct {
@@ -454,6 +456,16 @@ func (c *blogServiceClient) TrackInteraction(ctx context.Context, in *TrackInter
 	return out, nil
 }
 
+func (c *blogServiceClient) AdminListESBlogIds(ctx context.Context, in *AdminListESBlogIdsReq, opts ...grpc.CallOption) (*AdminListESBlogIdsResp, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(AdminListESBlogIdsResp)
+	err := c.cc.Invoke(ctx, BlogService_AdminListESBlogIds_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // BlogServiceServer is the server API for BlogService service.
 // All implementations must embed UnimplementedBlogServiceServer
 // for forward compatibility.
@@ -493,6 +505,7 @@ type BlogServiceServer interface {
 	UsersBlogData(context.Context, *BlogReq) (*anypb.Any, error)
 	// Track user interaction with a blog (e.g. read duration)
 	TrackInteraction(context.Context, *TrackInteractionReq) (*TrackInteractionResp, error)
+	AdminListESBlogIds(context.Context, *AdminListESBlogIdsReq) (*AdminListESBlogIdsResp, error)
 	mustEmbedUnimplementedBlogServiceServer()
 }
 
@@ -586,6 +599,9 @@ func (UnimplementedBlogServiceServer) UsersBlogData(context.Context, *BlogReq) (
 }
 func (UnimplementedBlogServiceServer) TrackInteraction(context.Context, *TrackInteractionReq) (*TrackInteractionResp, error) {
 	return nil, status.Error(codes.Unimplemented, "method TrackInteraction not implemented")
+}
+func (UnimplementedBlogServiceServer) AdminListESBlogIds(context.Context, *AdminListESBlogIdsReq) (*AdminListESBlogIdsResp, error) {
+	return nil, status.Error(codes.Unimplemented, "method AdminListESBlogIds not implemented")
 }
 func (UnimplementedBlogServiceServer) mustEmbedUnimplementedBlogServiceServer() {}
 func (UnimplementedBlogServiceServer) testEmbeddedByValue()                     {}
@@ -1045,6 +1061,24 @@ func _BlogService_TrackInteraction_Handler(srv interface{}, ctx context.Context,
 	return interceptor(ctx, in, info, handler)
 }
 
+func _BlogService_AdminListESBlogIds_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(AdminListESBlogIdsReq)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(BlogServiceServer).AdminListESBlogIds(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: BlogService_AdminListESBlogIds_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(BlogServiceServer).AdminListESBlogIds(ctx, req.(*AdminListESBlogIdsReq))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // BlogService_ServiceDesc is the grpc.ServiceDesc for BlogService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -1127,6 +1161,10 @@ var BlogService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "TrackInteraction",
 			Handler:    _BlogService_TrackInteraction_Handler,
+		},
+		{
+			MethodName: "AdminListESBlogIds",
+			Handler:    _BlogService_AdminListESBlogIds_Handler,
 		},
 	},
 	Streams: []grpc.StreamDesc{

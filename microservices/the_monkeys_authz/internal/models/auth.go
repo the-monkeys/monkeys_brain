@@ -3,6 +3,8 @@ package models
 import (
 	"database/sql"
 	"time"
+
+	"github.com/the-monkeys/the_monkeys/common/interservice"
 )
 
 // type TheMonkeysUser struct {
@@ -54,6 +56,7 @@ type TheMonkeysUser struct {
 	ClientId                    string         `json:"client_id"`
 	Client                      string         `json:"client"`
 	IpAddress                   string         `json:"ip"`
+	Role                        string         `json:"role,omitempty"`
 }
 
 type TheMonkeysAccount struct {
@@ -65,24 +68,7 @@ type TheMonkeysAccount struct {
 	Email     string `json:"email"`
 }
 
-type TheMonkeysMessage struct {
-	Id           int64  `json:"id"`
-	AccountId    string `json:"account_id"`
-	Username     string `json:"username"`
-	NewUsername  string `json:"new_username"`
-	FirstName    string `json:"first_name"`
-	LastName     string `json:"last_name"`
-	Email        string `json:"email"`
-	LoginMethod  string `json:"login_method"`
-	ClientId     string `json:"client_id"`
-	Client       string `json:"client"`
-	IpAddress    string `json:"ip"`
-	Action       string `json:"action"`
-	Notification string `json:"notification"`
-	BlogId       string `json:"blog_id"`
-	BlogStatus   string `json:"blog_status"`
-	BlogTitle    string `json:"blog_title"`
-}
+type TheMonkeysMessage = interservice.Message
 
 // VerificationRequest tracks user verification requests for the checkmark system.
 type VerificationRequest struct {

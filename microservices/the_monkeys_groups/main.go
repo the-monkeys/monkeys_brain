@@ -11,6 +11,7 @@ import (
 	"github.com/the-monkeys/the_monkeys/apis/serviceconn/gateway_group/pb"
 	"github.com/the-monkeys/the_monkeys/config"
 	"github.com/the-monkeys/the_monkeys/logger"
+	"github.com/the-monkeys/the_monkeys/microservices/rabbitmq"
 	"github.com/the-monkeys/the_monkeys/microservices/the_monkeys_groups/internal/database"
 	"github.com/the-monkeys/the_monkeys/microservices/the_monkeys_groups/internal/services"
 
@@ -61,7 +62,8 @@ func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 
-	groupService := services.NewGroupService(db, log, cfg)
+	qConn := rabbitmq.NewConnManager(cfg.RabbitMQ)
+	groupService := services.NewGroupService(db, log, cfg, qConn)
 
 	grpcServer := grpc.NewServer()
 	pb.RegisterGroupServiceServer(grpcServer, groupService)

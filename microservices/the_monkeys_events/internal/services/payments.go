@@ -38,9 +38,6 @@ func newRazorpay(keyID, secret, webhookSecret string) *razorpay {
 // still runs, but paid tiers are rejected instead of silently failing.
 func (r *razorpay) enabled() bool { return r.keyID != "" && r.secret != "" }
 
-// toPaise converts a rupee amount to the integer minor unit Razorpay expects.
-func toPaise(amount float64) int64 { return int64(amount*100 + 0.5) }
-
 func (r *razorpay) do(ctx context.Context, method, path string, body, out any) error {
 	var payload io.Reader
 	if body != nil {
@@ -77,17 +74,20 @@ func (r *razorpay) do(ctx context.Context, method, path string, body, out any) e
 	return json.Unmarshal(raw, out)
 }
 
-// createOrder opens a Razorpay order the frontend checkout widget settles.
-func (r *razorpay) createOrder(ctx context.Context, amount float64, currency, receipt string) (string, error) {
-	var out struct {
-		ID string `json:"id"`
-	}
-	body := map[string]any{
-		"amount":   toPaise(amount),
+func orderPayload(amountPaise int64, currency, receipt string) map[string]any {
+	return map[string]any{
+		"amount":   amountPaise,
 		"currency": currency,
 		"receipt":  receipt,
 	}
-	if err := r.do(ctx, http.MethodPost, "/orders", body, &out); err != nil {
+}
+
+// createOrder opens a Razorpay order the frontend checkout widget settles.
+func (r *razorpay) createOrder(ctx context.Context, amountPaise int64, currency, receipt string) (string, error) {
+	var out struct {
+		ID string `json:"id"`
+	}
+	if err := r.do(ctx, http.MethodPost, "/orders", orderPayload(amountPaise, currency, receipt), &out); err != nil {
 		return "", err
 	}
 	if out.ID == "" {
@@ -97,11 +97,11 @@ func (r *razorpay) createOrder(ctx context.Context, amount float64, currency, re
 }
 
 // refund issues a full refund for a captured payment.
-func (r *razorpay) refund(ctx context.Context, paymentID string, amount float64) (string, error) {
+func (r *razorpay) refund(ctx context.Context, paymentID string, amountPaise int64) (string, error) {
 	var out struct {
 		ID string `json:"id"`
 	}
-	body := map[string]any{"amount": toPaise(amount)}
+	body := map[string]any{"amount": amountPaise}
 	if err := r.do(ctx, http.MethodPost, "/payments/"+paymentID+"/refund", body, &out); err != nil {
 		return "", err
 	}

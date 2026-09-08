@@ -2,6 +2,8 @@ package models
 
 import (
 	"database/sql"
+
+	"github.com/the-monkeys/the_monkeys/common/interservice"
 )
 
 // TODO: Change as per schema user_account table
@@ -129,23 +131,7 @@ type UserAddress struct {
 	UpdatedAt  sql.NullTime   `json:"updated_at"`
 }
 
-type TheMonkeysMessage struct {
-	Id           int64    `json:"id"`
-	AccountId    string   `json:"account_id"`
-	Username     string   `json:"username"`
-	NewUsername  string   `json:"new_username"`
-	Email        string   `json:"email"`
-	ClientId     string   `json:"client_id"`
-	Client       string   `json:"client"`
-	IpAddress    string   `json:"ip_address"`
-	Action       string   `json:"action"`
-	BlogId       string   `json:"blog_id"`
-	BlogIds      []string `json:"blog_ids,omitempty"`
-	BlogStatus   string   `json:"blog_status"`
-	Notification string   `json:"notification"`
-	Tags         []string `json:"tags"`
-	BlogTitle    string   `json:"blog_title"`
-}
+type TheMonkeysMessage = interservice.Message
 
 type Blog struct {
 	Id         int64  `json:"id"`

@@ -1,12 +1,9 @@
 package storage_v2
 
 import (
-	"bytes"
 	"context"
-	"io"
 	"net/http"
 	"path"
-	"strconv"
 	"strings"
 	"time"
 
@@ -79,32 +76,21 @@ func (s *Service) UploadEventPhoto(ctx *gin.Context) {
 	// and keeps keys unguessable so listing is the only enumeration path.
 	objectName := eventPhotosPrefix(slug) + uuid.NewString() + ext
 
-	var finalReader io.Reader = file
-	objectSize := fileHeader.Size
-
 	opts := minio.PutObjectOptions{
 		ContentType:  contentType,
 		CacheControl: "public, max-age=3600, must-revalidate",
 	}
 
-	if fileHeader.Size <= imageMetadataLimit {
-		data, err := io.ReadAll(file)
-		if err == nil {
-			if hash, w, h, ok := s.computeImageMetadata(contentType, data); ok {
-				opts.UserMetadata = map[string]string{
-					"x-blurhash": hash,
-					"x-width":    strconv.Itoa(w),
-					"x-height":   strconv.Itoa(h),
-				}
-			}
-			finalReader = bytes.NewReader(data)
-			objectSize = int64(len(data))
-		} else {
-			_, _ = file.Seek(0, io.SeekStart)
-		}
+	prepared, err := s.preparePathImage(file, fileHeader, contentType)
+	if err != nil {
+		s.abortPrepareError(ctx, err, "could not strip image metadata")
+		return
+	}
+	if prepared.meta != nil {
+		opts.UserMetadata = prepared.meta
 	}
 
-	info, err := s.mc.PutObject(ctx.Request.Context(), s.bucket, objectName, finalReader, objectSize, opts)
+	info, err := s.mc.PutObject(ctx.Request.Context(), s.bucket, objectName, prepared.reader, prepared.size, opts)
 	if err != nil {
 		s.log.Errorf("minio PutObject (event photo) error: %v", err)
 		ctx.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"message": "upload failed"})
@@ -242,32 +228,21 @@ func (s *Service) UploadEventCoverImage(ctx *gin.Context) {
 	}
 	objectName := eventCoverBase(slug) + ext
 
-	var finalReader io.Reader = file
-	objectSize := fileHeader.Size
-
 	opts := minio.PutObjectOptions{
 		ContentType:  contentType,
 		CacheControl: "public, max-age=3600, must-revalidate",
 	}
 
-	if fileHeader.Size <= imageMetadataLimit {
-		data, err := io.ReadAll(file)
-		if err == nil {
-			if hash, w, h, ok := s.computeImageMetadata(contentType, data); ok {
-				opts.UserMetadata = map[string]string{
-					"x-blurhash": hash,
-					"x-width":    strconv.Itoa(w),
-					"x-height":   strconv.Itoa(h),
-				}
-			}
-			finalReader = bytes.NewReader(data)
-			objectSize = int64(len(data))
-		} else {
-			_, _ = file.Seek(0, io.SeekStart)
-		}
+	prepared, err := s.preparePathImage(file, fileHeader, contentType)
+	if err != nil {
+		s.abortPrepareError(ctx, err, "could not strip image metadata")
+		return
+	}
+	if prepared.meta != nil {
+		opts.UserMetadata = prepared.meta
 	}
 
-	info, err := s.mc.PutObject(ctx.Request.Context(), s.bucket, objectName, finalReader, objectSize, opts)
+	info, err := s.mc.PutObject(ctx.Request.Context(), s.bucket, objectName, prepared.reader, prepared.size, opts)
 	if err != nil {
 		s.log.Errorf("minio PutObject (event cover) error: %v", err)
 		ctx.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"message": "upload failed"})

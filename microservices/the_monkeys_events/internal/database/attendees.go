@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/the-monkeys/the_monkeys/apis/serviceconn/gateway_event/pb"
+	"github.com/the-monkeys/the_monkeys/microservices/the_monkeys_events/internal/money"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/timestamppb"
@@ -277,12 +278,14 @@ func seatsExhausted(ctx context.Context, q querier, eventID, tierID int64, event
 }
 
 // AttachPaymentOrder records the Razorpay order id created for a reservation.
+// amount_paid stays 0 until capture so a pending row does not look settled.
 func (db *eventDB) AttachPaymentOrder(ctx context.Context, attendeeID int64, orderID string, amount float64) error {
+	duePaise := money.ToPaise(amount)
 	_, err := db.db.ExecContext(ctx,
-		`UPDATE event_attendees SET payment_order_id = $1, amount_paid = $2, updated_at = NOW() WHERE id = $3`,
-		orderID, amount, attendeeID)
+		`UPDATE event_attendees SET payment_order_id = $1, amount_due_paise = $2, amount_paid = 0, updated_at = NOW() WHERE id = $3`,
+		orderID, duePaise, attendeeID)
 	if err != nil {
-		return status.Errorf(codes.Internal, "failed to attach payment order: %v", err)
+		return status.Error(codes.Internal, "failed to attach payment order")
 	}
 	return nil
 }
@@ -293,15 +296,22 @@ func (db *eventDB) ConfirmPayment(ctx context.Context, orderID, paymentID string
 	out := &PaymentResult{}
 
 	err := db.inTx(ctx, func(tx *sql.Tx) error {
-		var attendeeID int64
+		var (
+			attendeeID, eventID, organizerID int64
+			duePaise                         sql.NullInt64
+			amountPaid                       float64
+		)
 		err := tx.QueryRowContext(ctx, `
-			SELECT a.id, u.username, e.title, e.slug
+			SELECT a.id, a.event_id, e.organizer_id,
+			       a.amount_due_paise, COALESCE(a.amount_paid, 0),
+			       u.username, e.title, e.slug
 			FROM event_attendees a
 			JOIN user_account u ON u.id = a.user_id
 			JOIN events e ON e.id = a.event_id
 			WHERE a.payment_order_id = $1 AND a.status = $2
 			FOR UPDATE OF a`,
-			orderID, RSVPPendingPayment).Scan(&attendeeID, &out.Username, &out.EventTitle, &out.EventSlug)
+			orderID, RSVPPendingPayment).Scan(&attendeeID, &eventID, &organizerID,
+			&duePaise, &amountPaid, &out.Username, &out.EventTitle, &out.EventSlug)
 		if err == sql.ErrNoRows {
 			out = nil
 			return nil
@@ -310,10 +320,36 @@ func (db *eventDB) ConfirmPayment(ctx context.Context, orderID, paymentID string
 			return status.Error(codes.Internal, "failed to load payment order")
 		}
 
-		if _, err := tx.ExecContext(ctx,
-			`UPDATE event_attendees SET status = $1, payment_id = $2, updated_at = NOW() WHERE id = $3`,
-			RSVPConfirmed, paymentID, attendeeID); err != nil {
-			return status.Errorf(codes.Internal, "failed to confirm payment: %v", err)
+		grossPaise := int64(0)
+		if duePaise.Valid {
+			grossPaise = duePaise.Int64
+		}
+		if grossPaise <= 0 {
+			grossPaise = money.ToPaise(amountPaid)
+		}
+		row := BuildPaymentRow(eventID, attendeeID, organizerID, orderID, paymentID, grossPaise)
+
+		if _, err := tx.ExecContext(ctx, `
+INSERT INTO event_payments (
+  event_id, attendee_id, organizer_user_id, currency,
+  gross_paise, fee_bps, gst_bps, platform_fee_paise, gst_paise, host_payable_paise,
+  razorpay_order_id, razorpay_payment_id, status
+) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,'captured')
+ON CONFLICT (razorpay_payment_id) DO NOTHING`,
+			row.EventID, row.AttendeeID, row.OrganizerUserID, money.CurrencyINR,
+			row.Split.GrossPaise, row.Split.FeeBPS, row.Split.GstBPS,
+			row.Split.PlatformFeePaise, row.Split.GstPaise, row.Split.HostPayablePaise,
+			row.OrderID, row.PaymentID); err != nil {
+			return status.Error(codes.Internal, "failed to record payment")
+		}
+
+		paidRupees := float64(grossPaise) / 100
+		if _, err := tx.ExecContext(ctx, `
+			UPDATE event_attendees
+			SET status = $1, payment_id = $2, amount_captured_paise = $3, amount_paid = $4, updated_at = NOW()
+			WHERE id = $5`,
+			RSVPConfirmed, paymentID, grossPaise, paidRupees, attendeeID); err != nil {
+			return status.Error(codes.Internal, "failed to confirm payment")
 		}
 		return nil
 	})
@@ -450,22 +486,23 @@ func (db *eventDB) ReleaseReservation(ctx context.Context, attendeeID int64) err
 
 // Refund is one outstanding refund owed to an attendee.
 type Refund struct {
-	PaymentID string
-	Amount    float64
-	Username  string
+	PaymentID   string
+	Amount      float64
+	AmountPaise int64
+	Username    string
 }
 
 // PendingRefunds lists cancelled attendees who paid but have not been
 // refunded yet. Driving refunds off this query makes the payout retryable.
 func (db *eventDB) PendingRefunds(ctx context.Context, slug string) ([]Refund, error) {
 	rows, err := db.db.QueryContext(ctx, `
-		SELECT a.payment_id, COALESCE(a.amount_paid, 0), u.username
+		SELECT a.payment_id, COALESCE(a.amount_captured_paise, 0), COALESCE(a.amount_paid, 0), u.username
 		FROM event_attendees a
 		JOIN user_account u ON u.id = a.user_id
 		JOIN events e ON e.id = a.event_id
 		WHERE e.slug = $1 AND a.status = $2
 		  AND a.payment_id IS NOT NULL AND a.refund_id IS NULL
-		  AND COALESCE(a.amount_paid, 0) > 0`, slug, RSVPCancelled)
+		  AND (COALESCE(a.amount_captured_paise, 0) > 0 OR COALESCE(a.amount_paid, 0) > 0)`, slug, RSVPCancelled)
 	if err != nil {
 		return nil, err
 	}
@@ -474,8 +511,15 @@ func (db *eventDB) PendingRefunds(ctx context.Context, slug string) ([]Refund, e
 	var out []Refund
 	for rows.Next() {
 		var r Refund
-		if err := rows.Scan(&r.PaymentID, &r.Amount, &r.Username); err != nil {
+		var capturedPaise int64
+		if err := rows.Scan(&r.PaymentID, &capturedPaise, &r.Amount, &r.Username); err != nil {
 			return nil, err
+		}
+		if capturedPaise > 0 {
+			r.AmountPaise = capturedPaise
+			r.Amount = float64(capturedPaise) / 100
+		} else {
+			r.AmountPaise = money.ToPaise(r.Amount)
 		}
 		out = append(out, r)
 	}
@@ -484,10 +528,21 @@ func (db *eventDB) PendingRefunds(ctx context.Context, slug string) ([]Refund, e
 
 // MarkRefunded records the refund reference against a cancelled attendee.
 func (db *eventDB) MarkRefunded(ctx context.Context, paymentID, refundID string) error {
-	_, err := db.db.ExecContext(ctx,
-		"UPDATE event_attendees SET refund_id = $1, updated_at = NOW() WHERE payment_id = $2",
-		refundID, paymentID)
-	return err
+	return db.inTx(ctx, func(tx *sql.Tx) error {
+		if _, err := tx.ExecContext(ctx,
+			"UPDATE event_attendees SET refund_id = $1, updated_at = NOW() WHERE payment_id = $2",
+			refundID, paymentID); err != nil {
+			return status.Error(codes.Internal, "failed to record refund")
+		}
+		if _, err := tx.ExecContext(ctx, `
+			UPDATE event_payments
+			SET status = 'refunded', refund_paise = gross_paise, razorpay_refund_id = $2, refunded_at = NOW()
+			WHERE razorpay_payment_id = $1`,
+			paymentID, refundID); err != nil {
+			return status.Error(codes.Internal, "failed to record refund")
+		}
+		return nil
+	})
 }
 
 // ListAttendees returns the attendee roster for organizers and co-hosts.

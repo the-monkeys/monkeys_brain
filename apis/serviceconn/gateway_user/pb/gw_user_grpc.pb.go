@@ -64,6 +64,17 @@ const (
 	UserService_CancelVerificationRequest_FullMethodName   = "/auth_svc.UserService/CancelVerificationRequest"
 	UserService_ListVerificationRequests_FullMethodName    = "/auth_svc.UserService/ListVerificationRequests"
 	UserService_ReviewVerificationRequest_FullMethodName   = "/auth_svc.UserService/ReviewVerificationRequest"
+	UserService_AdminListUsers_FullMethodName              = "/auth_svc.UserService/AdminListUsers"
+	UserService_AdminSetUserRole_FullMethodName            = "/auth_svc.UserService/AdminSetUserRole"
+	UserService_AdminFlagUser_FullMethodName               = "/auth_svc.UserService/AdminFlagUser"
+	UserService_AdminUnflagUser_FullMethodName             = "/auth_svc.UserService/AdminUnflagUser"
+	UserService_AdminSuspendUser_FullMethodName            = "/auth_svc.UserService/AdminSuspendUser"
+	UserService_AdminDeleteUser_FullMethodName             = "/auth_svc.UserService/AdminDeleteUser"
+	UserService_AdminUserStats_FullMethodName              = "/auth_svc.UserService/AdminUserStats"
+	UserService_AdminListBlogs_FullMethodName              = "/auth_svc.UserService/AdminListBlogs"
+	UserService_AdminBlogStats_FullMethodName              = "/auth_svc.UserService/AdminBlogStats"
+	UserService_AdminMissingBlogIds_FullMethodName         = "/auth_svc.UserService/AdminMissingBlogIds"
+	UserService_AdminWriteAudit_FullMethodName             = "/auth_svc.UserService/AdminWriteAudit"
 )
 
 // UserServiceClient is the client API for UserService service.
@@ -125,6 +136,17 @@ type UserServiceClient interface {
 	// Admin review surface
 	ListVerificationRequests(ctx context.Context, in *ListVerificationReq, opts ...grpc.CallOption) (*ListVerificationRes, error)
 	ReviewVerificationRequest(ctx context.Context, in *ReviewVerificationReq, opts ...grpc.CallOption) (*VerificationRequest, error)
+	AdminListUsers(ctx context.Context, in *AdminListUsersReq, opts ...grpc.CallOption) (*AdminListUsersResp, error)
+	AdminSetUserRole(ctx context.Context, in *AdminSetUserRoleReq, opts ...grpc.CallOption) (*AdminUserActionResp, error)
+	AdminFlagUser(ctx context.Context, in *AdminFlagUserReq, opts ...grpc.CallOption) (*AdminUserActionResp, error)
+	AdminUnflagUser(ctx context.Context, in *AdminFlagUserReq, opts ...grpc.CallOption) (*AdminUserActionResp, error)
+	AdminSuspendUser(ctx context.Context, in *AdminSuspendUserReq, opts ...grpc.CallOption) (*AdminUserActionResp, error)
+	AdminDeleteUser(ctx context.Context, in *AdminDeleteUserReq, opts ...grpc.CallOption) (*DeleteUserProfileRes, error)
+	AdminUserStats(ctx context.Context, in *AdminEmpty, opts ...grpc.CallOption) (*AdminUserStatsResp, error)
+	AdminListBlogs(ctx context.Context, in *AdminListBlogsReq, opts ...grpc.CallOption) (*AdminListBlogsResp, error)
+	AdminBlogStats(ctx context.Context, in *AdminEmpty, opts ...grpc.CallOption) (*AdminBlogStatsResp, error)
+	AdminMissingBlogIds(ctx context.Context, in *AdminMissingBlogIdsReq, opts ...grpc.CallOption) (*AdminMissingBlogIdsResp, error)
+	AdminWriteAudit(ctx context.Context, in *AdminWriteAuditReq, opts ...grpc.CallOption) (*AdminUserActionResp, error)
 }
 
 type userServiceClient struct {
@@ -588,6 +610,116 @@ func (c *userServiceClient) ReviewVerificationRequest(ctx context.Context, in *R
 	return out, nil
 }
 
+func (c *userServiceClient) AdminListUsers(ctx context.Context, in *AdminListUsersReq, opts ...grpc.CallOption) (*AdminListUsersResp, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(AdminListUsersResp)
+	err := c.cc.Invoke(ctx, UserService_AdminListUsers_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *userServiceClient) AdminSetUserRole(ctx context.Context, in *AdminSetUserRoleReq, opts ...grpc.CallOption) (*AdminUserActionResp, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(AdminUserActionResp)
+	err := c.cc.Invoke(ctx, UserService_AdminSetUserRole_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *userServiceClient) AdminFlagUser(ctx context.Context, in *AdminFlagUserReq, opts ...grpc.CallOption) (*AdminUserActionResp, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(AdminUserActionResp)
+	err := c.cc.Invoke(ctx, UserService_AdminFlagUser_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *userServiceClient) AdminUnflagUser(ctx context.Context, in *AdminFlagUserReq, opts ...grpc.CallOption) (*AdminUserActionResp, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(AdminUserActionResp)
+	err := c.cc.Invoke(ctx, UserService_AdminUnflagUser_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *userServiceClient) AdminSuspendUser(ctx context.Context, in *AdminSuspendUserReq, opts ...grpc.CallOption) (*AdminUserActionResp, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(AdminUserActionResp)
+	err := c.cc.Invoke(ctx, UserService_AdminSuspendUser_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *userServiceClient) AdminDeleteUser(ctx context.Context, in *AdminDeleteUserReq, opts ...grpc.CallOption) (*DeleteUserProfileRes, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(DeleteUserProfileRes)
+	err := c.cc.Invoke(ctx, UserService_AdminDeleteUser_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *userServiceClient) AdminUserStats(ctx context.Context, in *AdminEmpty, opts ...grpc.CallOption) (*AdminUserStatsResp, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(AdminUserStatsResp)
+	err := c.cc.Invoke(ctx, UserService_AdminUserStats_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *userServiceClient) AdminListBlogs(ctx context.Context, in *AdminListBlogsReq, opts ...grpc.CallOption) (*AdminListBlogsResp, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(AdminListBlogsResp)
+	err := c.cc.Invoke(ctx, UserService_AdminListBlogs_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *userServiceClient) AdminBlogStats(ctx context.Context, in *AdminEmpty, opts ...grpc.CallOption) (*AdminBlogStatsResp, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(AdminBlogStatsResp)
+	err := c.cc.Invoke(ctx, UserService_AdminBlogStats_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *userServiceClient) AdminMissingBlogIds(ctx context.Context, in *AdminMissingBlogIdsReq, opts ...grpc.CallOption) (*AdminMissingBlogIdsResp, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(AdminMissingBlogIdsResp)
+	err := c.cc.Invoke(ctx, UserService_AdminMissingBlogIds_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *userServiceClient) AdminWriteAudit(ctx context.Context, in *AdminWriteAuditReq, opts ...grpc.CallOption) (*AdminUserActionResp, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(AdminUserActionResp)
+	err := c.cc.Invoke(ctx, UserService_AdminWriteAudit_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // UserServiceServer is the server API for UserService service.
 // All implementations must embed UnimplementedUserServiceServer
 // for forward compatibility.
@@ -647,6 +779,17 @@ type UserServiceServer interface {
 	// Admin review surface
 	ListVerificationRequests(context.Context, *ListVerificationReq) (*ListVerificationRes, error)
 	ReviewVerificationRequest(context.Context, *ReviewVerificationReq) (*VerificationRequest, error)
+	AdminListUsers(context.Context, *AdminListUsersReq) (*AdminListUsersResp, error)
+	AdminSetUserRole(context.Context, *AdminSetUserRoleReq) (*AdminUserActionResp, error)
+	AdminFlagUser(context.Context, *AdminFlagUserReq) (*AdminUserActionResp, error)
+	AdminUnflagUser(context.Context, *AdminFlagUserReq) (*AdminUserActionResp, error)
+	AdminSuspendUser(context.Context, *AdminSuspendUserReq) (*AdminUserActionResp, error)
+	AdminDeleteUser(context.Context, *AdminDeleteUserReq) (*DeleteUserProfileRes, error)
+	AdminUserStats(context.Context, *AdminEmpty) (*AdminUserStatsResp, error)
+	AdminListBlogs(context.Context, *AdminListBlogsReq) (*AdminListBlogsResp, error)
+	AdminBlogStats(context.Context, *AdminEmpty) (*AdminBlogStatsResp, error)
+	AdminMissingBlogIds(context.Context, *AdminMissingBlogIdsReq) (*AdminMissingBlogIdsResp, error)
+	AdminWriteAudit(context.Context, *AdminWriteAuditReq) (*AdminUserActionResp, error)
 	mustEmbedUnimplementedUserServiceServer()
 }
 
@@ -791,6 +934,39 @@ func (UnimplementedUserServiceServer) ListVerificationRequests(context.Context, 
 }
 func (UnimplementedUserServiceServer) ReviewVerificationRequest(context.Context, *ReviewVerificationReq) (*VerificationRequest, error) {
 	return nil, status.Error(codes.Unimplemented, "method ReviewVerificationRequest not implemented")
+}
+func (UnimplementedUserServiceServer) AdminListUsers(context.Context, *AdminListUsersReq) (*AdminListUsersResp, error) {
+	return nil, status.Error(codes.Unimplemented, "method AdminListUsers not implemented")
+}
+func (UnimplementedUserServiceServer) AdminSetUserRole(context.Context, *AdminSetUserRoleReq) (*AdminUserActionResp, error) {
+	return nil, status.Error(codes.Unimplemented, "method AdminSetUserRole not implemented")
+}
+func (UnimplementedUserServiceServer) AdminFlagUser(context.Context, *AdminFlagUserReq) (*AdminUserActionResp, error) {
+	return nil, status.Error(codes.Unimplemented, "method AdminFlagUser not implemented")
+}
+func (UnimplementedUserServiceServer) AdminUnflagUser(context.Context, *AdminFlagUserReq) (*AdminUserActionResp, error) {
+	return nil, status.Error(codes.Unimplemented, "method AdminUnflagUser not implemented")
+}
+func (UnimplementedUserServiceServer) AdminSuspendUser(context.Context, *AdminSuspendUserReq) (*AdminUserActionResp, error) {
+	return nil, status.Error(codes.Unimplemented, "method AdminSuspendUser not implemented")
+}
+func (UnimplementedUserServiceServer) AdminDeleteUser(context.Context, *AdminDeleteUserReq) (*DeleteUserProfileRes, error) {
+	return nil, status.Error(codes.Unimplemented, "method AdminDeleteUser not implemented")
+}
+func (UnimplementedUserServiceServer) AdminUserStats(context.Context, *AdminEmpty) (*AdminUserStatsResp, error) {
+	return nil, status.Error(codes.Unimplemented, "method AdminUserStats not implemented")
+}
+func (UnimplementedUserServiceServer) AdminListBlogs(context.Context, *AdminListBlogsReq) (*AdminListBlogsResp, error) {
+	return nil, status.Error(codes.Unimplemented, "method AdminListBlogs not implemented")
+}
+func (UnimplementedUserServiceServer) AdminBlogStats(context.Context, *AdminEmpty) (*AdminBlogStatsResp, error) {
+	return nil, status.Error(codes.Unimplemented, "method AdminBlogStats not implemented")
+}
+func (UnimplementedUserServiceServer) AdminMissingBlogIds(context.Context, *AdminMissingBlogIdsReq) (*AdminMissingBlogIdsResp, error) {
+	return nil, status.Error(codes.Unimplemented, "method AdminMissingBlogIds not implemented")
+}
+func (UnimplementedUserServiceServer) AdminWriteAudit(context.Context, *AdminWriteAuditReq) (*AdminUserActionResp, error) {
+	return nil, status.Error(codes.Unimplemented, "method AdminWriteAudit not implemented")
 }
 func (UnimplementedUserServiceServer) mustEmbedUnimplementedUserServiceServer() {}
 func (UnimplementedUserServiceServer) testEmbeddedByValue()                     {}
@@ -1612,6 +1788,204 @@ func _UserService_ReviewVerificationRequest_Handler(srv interface{}, ctx context
 	return interceptor(ctx, in, info, handler)
 }
 
+func _UserService_AdminListUsers_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(AdminListUsersReq)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(UserServiceServer).AdminListUsers(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: UserService_AdminListUsers_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(UserServiceServer).AdminListUsers(ctx, req.(*AdminListUsersReq))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _UserService_AdminSetUserRole_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(AdminSetUserRoleReq)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(UserServiceServer).AdminSetUserRole(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: UserService_AdminSetUserRole_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(UserServiceServer).AdminSetUserRole(ctx, req.(*AdminSetUserRoleReq))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _UserService_AdminFlagUser_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(AdminFlagUserReq)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(UserServiceServer).AdminFlagUser(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: UserService_AdminFlagUser_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(UserServiceServer).AdminFlagUser(ctx, req.(*AdminFlagUserReq))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _UserService_AdminUnflagUser_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(AdminFlagUserReq)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(UserServiceServer).AdminUnflagUser(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: UserService_AdminUnflagUser_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(UserServiceServer).AdminUnflagUser(ctx, req.(*AdminFlagUserReq))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _UserService_AdminSuspendUser_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(AdminSuspendUserReq)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(UserServiceServer).AdminSuspendUser(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: UserService_AdminSuspendUser_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(UserServiceServer).AdminSuspendUser(ctx, req.(*AdminSuspendUserReq))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _UserService_AdminDeleteUser_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(AdminDeleteUserReq)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(UserServiceServer).AdminDeleteUser(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: UserService_AdminDeleteUser_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(UserServiceServer).AdminDeleteUser(ctx, req.(*AdminDeleteUserReq))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _UserService_AdminUserStats_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(AdminEmpty)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(UserServiceServer).AdminUserStats(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: UserService_AdminUserStats_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(UserServiceServer).AdminUserStats(ctx, req.(*AdminEmpty))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _UserService_AdminListBlogs_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(AdminListBlogsReq)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(UserServiceServer).AdminListBlogs(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: UserService_AdminListBlogs_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(UserServiceServer).AdminListBlogs(ctx, req.(*AdminListBlogsReq))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _UserService_AdminBlogStats_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(AdminEmpty)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(UserServiceServer).AdminBlogStats(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: UserService_AdminBlogStats_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(UserServiceServer).AdminBlogStats(ctx, req.(*AdminEmpty))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _UserService_AdminMissingBlogIds_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(AdminMissingBlogIdsReq)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(UserServiceServer).AdminMissingBlogIds(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: UserService_AdminMissingBlogIds_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(UserServiceServer).AdminMissingBlogIds(ctx, req.(*AdminMissingBlogIdsReq))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _UserService_AdminWriteAudit_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(AdminWriteAuditReq)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(UserServiceServer).AdminWriteAudit(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: UserService_AdminWriteAudit_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(UserServiceServer).AdminWriteAudit(ctx, req.(*AdminWriteAuditReq))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // UserService_ServiceDesc is the grpc.ServiceDesc for UserService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -1794,6 +2168,50 @@ var UserService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "ReviewVerificationRequest",
 			Handler:    _UserService_ReviewVerificationRequest_Handler,
+		},
+		{
+			MethodName: "AdminListUsers",
+			Handler:    _UserService_AdminListUsers_Handler,
+		},
+		{
+			MethodName: "AdminSetUserRole",
+			Handler:    _UserService_AdminSetUserRole_Handler,
+		},
+		{
+			MethodName: "AdminFlagUser",
+			Handler:    _UserService_AdminFlagUser_Handler,
+		},
+		{
+			MethodName: "AdminUnflagUser",
+			Handler:    _UserService_AdminUnflagUser_Handler,
+		},
+		{
+			MethodName: "AdminSuspendUser",
+			Handler:    _UserService_AdminSuspendUser_Handler,
+		},
+		{
+			MethodName: "AdminDeleteUser",
+			Handler:    _UserService_AdminDeleteUser_Handler,
+		},
+		{
+			MethodName: "AdminUserStats",
+			Handler:    _UserService_AdminUserStats_Handler,
+		},
+		{
+			MethodName: "AdminListBlogs",
+			Handler:    _UserService_AdminListBlogs_Handler,
+		},
+		{
+			MethodName: "AdminBlogStats",
+			Handler:    _UserService_AdminBlogStats_Handler,
+		},
+		{
+			MethodName: "AdminMissingBlogIds",
+			Handler:    _UserService_AdminMissingBlogIds_Handler,
+		},
+		{
+			MethodName: "AdminWriteAudit",
+			Handler:    _UserService_AdminWriteAudit_Handler,
 		},
 	},
 	Streams: []grpc.StreamDesc{

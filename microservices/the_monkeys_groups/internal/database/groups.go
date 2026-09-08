@@ -195,7 +195,7 @@ func (db *groupDB) CreateGroup(ctx context.Context, req *pb.CreateGroupReq) (*pb
 		return nil, status.Error(codes.InvalidArgument, "group name is required")
 	}
 
-	lat, lng := coordsFromPlace(req.Latitude, req.Longitude, req.City, req.Region, req.Country)
+	lat, lng := coordsFromPlace(ctx, req.Latitude, req.Longitude, req.City, req.Region, req.Country)
 
 	var out *pb.Group
 	err := db.inTx(ctx, func(tx *sql.Tx) error {
@@ -253,7 +253,7 @@ func (db *groupDB) UpdateGroup(ctx context.Context, req *pb.UpdateGroupReq) (*pb
 		return nil, status.Error(codes.InvalidArgument, "group name is required")
 	}
 
-	lat, lng := coordsFromPlace(req.Latitude, req.Longitude, req.City, req.Region, req.Country)
+	lat, lng := coordsFromPlace(ctx, req.Latitude, req.Longitude, req.City, req.Region, req.Country)
 
 	var out *pb.Group
 	err := db.inTx(ctx, func(tx *sql.Tx) error {
@@ -328,34 +328,82 @@ func (db *groupDB) SetGroupStatus(ctx context.Context, slug, accountID, newStatu
 // the delete_group grant, which only the organizer holds implicitly. Deletion
 // is refused while the group still owns upcoming paid events so attendees who
 // paid are never silently stranded by a cascade.
+// groupHasBlockingPaymentsSQL is true when a group still has a child event
+// with captured or pending payments. Unsold paid tiers do not block.
+const groupHasBlockingPaymentsSQL = `
+SELECT EXISTS (
+    SELECT 1 FROM events e
+    WHERE e.group_id = $1
+      AND (
+          EXISTS (SELECT 1 FROM event_payments ep WHERE ep.event_id = e.id)
+          OR EXISTS (
+              SELECT 1 FROM event_attendees a
+              WHERE a.event_id = e.id AND (
+                  a.status = 'pending_payment'
+                  OR (a.status = 'confirmed' AND (
+                      a.payment_id IS NOT NULL
+                      OR COALESCE(a.amount_captured_paise, 0) > 0
+                      OR COALESCE(a.amount_paid, 0) > 0
+                  ))
+              )
+          )
+      )
+)`
+
+func groupHasBlockingPayments(ctx context.Context, tx *sql.Tx, groupID int64) (bool, error) {
+	var blocked bool
+	err := tx.QueryRowContext(ctx, groupHasBlockingPaymentsSQL, groupID).Scan(&blocked)
+	return blocked, err
+}
+
+func refuseIfGroupHasPaidEvents(ctx context.Context, tx *sql.Tx, groupID int64) error {
+	blocked, err := groupHasBlockingPayments(ctx, tx, groupID)
+	if err != nil {
+		return status.Error(codes.Internal, "failed to check group events")
+	}
+	if blocked {
+		return status.Error(codes.FailedPrecondition,
+			"cannot delete a group with captured or pending paid events; cancel or settle them first")
+	}
+	return nil
+}
+
 func (db *groupDB) DeleteGroup(ctx context.Context, req *pb.GroupActionReq) error {
 	return db.inTx(ctx, func(tx *sql.Tx) error {
 		groupID, _, err := authorizeGroup(ctx, tx, req.Slug, req.AccountId, permDeleteGroup)
 		if err != nil {
 			return err
 		}
-
-		var hasPaid bool
-		if err = tx.QueryRowContext(ctx, `
-			SELECT EXISTS (
-				SELECT 1 FROM events e
-				WHERE e.group_id = $1
-				  AND e.status IN ('published', 'live')
-				  AND e.start_time > CURRENT_TIMESTAMP
-				  AND EXISTS (SELECT 1 FROM event_ticket_tiers t
-				               WHERE t.event_id = e.id AND t.price > 0))`,
-			groupID).Scan(&hasPaid); err != nil {
-			return status.Error(codes.Internal, "failed to check group events")
+		if err := refuseIfGroupHasPaidEvents(ctx, tx, groupID); err != nil {
+			return err
 		}
-		if hasPaid {
-			return status.Error(codes.FailedPrecondition,
-				"cannot delete a group with upcoming paid events; cancel or move them first")
-		}
-
 		if _, err = tx.ExecContext(ctx, `DELETE FROM groups WHERE id = $1`, groupID); err != nil {
 			return status.Errorf(codes.Internal, "failed to delete group: %v", err)
 		}
 		return nil
+	})
+}
+
+func (db *groupDB) AdminDeleteGroup(ctx context.Context, req *pb.AdminSuspendGroupReq) error {
+	slug := strings.TrimSpace(req.GetSlug())
+	if slug == "" {
+		return status.Error(codes.InvalidArgument, "slug is required")
+	}
+	return db.inTx(ctx, func(tx *sql.Tx) error {
+		var groupID int64
+		if err := tx.QueryRowContext(ctx, `SELECT id FROM groups WHERE slug = $1 FOR UPDATE`, slug).Scan(&groupID); err != nil {
+			if err == sql.ErrNoRows {
+				return status.Error(codes.NotFound, "group not found")
+			}
+			return status.Error(codes.Internal, "failed to load group")
+		}
+		if err := refuseIfGroupHasPaidEvents(ctx, tx, groupID); err != nil {
+			return err
+		}
+		if _, err := tx.ExecContext(ctx, `DELETE FROM groups WHERE id = $1`, groupID); err != nil {
+			return status.Errorf(codes.Internal, "failed to delete group: %v", err)
+		}
+		return db.writeAudit(ctx, tx, req.GetActor(), "group.delete", "group", slug, nil)
 	})
 }
 

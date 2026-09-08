@@ -95,6 +95,9 @@ func (vh *verificationHandler) ensureBucket(ctx context.Context) error {
 // never need a DB lookup to reconstruct the key. Content type rides as object
 // metadata and is served back automatically on download.
 func verificationObjectKey(checksum string) string {
+	if checksum == "" {
+		return ""
+	}
 	return "verifications/sha256/" + checksum
 }
 
@@ -267,7 +270,8 @@ func (vh *verificationHandler) UploadVerificationAsset(ctx *gin.Context) {
 // unreachable to everyone else — including other logged-in users.
 func (vh *verificationHandler) GetVerificationAssetURL(ctx *gin.Context) {
 	caller := ctx.GetString("userName")
-	isAdmin := ctx.GetString("user_role") == constants.RoleAdmin
+	role := ctx.GetString("user_role")
+	canReviewDocs := role == constants.RoleAdmin || role == constants.RoleSupport
 	if caller == "" {
 		ctx.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"message": "unauthorized"})
 		return
@@ -293,8 +297,8 @@ func (vh *verificationHandler) GetVerificationAssetURL(ctx *gin.Context) {
 		return
 	}
 
-	// Scope check: owner or platform admin only.
-	if !isAdmin && req.Username != caller {
+	// Scope check: owner, Admin, or Support (Support reviews the queue).
+	if !canReviewDocs && req.Username != caller {
 		ctx.AbortWithStatusJSON(http.StatusForbidden, gin.H{"message": "not allowed"})
 		return
 	}

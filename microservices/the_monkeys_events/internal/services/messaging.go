@@ -2,20 +2,12 @@ package services
 
 import (
 	"encoding/json"
+
+	"github.com/the-monkeys/the_monkeys/common/interservice"
 )
 
-// eventNotification is the payload the notification service consumes. It
-// mirrors models.TheMonkeysMessage and adds the two event fields, so the
-// existing consumer keeps working while event notifications carry context.
-type eventNotification struct {
-	AccountId    string `json:"account_id,omitempty"`
-	Username     string `json:"username"`     // actor
-	NewUsername  string `json:"new_username"` // recipient
-	Action       string `json:"action"`
-	Notification string `json:"notification"`
-	EventSlug    string `json:"event_slug"`
-	EventTitle   string `json:"event_title"`
-}
+// eventNotification is the payload the notification service consumes.
+type eventNotification = interservice.Message
 
 // notify publishes one notification. Failures are logged rather than
 // propagated: a missed notification must never fail the user's request.
@@ -48,4 +40,25 @@ func (s *EventService) notifyAll(recipients []string, n eventNotification) {
 		n.NewUsername = recipient
 		s.notify(n)
 	}
+}
+
+func (s *EventService) publishStorageDelete(action, eventSlug, groupSlug string) {
+	if s.qConn == nil || s.cfg == nil || len(s.cfg.RabbitMQ.RoutingKeys) <= storageRoutingKey {
+		return
+	}
+	body, err := json.Marshal(interservice.Message{
+		Action:    action,
+		EventSlug: eventSlug,
+		GroupSlug: groupSlug,
+	})
+	if err != nil {
+		s.log.Errorw("failed to marshal entity delete", "action", action, "err", err)
+		return
+	}
+	rk := s.cfg.RabbitMQ.RoutingKeys[storageRoutingKey]
+	go func() {
+		if err := s.qConn.PublishReliable(s.cfg.RabbitMQ.Exchange, rk, body, s.cfg.RabbitMQ.MaxRetries); err != nil {
+			s.log.Errorw("failed to publish entity delete to storage", "action", action, "routing_key", rk, "err", err)
+		}
+	}()
 }

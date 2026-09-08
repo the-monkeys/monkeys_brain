@@ -49,7 +49,7 @@ func RegisterEventRouter(router *gin.Engine, cfg *config.Config, authClient *aut
 	pub.GET("", esc.ListEvents)
 	pub.GET("/user/:username", mware.AuthOptional, esc.GetUserEvents)
 	pub.GET("/group/:slug", mware.AuthOptional, esc.GetGroupEvents)
-	pub.GET("/:slug", mware.AuthOptional, guard.RequireVisible(), esc.GetEvent)
+	pub.GET("/:slug", mware.AuthOptional, esc.GetEvent)
 	pub.GET("/:slug/comments", mware.AuthOptional, guard.RequireVisible(), esc.ListComments)
 	pub.GET("/:slug/share", mware.AuthOptional, guard.RequireVisible(), esc.ShareMeta)
 

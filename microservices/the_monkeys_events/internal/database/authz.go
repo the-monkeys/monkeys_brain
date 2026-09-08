@@ -81,3 +81,25 @@ func (db *eventDB) Authorize(ctx context.Context, req *pb.AuthorizeReq) (*pb.Aut
 
 	return &res, nil
 }
+
+// ViewerIsHost is the cheap host check for GetEvent redaction: organizer
+// account id is already on the event row; co-hosts are a single EXISTS.
+func (db *eventDB) ViewerIsHost(ctx context.Context, eventID int64, organizerAccountID, viewerAccountID string) (bool, error) {
+	if viewerAccountID == "" {
+		return false, nil
+	}
+	if viewerAccountID == organizerAccountID {
+		return true, nil
+	}
+	var ok bool
+	err := db.db.QueryRowContext(ctx, `
+		SELECT EXISTS (
+			SELECT 1 FROM event_co_hosts ch
+			JOIN user_account u ON u.id = ch.co_host_id
+			WHERE ch.event_id = $1 AND u.account_id = $2
+		)`, eventID, viewerAccountID).Scan(&ok)
+	if err != nil {
+		return false, status.Error(codes.Internal, "failed to resolve host standing")
+	}
+	return ok, nil
+}

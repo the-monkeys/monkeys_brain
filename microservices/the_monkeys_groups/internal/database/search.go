@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/the-monkeys/the_monkeys/apis/serviceconn/gateway_group/pb"
+	"github.com/the-monkeys/the_monkeys/common/geo"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/timestamppb"
@@ -75,11 +76,8 @@ func clampLimit(limit int32) int32 {
 	return limit
 }
 
-// ListGroups returns a page of publicly discoverable groups matching the
-// supplied filters. Only public, published groups surface here; unlisted and
-// private groups are reachable by direct slug, not discovery.
-func (db *groupDB) ListGroups(ctx context.Context, req *pb.ListGroupsReq) ([]*pb.Group, int32, error) {
-	args := []any{}
+func groupListFilter(req *pb.ListGroupsReq) (args []any, where string) {
+	args = []any{}
 	conds := []string{"g.visibility = 'public'"}
 
 	if s := strings.TrimSpace(req.Status); s != "" {
@@ -96,8 +94,11 @@ func (db *groupDB) ListGroups(ctx context.Context, req *pb.ListGroupsReq) ([]*pb
 		args = append(args, r)
 		conds = append(conds, "g.region ILIKE $"+strconv.Itoa(len(args)))
 	}
-	if c := strings.TrimSpace(req.City); c != "" {
-		args = append(args, c)
+	radiusKm, applyRadius := geo.ClampSearchRadius(req.Radius)
+	geoOn := req.UserLat != 0 && req.UserLng != 0 && applyRadius
+	city := strings.TrimSpace(req.City)
+	if city != "" && !geoOn {
+		args = append(args, city)
 		conds = append(conds, "g.city ILIKE $"+strconv.Itoa(len(args)))
 	}
 	if q := strings.TrimSpace(req.Query); q != "" {
@@ -110,20 +111,58 @@ func (db *groupDB) ListGroups(ctx context.Context, req *pb.ListGroupsReq) ([]*pb
 			"WHERE t.group_id = g.id AND t.topic_name = ANY($"+strconv.Itoa(len(args))+"))")
 	}
 
-	// Spatial radius filter: only include groups within `radius` km of the user.
-	if req.UserLat != 0 && req.UserLng != 0 && req.Radius > 0 {
-		args = append(args, req.UserLat, req.UserLng, req.UserLat, req.Radius)
-		latPos := len(args) - 3
-		lngPos := len(args) - 2
-		lat2Pos := len(args) - 1
-		radiusPos := len(args)
-		conds = append(conds, fmt.Sprintf(
+	if geoOn {
+		var cityPos int
+		if city != "" {
+			args = append(args, city)
+			cityPos = len(args)
+		}
+		minLat, maxLat, minLng, maxLng := geoBox(req.UserLat, req.UserLng, radiusKm)
+		args = append(args, req.UserLat, req.UserLng, req.UserLat, radiusKm,
+			minLat, maxLat, minLng, maxLng)
+		latPos := len(args) - 7
+		lngPos := len(args) - 6
+		lat2Pos := len(args) - 5
+		radiusPos := len(args) - 4
+		minLatPos := len(args) - 3
+		maxLatPos := len(args) - 2
+		minLngPos := len(args) - 1
+		maxLngPos := len(args)
+		inRange := fmt.Sprintf(
 			"g.latitude IS NOT NULL AND g.longitude IS NOT NULL AND "+
+				"g.latitude BETWEEN $%d AND $%d AND g.longitude BETWEEN $%d AND $%d AND "+
 				"(6371 * acos(LEAST(GREATEST(cos(radians($%d)) * cos(radians(g.latitude)) * cos(radians(g.longitude) - radians($%d)) + sin(radians($%d)) * sin(radians(g.latitude)), -1), 1))) <= $%d",
-			latPos, lngPos, lat2Pos, radiusPos))
+			minLatPos, maxLatPos, minLngPos, maxLngPos, latPos, lngPos, lat2Pos, radiusPos)
+		if cityPos > 0 {
+			conds = append(conds, fmt.Sprintf(
+				"((%s) OR ((g.latitude IS NULL OR g.longitude IS NULL) AND g.city ILIKE $%d))",
+				inRange, cityPos))
+		} else {
+			conds = append(conds, inRange)
+		}
 	}
 
-	where := " WHERE " + strings.Join(conds, " AND ")
+	return args, " WHERE " + strings.Join(conds, " AND ")
+}
+
+func groupNearestOrderBy(lat, lng float64, existingArgs int) (string, []any) {
+	extra := []any{lat, lng, lat}
+	a := existingArgs + 1
+	b := existingArgs + 2
+	c := existingArgs + 3
+	order := fmt.Sprintf(
+		`(CASE WHEN g.latitude IS NULL OR g.longitude IS NULL THEN 1 ELSE 0 END),
+			 (6371 * acos(LEAST(GREATEST(cos(radians($%d)) * cos(radians(g.latitude)) * cos(radians(g.longitude) - radians($%d)) + sin(radians($%d)) * sin(radians(g.latitude)), -1), 1))) ASC NULLS LAST,
+			 g.member_count DESC`,
+		a, b, c)
+	return order, extra
+}
+
+// ListGroups returns a page of publicly discoverable groups matching the
+// supplied filters. Only public, published groups surface here; unlisted and
+// private groups are reachable by direct slug, not discovery.
+func (db *groupDB) ListGroups(ctx context.Context, req *pb.ListGroupsReq) ([]*pb.Group, int32, error) {
+	args, where := groupListFilter(req)
 
 	var total int32
 	if err := db.db.QueryRowContext(ctx,
@@ -132,19 +171,15 @@ func (db *groupDB) ListGroups(ctx context.Context, req *pb.ListGroupsReq) ([]*pb
 	}
 
 	limit := clampLimit(req.Limit)
-	args = append(args, limit)
-	limitPos := len(args)
-	args = append(args, req.Offset)
-	offsetPos := len(args)
-
 	orderBy := "g.member_count DESC, g.created_at DESC"
 	if req.UserLat != 0 && req.UserLng != 0 {
-		orderBy = fmt.Sprintf(
-			`(CASE WHEN g.latitude IS NULL OR g.longitude IS NULL THEN 1 ELSE 0 END),
-			 (6371 * acos(LEAST(GREATEST(cos(radians(%f)) * cos(radians(g.latitude)) * cos(radians(g.longitude) - radians(%f)) + sin(radians(%f)) * sin(radians(g.latitude)), -1), 1))) ASC NULLS LAST,
-			 g.member_count DESC`,
-			req.UserLat, req.UserLng, req.UserLat)
+		var extra []any
+		orderBy, extra = groupNearestOrderBy(req.UserLat, req.UserLng, len(args))
+		args = append(args, extra...)
 	}
+	args = append(args, limit, req.Offset)
+	limitPos := len(args) - 1
+	offsetPos := len(args)
 
 	rows, err := db.db.QueryContext(ctx,
 		"SELECT"+groupListColumns+groupFrom+where+

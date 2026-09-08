@@ -7,10 +7,12 @@ const (
 )
 
 const (
-	RoleAdmin  = "Admin"
-	RoleOwner  = "Owner"
-	RoleEditor = "Editor"
-	RoleViewer = "Viewer"
+	RoleAdmin     = "Admin"
+	RoleOwner     = "Owner"
+	RoleEditor    = "Editor"
+	RoleViewer    = "Viewer"
+	RoleSupport   = "Support"
+	RoleCommunity = "Community"
 )
 
 const (

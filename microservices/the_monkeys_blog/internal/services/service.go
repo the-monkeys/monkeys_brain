@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net/http"
 	"strconv"
 	"strings"
 	"time"
@@ -1218,9 +1219,17 @@ func (blog *BlogService) GetLatest100Blogs(ctx context.Context, req *pb.GetBlogs
 
 // TODO: Incase of blog doesn't exists, do return 404
 func (blog *BlogService) DeleteABlogByBlogId(ctx context.Context, req *pb.DeleteBlogReq) (*pb.DeleteBlogResp, error) {
-	_, err := blog.osClient.DeleteABlogById(ctx, req.BlogId)
+	esResp, err := blog.osClient.DeleteABlogById(ctx, req.BlogId)
 	if err != nil {
 		blog.logger.Errorf("failed to delete the blog with ID: %s, error: %v", req.BlogId, err)
+		return nil, status.Errorf(codes.Internal, "failed to delete the blog with ID: %s", req.BlogId)
+	}
+	esStatus := http.StatusOK
+	if esResp != nil {
+		esStatus = esResp.StatusCode
+	}
+	if !esDeleteOK(esStatus) {
+		blog.logger.Errorf("elasticsearch delete rejected blog %s: status %d", req.BlogId, esStatus)
 		return nil, status.Errorf(codes.Internal, "failed to delete the blog with ID: %s", req.BlogId)
 	}
 
@@ -1238,26 +1247,31 @@ func (blog *BlogService) DeleteABlogByBlogId(ctx context.Context, req *pb.Delete
 		return nil, status.Errorf(codes.Internal, "published the blog with some error: %s", req.BlogId)
 	}
 
-	// Enqueue delete message to user service asynchronously with publisher confirms
+	usersKey, storageKey, ok := blogDeleteFanOutKeys(blog.config.RabbitMQ.RoutingKeys)
+	if !ok {
+		blog.logger.Errorf("blog delete: routing keys not configured (need at least 3), blog_id=%s", req.BlogId)
+		return nil, status.Errorf(codes.Internal, "failed to delete the blog with ID: %s", req.BlogId)
+	}
+
+	exchange := blog.config.RabbitMQ.Exchange
+	maxRetries := blog.config.RabbitMQ.MaxRetries
+
 	go func() {
-		err := blog.qConn.PublishReliable(blog.config.RabbitMQ.Exchange, blog.config.RabbitMQ.RoutingKeys[1], bx, blog.config.RabbitMQ.MaxRetries)
+		err := blog.qConn.PublishReliable(exchange, usersKey, bx, maxRetries)
 		if err != nil {
-			blog.logger.Errorf("failed to reliably publish blog delete message to RabbitMQ: exchange=%s, routing_key=%s, error=%v", blog.config.RabbitMQ.Exchange, blog.config.RabbitMQ.RoutingKeys[1], err)
+			blog.logger.Errorf("failed to reliably publish blog delete to users: exchange=%s, routing_key=%s, error=%v", exchange, usersKey, err)
 		}
 	}()
 
-	// Enqueue delete message to storage service asynchronously
 	go func() {
-		err := blog.qConn.PublishMessage(blog.config.RabbitMQ.Exchange, blog.config.RabbitMQ.RoutingKeys[2], bx)
+		err := blog.qConn.PublishReliable(exchange, storageKey, bx, maxRetries)
 		if err != nil {
-			blog.logger.Errorf("failed to publish blog publish message to RabbitMQ: exchange=%s, routing_key=%s, error=%v", blog.config.RabbitMQ.Exchange, blog.config.RabbitMQ.RoutingKeys[2], err)
+			blog.logger.Errorf("failed to reliably publish blog delete to storage: exchange=%s, routing_key=%s, error=%v", exchange, storageKey, err)
 		}
 	}()
 
-	// Track blog activity
 	blog.trackBlogActivity(req.OwnerAccountId, "delete_blog", "blog", req.BlogId, req)
 
-	// fmt.Printf("resp.StatusCode: %v\n", resp.StatusCode)
 	return &pb.DeleteBlogResp{
 		Message: fmt.Sprintf("Blog with id %s has been successfully deleted", req.BlogId),
 	}, nil

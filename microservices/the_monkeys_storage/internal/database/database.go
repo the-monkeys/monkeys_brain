@@ -10,6 +10,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/the-monkeys/the_monkeys/apis/serviceconn/gateway_file_service/pb"
 	"github.com/the-monkeys/the_monkeys/config"
+	"github.com/the-monkeys/the_monkeys/constants"
 	"go.uber.org/zap"
 )
 
@@ -20,6 +21,7 @@ type StorageDB interface {
 	CreateAssetRef(ctx context.Context, req *pb.CreateAssetRefReq) (*pb.CreateAssetRefRes, error)
 	DeleteAssetRef(ctx context.Context, req *pb.DeleteAssetRefReq) (*pb.DeleteAssetRefRes, error)
 	ReplaceAssetRef(ctx context.Context, req *pb.ReplaceAssetRefReq) (*pb.ReplaceAssetRefRes, error)
+	ResolveAssetRead(ctx context.Context, req *pb.ResolveAssetReadReq) (*pb.ResolveAssetReadResp, error)
 }
 
 type storageDB struct {
@@ -141,6 +143,89 @@ func (s *storageDB) CreateAssetRef(ctx context.Context, req *pb.CreateAssetRefRe
 	return res, nil
 }
 
+const collectOrphanedAssetsSQL = `
+SELECT a.checksum, a.object_key
+FROM storage_assets a
+WHERE a.checksum = ANY($1::text[])
+  AND NOT EXISTS (
+      SELECT 1 FROM storage_asset_refs r
+      WHERE r.checksum = a.checksum AND r.deleted_at IS NULL
+  )
+  AND NOT EXISTS (
+      SELECT 1 FROM verification_requests v
+      WHERE v.selfie_checksum = a.checksum
+         OR v.id_front_checksum = a.checksum
+         OR v.id_back_checksum = a.checksum
+  )`
+
+// Historical (soft-deleted) refs still RESTRICT-delete storage_assets. Remove only
+// those rows — never live refs (deleted_at IS NULL).
+const deleteHistoricalAssetRefsSQL = `
+DELETE FROM storage_asset_refs
+WHERE checksum = $1 AND deleted_at IS NOT NULL`
+
+const deleteOrphanedStorageAssetSQL = `DELETE FROM storage_assets WHERE checksum = $1`
+
+// Soft-delete the live owner/purpose/file ref, then RETURNING checksum so
+// ReplaceAssetRef can run the same last-ref GC as DeleteAssetRef.
+const replaceSoftDeleteAssetRefsSQL = `UPDATE storage_asset_refs
+		 SET deleted_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP
+		 WHERE owner_type = $1
+		   AND owner_id = $2
+		   AND purpose = $3
+		   AND COALESCE(file_name, '') = $4
+		   AND deleted_at IS NULL
+		 RETURNING checksum`
+
+const (
+	gcAssetSavepointSQL         = `SAVEPOINT gc_storage_asset`
+	rollbackGCAssetSavepointSQL = `ROLLBACK TO SAVEPOINT gc_storage_asset`
+	releaseGCAssetSavepointSQL  = `RELEASE SAVEPOINT gc_storage_asset`
+)
+
+type txExecer interface {
+	ExecContext(ctx context.Context, query string, args ...any) (sql.Result, error)
+}
+
+func isOrphanChecksum(liveRefs, verificationPointers int) bool {
+	return liveRefs == 0 && verificationPointers == 0
+}
+
+// purgeOrphanedStorageAsset deletes historical refs then the CAS row inside a
+// SAVEPOINT so a failed DELETE cannot abort the outer transaction (and undo
+// the soft-delete UPDATE). skip is true when GC failed but the savepoint was
+// rolled back; the caller should log and continue. A non-skip err is fatal.
+func purgeOrphanedStorageAsset(ctx context.Context, tx txExecer, checksum string) (deleted, skip bool, err error) {
+	if _, err := tx.ExecContext(ctx, gcAssetSavepointSQL); err != nil {
+		return false, false, err
+	}
+	rollback := func() error {
+		_, rbErr := tx.ExecContext(ctx, rollbackGCAssetSavepointSQL)
+		return rbErr
+	}
+	if _, err := tx.ExecContext(ctx, deleteHistoricalAssetRefsSQL, checksum); err != nil {
+		if rbErr := rollback(); rbErr != nil {
+			return false, false, rbErr
+		}
+		return false, true, err
+	}
+	res, err := tx.ExecContext(ctx, deleteOrphanedStorageAssetSQL, checksum)
+	if err != nil {
+		if rbErr := rollback(); rbErr != nil {
+			return false, false, rbErr
+		}
+		return false, true, err
+	}
+	if _, err := tx.ExecContext(ctx, releaseGCAssetSavepointSQL); err != nil {
+		return false, false, err
+	}
+	n, err := res.RowsAffected()
+	if err != nil || n == 0 {
+		return false, false, nil
+	}
+	return true, false, nil
+}
+
 func (s *storageDB) DeleteAssetRef(ctx context.Context, req *pb.DeleteAssetRefReq) (*pb.DeleteAssetRefRes, error) {
 	refID := strings.TrimSpace(req.RefId)
 	ownerType := strings.TrimSpace(req.OwnerType)
@@ -148,48 +233,126 @@ func (s *storageDB) DeleteAssetRef(ctx context.Context, req *pb.DeleteAssetRefRe
 	purpose := strings.TrimSpace(req.Purpose)
 	fileName := strings.TrimSpace(req.FileName)
 
-	var result sql.Result
-	var err error
+	var query string
+	var args []any
 	switch {
 	case refID != "":
-		result, err = s.db.ExecContext(ctx,
-			`UPDATE storage_asset_refs
+		query = `UPDATE storage_asset_refs
 			 SET deleted_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP
-			 WHERE id = $1 AND deleted_at IS NULL`,
-			refID,
-		)
+			 WHERE id = $1 AND deleted_at IS NULL
+			 RETURNING checksum`
+		args = []any{refID}
 	case ownerType != "" && ownerID != "" && purpose != "":
-		result, err = s.db.ExecContext(ctx,
-			`UPDATE storage_asset_refs
+		query = `UPDATE storage_asset_refs
 			 SET deleted_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP
 			 WHERE owner_type = $1
 			   AND owner_id = $2
 			   AND purpose = $3
 			   AND COALESCE(file_name, '') = $4
-			   AND deleted_at IS NULL`,
-			ownerType, ownerID, purpose, fileName,
-		)
+			   AND deleted_at IS NULL
+			 RETURNING checksum`
+		args = []any{ownerType, ownerID, purpose, fileName}
 	case ownerType != "" && ownerID != "":
-		result, err = s.db.ExecContext(ctx,
-			`UPDATE storage_asset_refs
+		query = `UPDATE storage_asset_refs
 			 SET deleted_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP
 			 WHERE owner_type = $1
 			   AND owner_id = $2
-			   AND deleted_at IS NULL`,
-			ownerType, ownerID,
-		)
+			   AND deleted_at IS NULL
+			 RETURNING checksum`
+		args = []any{ownerType, ownerID}
 	default:
 		return nil, fmt.Errorf("ref_id or owner_type and owner_id are required")
 	}
+
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback()
+
+	rows, err := tx.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, err
+	}
+	seen := make(map[string]struct{})
+	var checksums []string
+	var count int32
+	for rows.Next() {
+		var checksum string
+		if err := rows.Scan(&checksum); err != nil {
+			rows.Close()
+			return nil, err
+		}
+		count++
+		if _, ok := seen[checksum]; ok {
+			continue
+		}
+		seen[checksum] = struct{}{}
+		checksums = append(checksums, checksum)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	orphans, err := collectAndPurgeOrphans(ctx, tx, s.log, checksums)
 	if err != nil {
 		return nil, err
 	}
 
-	count, err := result.RowsAffected()
+	if err := tx.Commit(); err != nil {
+		return nil, err
+	}
+	return &pb.DeleteAssetRefRes{Success: true, DeletedCount: count, Orphans: orphans}, nil
+}
+
+func collectAndPurgeOrphans(ctx context.Context, tx *sql.Tx, log *zap.SugaredLogger, checksums []string) ([]*pb.OrphanedAsset, error) {
+	orphans := make([]*pb.OrphanedAsset, 0)
+	if len(checksums) == 0 {
+		return orphans, nil
+	}
+	candRows, err := tx.QueryContext(ctx, collectOrphanedAssetsSQL, checksums)
 	if err != nil {
 		return nil, err
 	}
-	return &pb.DeleteAssetRefRes{Success: true, DeletedCount: int32(count)}, nil
+	type candidate struct {
+		checksum  string
+		objectKey string
+	}
+	var candidates []candidate
+	for candRows.Next() {
+		var c candidate
+		if err := candRows.Scan(&c.checksum, &c.objectKey); err != nil {
+			candRows.Close()
+			return nil, err
+		}
+		candidates = append(candidates, c)
+	}
+	if err := candRows.Close(); err != nil {
+		return nil, err
+	}
+	if err := candRows.Err(); err != nil {
+		return nil, err
+	}
+
+	for _, c := range candidates {
+		deleted, skip, err := purgeOrphanedStorageAsset(ctx, tx, c.checksum)
+		if err != nil {
+			if skip {
+				if log != nil {
+					log.Warnf("skip GC storage_assets checksum=%s: %v", c.checksum, err)
+				}
+				continue
+			}
+			return nil, err
+		}
+		if deleted {
+			orphans = append(orphans, &pb.OrphanedAsset{Checksum: c.checksum, ObjectKey: c.objectKey})
+		}
+	}
+	return orphans, nil
 }
 
 func (s *storageDB) ReplaceAssetRef(ctx context.Context, req *pb.ReplaceAssetRefReq) (*pb.ReplaceAssetRefRes, error) {
@@ -213,21 +376,30 @@ func (s *storageDB) ReplaceAssetRef(ctx context.Context, req *pb.ReplaceAssetRef
 		return nil, err
 	}
 
-	result, err := tx.ExecContext(ctx,
-		`UPDATE storage_asset_refs
-		 SET deleted_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP
-		 WHERE owner_type = $1
-		   AND owner_id = $2
-		   AND purpose = $3
-		   AND COALESCE(file_name, '') = $4
-		   AND deleted_at IS NULL`,
-		ownerType, ownerID, purpose, fileName,
-	)
+	rows, err := tx.QueryContext(ctx, replaceSoftDeleteAssetRefsSQL, ownerType, ownerID, purpose, fileName)
 	if err != nil {
 		return nil, err
 	}
-	count, err := result.RowsAffected()
-	if err != nil {
+	seen := make(map[string]struct{})
+	var oldChecksums []string
+	var count int32
+	for rows.Next() {
+		var old string
+		if err := rows.Scan(&old); err != nil {
+			rows.Close()
+			return nil, err
+		}
+		count++
+		if _, ok := seen[old]; ok {
+			continue
+		}
+		seen[old] = struct{}{}
+		oldChecksums = append(oldChecksums, old)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
 		return nil, err
 	}
 
@@ -240,6 +412,13 @@ func (s *storageDB) ReplaceAssetRef(ctx context.Context, req *pb.ReplaceAssetRef
 		return nil, err
 	}
 
+	// Last-ref GC after the new live ref exists so a same-checksum replace is not orphaned.
+	orphans, err := collectAndPurgeOrphans(ctx, tx, s.log, oldChecksums)
+	if err != nil {
+		return nil, err
+	}
+	_ = orphans // ReplaceAssetRefRes.Orphans / GetOrphans() after WSL protoc; do not invent pb.go.
+
 	if err := tx.Commit(); err != nil {
 		return nil, err
 	}
@@ -248,7 +427,7 @@ func (s *storageDB) ReplaceAssetRef(ctx context.Context, req *pb.ReplaceAssetRef
 		RefId:        refID,
 		Checksum:     checksum,
 		ObjectKey:    objectKey,
-		DeletedCount: int32(count),
+		DeletedCount: count,
 	}, nil
 }
 
@@ -364,4 +543,91 @@ func nullableInt32(v int32) sql.NullInt32 {
 
 func nullableInt64(v int64) sql.NullInt64 {
 	return sql.NullInt64{Int64: v, Valid: v > 0}
+}
+
+const resolveAssetObjectKeySQL = `SELECT object_key FROM storage_assets WHERE checksum = $1`
+
+const resolveBlogStatusSQL = `SELECT COALESCE(status, '') FROM blog WHERE blog_id = $1`
+
+const resolveAssetReadSQL = `
+SELECT COALESCE(blog.status, ''), r.owner_id, a.object_key
+FROM storage_asset_refs r
+LEFT JOIN blog ON blog.blog_id = r.owner_id
+LEFT JOIN storage_assets a ON a.checksum = r.checksum
+WHERE r.checksum = $1
+  AND r.owner_type = 'blog'
+  AND r.deleted_at IS NULL
+`
+
+func (s *storageDB) ResolveAssetRead(ctx context.Context, req *pb.ResolveAssetReadReq) (*pb.ResolveAssetReadResp, error) {
+	resp := &pb.ResolveAssetReadResp{}
+	if req == nil {
+		resp.NotFound = true
+		return resp, nil
+	}
+
+	blogID := strings.TrimSpace(req.GetBlogId())
+	checksum := strings.TrimSpace(req.GetChecksum())
+
+	if blogID != "" && checksum == "" {
+		var status string
+		err := s.db.QueryRowContext(ctx, resolveBlogStatusSQL, blogID).Scan(&status)
+		if err == sql.ErrNoRows {
+			return resp, nil
+		}
+		if err != nil {
+			return nil, err
+		}
+		resp.AllowPublic = status == constants.BlogStatusPublished
+		return resp, nil
+	}
+
+	if checksum == "" {
+		resp.NotFound = true
+		return resp, nil
+	}
+
+	var objectKey string
+	err := s.db.QueryRowContext(ctx, resolveAssetObjectKeySQL, checksum).Scan(&objectKey)
+	if err == sql.ErrNoRows {
+		resp.NotFound = true
+		return resp, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	if strings.HasPrefix(objectKey, "verifications/") {
+		resp.VerificationOnly = true
+		return resp, nil
+	}
+
+	rows, err := s.db.QueryContext(ctx, resolveAssetReadSQL, checksum)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	unpublished := make([]string, 0)
+	for rows.Next() {
+		var status, ownerID string
+		var refObjectKey sql.NullString
+		if err := rows.Scan(&status, &ownerID, &refObjectKey); err != nil {
+			return nil, err
+		}
+		if status == constants.BlogStatusPublished {
+			resp.AllowPublic = true
+			continue
+		}
+		if ownerID != "" {
+			unpublished = append(unpublished, ownerID)
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	if resp.AllowPublic {
+		return resp, nil
+	}
+	resp.UnpublishedBlogIds = unpublished
+	return resp, nil
 }

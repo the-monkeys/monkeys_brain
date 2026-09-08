@@ -105,7 +105,7 @@ func main() {
 	// Register REST routes for all the microservices
 	authClient := auth.RegisterAuthRouter(server.router, cfg, log)
 	userClient := user_service.RegisterUserRouter(server.router, cfg, authClient, log, searchCache)
-	blog.RegisterBlogRouter(server.router, cfg, authClient, userClient, log)
+	blogClient := blog.RegisterBlogRouter(server.router, cfg, authClient, userClient, log)
 	// Phase 3: search-v2 blog & autocomplete endpoints. Hits ES via the
 	// the_monkeys_blogs alias, so it follows whichever physical index
 	// the Phase 2 alias swap is currently pointing at.
@@ -114,9 +114,8 @@ func main() {
 	storageV2Svc := storage_v2.RegisterRoutes(server.router, cfg, storageClient.Client, authClient, log)
 	notification.RegisterNotificationRoute(server.router, cfg, authClient, log)
 	eventClient := events.RegisterEventRouter(server.router, cfg, authClient, storageV2Svc, log)
-	groups.RegisterGroupRouter(server.router, cfg, authClient, eventClient.Client, storageV2Svc, log)
-	// monkeys_ai.RegisterRecommendationRoute(server.router, cfg, authClient, log)
-	admin.RegisterAdminRouter(server.router, cfg, log)
+	groupClient := groups.RegisterGroupRouter(server.router, cfg, authClient, eventClient.Client, storageV2Svc, log)
+	admin.RegisterAdminRouter(server.router, cfg, authClient, eventClient.Client, blogClient.Client, groupClient.Client, log)
 	systems.RegisterSystemRouter(server.router, cfg, log)
 	snapshot.RegisterRoutes(server.router, cfg, log)
 

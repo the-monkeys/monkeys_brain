@@ -11,8 +11,13 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
-	"github.com/the-monkeys/the_monkeys/apis/serviceconn/gateway_user/pb"
+	blogpb "github.com/the-monkeys/the_monkeys/apis/serviceconn/gateway_blog/pb"
+	"github.com/the-monkeys/the_monkeys/apis/serviceconn/gateway_event/pb"
+	grouppb "github.com/the-monkeys/the_monkeys/apis/serviceconn/gateway_group/pb"
+	userpb "github.com/the-monkeys/the_monkeys/apis/serviceconn/gateway_user/pb"
 	"github.com/the-monkeys/the_monkeys/config"
+	"github.com/the-monkeys/the_monkeys/constants"
+	"github.com/the-monkeys/the_monkeys/microservices/the_monkeys_gateway/internal/auth"
 	"go.uber.org/zap"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
@@ -21,18 +26,21 @@ import (
 )
 
 type AdminServiceClient struct {
-	Client pb.UserServiceClient
+	Client userpb.UserServiceClient
+	Events pb.EventServiceClient
+	Blogs  blogpb.BlogServiceClient
+	Groups grouppb.GroupServiceClient
 	logger *zap.SugaredLogger
 }
 
-func NewAdminServiceClient(cfg *config.Config, log *zap.SugaredLogger) pb.UserServiceClient {
+func NewAdminServiceClient(cfg *config.Config, log *zap.SugaredLogger) userpb.UserServiceClient {
 	userService := fmt.Sprintf("%s:%d", cfg.Microservices.TheMonkeysUser, cfg.Microservices.UserPort)
 	cc, err := grpc.NewClient(userService, grpc.WithTransportCredentials(insecure.NewCredentials()))
 	if err != nil {
 		log.Errorf("cannot dial to grpc user server for admin: %v", err)
 	}
 	log.Infof("✅ admin service is dialing to user rpc server at: %v", cfg.Microservices.TheMonkeysUser)
-	return pb.NewUserServiceClient(cc)
+	return userpb.NewUserServiceClient(cc)
 }
 
 // LocalNetworkMiddleware restricts access to local network only
@@ -109,32 +117,65 @@ func AdminKeyMiddleware(adminKey string, log *zap.SugaredLogger) gin.HandlerFunc
 	}
 }
 
-func RegisterAdminRouter(router *gin.Engine, cfg *config.Config, logg *zap.SugaredLogger) *AdminServiceClient {
+func RegisterAdminRouter(router *gin.Engine, cfg *config.Config, authClient *auth.ServiceClient, eventClient pb.EventServiceClient, blogClient blogpb.BlogServiceClient, groupClient grouppb.GroupServiceClient, logg *zap.SugaredLogger) *AdminServiceClient {
 	asc := &AdminServiceClient{
 		Client: NewAdminServiceClient(cfg, logg),
+		Events: eventClient,
+		Blogs:  blogClient,
+		Groups: groupClient,
 		logger: logg,
 	}
+	mware := auth.InitAuthMiddleware(authClient, logg)
 
-	// Admin routes group with local network restriction and admin key validation
+	staff := router.Group("/api/v1/admin")
+	staff.Use(mware.AuthRequired)
+
+	pay := staff.Group("/payments", RequireRole(logg, constants.RoleAdmin))
+	pay.GET("/events", asc.ListEventPayments)
+	pay.GET("/events/:slug", asc.GetEventPayments)
+	pay.POST("/events/:slug/settlements", asc.CreateSettlement)
+	pay.POST("/settlements/:id/mark-paid", asc.MarkSettlementPaid)
+
+	cat := staff.Group("", RequireRole(logg, constants.RoleAdmin))
+	cat.GET("/users", asc.ListUsers)
+	cat.POST("/users/:id/role", asc.SetUserRole)
+	cat.POST("/users/:id/flag", asc.FlagUser)
+	cat.POST("/users/:id/unflag", asc.UnflagUserJWT)
+	cat.POST("/users/:id/suspend", asc.SuspendUser)
+	cat.DELETE("/users/:id", asc.DeleteUserJWT)
+	cat.GET("/blogs", asc.ListBlogs)
+	cat.GET("/blogs/orphans", asc.ListOrphanBlogs)
+	cat.POST("/blogs/:blog_id/unpublish", asc.UnpublishBlog)
+	cat.DELETE("/blogs/:blog_id", asc.DeleteBlog)
+	cat.GET("/events", asc.ListAdminEvents)
+	cat.POST("/events/:slug/cancel", asc.CancelAdminEvent)
+	cat.POST("/events/:slug/unpublish", asc.UnpublishAdminEvent)
+	cat.DELETE("/events/:slug", asc.DeleteAdminEvent)
+	cat.GET("/groups", asc.ListAdminGroups)
+	cat.POST("/groups/:slug/suspend", asc.SuspendGroup)
+	cat.DELETE("/groups/:slug", asc.DeleteAdminGroup)
+
+	ver := staff.Group("", RequireRole(logg, constants.RoleAdmin, constants.RoleSupport))
+	ver.GET("/stats", asc.GetStats)
+	ver.GET("/verifications", asc.ListVerifications)
+	ver.POST("/verifications/:id/review", asc.ReviewVerification)
+
+	mod := staff.Group("", RequireRole(logg, constants.RoleAdmin, constants.RoleCommunity))
+	mod.POST("/events/:slug/nsfw", asc.FlagNsfw("event"))
+	mod.POST("/blogs/:blog_id/nsfw", asc.FlagNsfw("blog"))
+	mod.POST("/groups/:slug/nsfw", asc.FlagNsfw("group"))
+	mod.POST("/users/:id/nsfw", asc.FlagNsfw("user"))
+	mod.POST("/events/:slug/comments/:id/hide", asc.HideEventComment)
+	mod.POST("/events/:slug/questions/:id/hide", asc.HideEventQuestion)
+
 	adminRoutes := router.Group("/api/v1/admin")
 	adminRoutes.Use(LocalNetworkMiddleware(logg))
 	adminRoutes.Use(AdminKeyMiddleware(cfg.Keys.AdminSecretKey, logg))
 
-	// User management routes
 	{
-		adminRoutes.DELETE("/users/:id", asc.ForceDeleteUser)
 		adminRoutes.DELETE("/users/bulk", asc.BulkDeleteUsers)
 		adminRoutes.GET("/users/suspicious", asc.GetSuspiciousUsers)
-		adminRoutes.POST("/users/:id/flag", asc.FlagUserAsBotOrFake)
-		adminRoutes.POST("/users/:id/unflag", asc.UnflagUser)
 		adminRoutes.GET("/users/flagged", asc.GetFlaggedUsers)
-		adminRoutes.GET("/users/stats", asc.GetUserStats)
-
-		// Account verification review queue
-		{
-			adminRoutes.GET("/verifications", asc.ListVerifications)
-			adminRoutes.POST("/verifications/:id/review", asc.ReviewVerification)
-		}
 	}
 
 	// System health and monitoring
@@ -169,7 +210,7 @@ func (asc *AdminServiceClient) ForceDeleteUser(ctx *gin.Context) {
 
 	asc.logger.Infof("Admin force deleting user: %s, reason: %s, from IP: %s", userID, reason, ctx.ClientIP())
 
-	res, err := asc.Client.DeleteUserAccount(context.Background(), &pb.DeleteUserProfileReq{
+	res, err := asc.Client.DeleteUserAccount(context.Background(), &userpb.DeleteUserProfileReq{
 		Username: userID,
 	})
 
@@ -238,7 +279,7 @@ func (asc *AdminServiceClient) BulkDeleteUsers(ctx *gin.Context) {
 	failureCount := 0
 
 	for _, userID := range req.UserIDs {
-		_, err := asc.Client.DeleteUserAccount(context.Background(), &pb.DeleteUserProfileReq{
+		_, err := asc.Client.DeleteUserAccount(context.Background(), &userpb.DeleteUserProfileReq{
 			Username: userID,
 		})
 

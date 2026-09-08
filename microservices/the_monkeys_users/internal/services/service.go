@@ -11,6 +11,8 @@ import (
 	"strings"
 	"time"
 
+	eventpb "github.com/the-monkeys/the_monkeys/apis/serviceconn/gateway_event/pb"
+	grouppb "github.com/the-monkeys/the_monkeys/apis/serviceconn/gateway_group/pb"
 	"github.com/the-monkeys/the_monkeys/apis/serviceconn/gateway_user/pb"
 	"github.com/the-monkeys/the_monkeys/config"
 	"github.com/the-monkeys/the_monkeys/constants"
@@ -29,11 +31,13 @@ type UserSvc struct {
 	log    *zap.SugaredLogger
 	config *config.Config
 	qConn  *rabbitmq.ConnManager
+	events eventRemovalClient
+	groups groupRemovalClient
 	pb.UnimplementedUserServiceServer
 }
 
-func NewUserSvc(dbConn database.UserDb, log *zap.SugaredLogger, config *config.Config, qConn *rabbitmq.ConnManager) *UserSvc {
-	return &UserSvc{dbConn: dbConn, log: log, config: config, qConn: qConn}
+func NewUserSvc(dbConn database.UserDb, log *zap.SugaredLogger, config *config.Config, qConn *rabbitmq.ConnManager, events eventpb.EventServiceClient, groups grouppb.GroupServiceClient) *UserSvc {
+	return &UserSvc{dbConn: dbConn, log: log, config: config, qConn: qConn, events: events, groups: groups}
 }
 
 func (us *UserSvc) GetUserProfile(ctx context.Context, req *pb.UserProfileReq) (*pb.UserProfileRes, error) {
@@ -189,6 +193,11 @@ func (us *UserSvc) DeleteUserAccount(ctx context.Context, req *pb.DeleteUserProf
 		return nil, status.Errorf(codes.Internal, "cannot get the user profile")
 	}
 	us.log.Debugw("User verified", "username", user.Username, "account_id", user.AccountId, "email", user.Email)
+
+	if err := us.removeUserFromEventsAndGroups(ctx, user.AccountId); err != nil {
+		us.log.Errorw("event/group removal before account delete failed", "username", req.Username, "account_id", user.AccountId, "err", err)
+		return nil, err
+	}
 
 	// Step 2: Fetch blog IDs BEFORE deletion (rows disappear after TX commits)
 	blogIDs, err := us.dbConn.GetOwnedBlogIDs(req.Username)

@@ -140,10 +140,16 @@ message DeleteAssetRefReq {
     string file_name = 5;
 }
 
+message OrphanedAsset {
+    string checksum = 1;
+    string object_key = 2;
+}
+
 message DeleteAssetRefRes {
     bool success = 1;
     int32 deleted_count = 2;
     string error = 3;
+    repeated OrphanedAsset orphans = 4;
 }
 
 message ReplaceAssetRefReq {
@@ -161,6 +167,18 @@ message ReplaceAssetRefRes {
     string object_key = 4;
     int32 deleted_count = 5;
     string error = 6;
+    repeated OrphanedAsset orphans = 7;
+}
+
+message ResolveAssetReadReq {
+    string checksum = 1;
+    string blog_id = 2; // optional; used for /posts/:id
+}
+message ResolveAssetReadResp {
+    bool allow_public = 1;
+    bool not_found = 2;
+    bool verification_only = 3;
+    repeated string unpublished_blog_ids = 4;
 }
 
 service UploadBlogFile {
@@ -184,4 +202,5 @@ service UploadBlogFile {
     rpc CreateAssetRef(CreateAssetRefReq) returns (CreateAssetRefRes) {};
     rpc DeleteAssetRef(DeleteAssetRefReq) returns (DeleteAssetRefRes) {};
     rpc ReplaceAssetRef(ReplaceAssetRefReq) returns (ReplaceAssetRefRes) {};
+    rpc ResolveAssetRead(ResolveAssetReadReq) returns (ResolveAssetReadResp);
 }

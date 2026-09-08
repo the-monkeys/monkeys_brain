@@ -2,12 +2,20 @@ package services
 
 import (
 	"context"
+	"encoding/json"
 
 	"github.com/the-monkeys/the_monkeys/apis/serviceconn/gateway_group/pb"
+	"github.com/the-monkeys/the_monkeys/common/interservice"
 	"github.com/the-monkeys/the_monkeys/config"
+	"github.com/the-monkeys/the_monkeys/constants"
+	"github.com/the-monkeys/the_monkeys/microservices/rabbitmq"
 	"github.com/the-monkeys/the_monkeys/microservices/the_monkeys_groups/internal/database"
 	"go.uber.org/zap"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 )
+
+const storageRoutingKey = 0
 
 // GroupService is the gRPC surface for communities. It owns business
 // orchestration and response shaping; the database layer owns persistence and
@@ -16,13 +24,14 @@ import (
 // are display handles and may change, so they are never used for authorization.
 type GroupService struct {
 	pb.UnimplementedGroupServiceServer
-	db  database.GroupDB
-	log *zap.SugaredLogger
-	cfg *config.Config
+	db    database.GroupDB
+	log   *zap.SugaredLogger
+	cfg   *config.Config
+	qConn *rabbitmq.ConnManager
 }
 
-func NewGroupService(db database.GroupDB, log *zap.SugaredLogger, cfg *config.Config) *GroupService {
-	return &GroupService{db: db, log: log, cfg: cfg}
+func NewGroupService(db database.GroupDB, log *zap.SugaredLogger, cfg *config.Config, qConn *rabbitmq.ConnManager) *GroupService {
+	return &GroupService{db: db, log: log, cfg: cfg, qConn: qConn}
 }
 
 // -----------------------------------------------------------------------------
@@ -56,12 +65,67 @@ func (s *GroupService) PublishGroup(ctx context.Context, req *pb.GroupActionReq)
 }
 
 // DeleteGroup removes a community. The database layer refuses deletion while the
-// group still owns upcoming paid events.
+// group still has captured or pending paid events.
 func (s *GroupService) DeleteGroup(ctx context.Context, req *pb.GroupActionReq) (*pb.BasicResp, error) {
 	if err := s.db.DeleteGroup(ctx, req); err != nil {
 		return nil, err
 	}
+	s.publishStorageDelete(req.GetSlug())
 	return &pb.BasicResp{Message: "group deleted", Success: true}, nil
+}
+
+func (s *GroupService) AdminDeleteGroup(ctx context.Context, req *pb.AdminSuspendGroupReq) (*pb.BasicResp, error) {
+	if err := s.db.AdminDeleteGroup(ctx, req); err != nil {
+		return nil, err
+	}
+	s.publishStorageDelete(req.GetSlug())
+	return &pb.BasicResp{Message: "group deleted", Success: true}, nil
+}
+
+func (s *GroupService) CheckUserGroupRemoval(ctx context.Context, req *pb.AccountIdReq) (*pb.UserRemovalCheckResp, error) {
+	slugs, err := s.db.CheckUserGroupRemoval(ctx, req.GetAccountId())
+	if err != nil {
+		return nil, err
+	}
+	if len(slugs) == 0 {
+		return &pb.UserRemovalCheckResp{Allowed: true}, nil
+	}
+	return &pb.UserRemovalCheckResp{
+		Allowed:       false,
+		Reason:        "account created a group that still has captured or pending paid events; cancel or settle them first",
+		BlockingSlugs: slugs,
+	}, nil
+}
+
+func (s *GroupService) RemoveUserFromGroups(ctx context.Context, req *pb.AccountIdReq) (*pb.BasicResp, error) {
+	slugs, err := s.db.RemoveUserFromGroups(ctx, req.GetAccountId())
+	if err != nil {
+		return nil, err
+	}
+	for _, slug := range slugs {
+		s.publishStorageDelete(slug)
+	}
+	return &pb.BasicResp{Message: "user removed from groups", Success: true}, nil
+}
+
+func (s *GroupService) publishStorageDelete(slug string) {
+	if s.qConn == nil || s.cfg == nil || len(s.cfg.RabbitMQ.RoutingKeys) <= storageRoutingKey {
+		return
+	}
+	body, err := json.Marshal(interservice.Message{
+		Action:    constants.GROUP_DELETE,
+		GroupSlug: slug,
+	})
+	if err != nil {
+		s.log.Errorw("failed to marshal group delete", "slug", slug, "err", err)
+		return
+	}
+	rk := s.cfg.RabbitMQ.RoutingKeys[storageRoutingKey]
+	go func() {
+		if err := s.qConn.PublishReliable(s.cfg.RabbitMQ.Exchange, rk, body, s.cfg.RabbitMQ.MaxRetries); err != nil {
+			s.log.Errorw("failed to publish group delete to storage", "slug", slug, "routing_key", rk, "err", err)
+		}
+	}()
 }
 
 func (s *GroupService) GetGroup(ctx context.Context, req *pb.GetGroupReq) (*pb.GroupResp, error) {
@@ -69,7 +133,27 @@ func (s *GroupService) GetGroup(ctx context.Context, req *pb.GetGroupReq) (*pb.G
 	if err != nil {
 		return nil, err
 	}
+	if !groupVisibleToViewer(group) {
+		return nil, status.Error(codes.NotFound, "group not found")
+	}
 	return &pb.GroupResp{Group: group}, nil
+}
+
+func groupVisibleToViewer(g *pb.Group) bool {
+	if g == nil {
+		return false
+	}
+	role := g.ViewerRole
+	if role == "organizer" || role == "co_organizer" || role == "moderator" {
+		return true
+	}
+	if g.Status != "published" {
+		return false
+	}
+	if g.Visibility == "public" || g.Visibility == "unlisted" {
+		return true
+	}
+	return g.ViewerMemberStatus == "active"
 }
 
 // -----------------------------------------------------------------------------
@@ -242,4 +326,20 @@ func (s *GroupService) DeleteGroupRule(ctx context.Context, req *pb.GroupRuleAct
 		return nil, err
 	}
 	return &pb.BasicResp{Message: "rule deleted", Success: true}, nil
+}
+
+func (s *GroupService) AdminListGroups(ctx context.Context, req *pb.AdminListGroupsReq) (*pb.AdminListGroupsResp, error) {
+	return s.db.AdminListGroups(ctx, req)
+}
+
+func (s *GroupService) AdminSuspendGroup(ctx context.Context, req *pb.AdminSuspendGroupReq) (*pb.GroupResp, error) {
+	g, err := s.db.AdminSuspendGroup(ctx, req)
+	if err != nil {
+		return nil, err
+	}
+	return &pb.GroupResp{Message: "group suspended", Group: g}, nil
+}
+
+func (s *GroupService) AdminGroupStats(ctx context.Context, _ *pb.AdminEmpty) (*pb.AdminGroupStatsResp, error) {
+	return s.db.AdminGroupStats(ctx)
 }

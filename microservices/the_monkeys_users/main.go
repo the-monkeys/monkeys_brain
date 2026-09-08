@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"net"
 
+	eventpb "github.com/the-monkeys/the_monkeys/apis/serviceconn/gateway_event/pb"
+	grouppb "github.com/the-monkeys/the_monkeys/apis/serviceconn/gateway_group/pb"
 	"github.com/the-monkeys/the_monkeys/apis/serviceconn/gateway_user/pb"
 	"github.com/the-monkeys/the_monkeys/config"
 	"github.com/the-monkeys/the_monkeys/logger"
@@ -55,7 +57,27 @@ func main() {
 	qConn := rabbitmq.NewConnManager(cfg.RabbitMQ)
 	go consumer.ConsumeFromQueue(qConn, cfg, log, db)
 
-	userService := services.NewUserSvc(db, log, cfg, qConn)
+	eventsAddr := fmt.Sprintf("%s:%d", cfg.Microservices.TheMonkeysEvents, cfg.Microservices.EventsPort)
+	eventsConn, err := grpc.NewClient(eventsAddr, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	if err != nil {
+		log.Errorf("failed to dial events service at %s: %v", eventsAddr, err)
+	}
+	groupsAddr := fmt.Sprintf("%s:%d", cfg.Microservices.TheMonkeysGroups, cfg.Microservices.GroupsPort)
+	groupsConn, err := grpc.NewClient(groupsAddr, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	if err != nil {
+		log.Errorf("failed to dial groups service at %s: %v", groupsAddr, err)
+	}
+
+	var eventsClient eventpb.EventServiceClient
+	var groupsClient grouppb.GroupServiceClient
+	if eventsConn != nil {
+		eventsClient = eventpb.NewEventServiceClient(eventsConn)
+	}
+	if groupsConn != nil {
+		groupsClient = grouppb.NewGroupServiceClient(groupsConn)
+	}
+
+	userService := services.NewUserSvc(db, log, cfg, qConn, eventsClient, groupsClient)
 
 	grpcServer := grpc.NewServer()
 	pb.RegisterUserServiceServer(grpcServer, userService)

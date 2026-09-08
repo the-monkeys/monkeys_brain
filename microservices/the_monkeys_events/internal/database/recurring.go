@@ -383,7 +383,7 @@ func (db *eventDB) MaterializeSeries(ctx context.Context, req *pb.CreateSeriesRe
 		return nil, err
 	}
 
-	lat, lng := Geocode(req.Location)
+	lat, lng := resolveEventCoords(ctx, req.EventType, req.Latitude, req.Longitude, req.Location)
 	slugs, err := db.GenerateSeriesOccurrences(ctx, seriesID, occs, OccurrenceTemplate{
 		EventType:   req.EventType,
 		Location:    req.Location,

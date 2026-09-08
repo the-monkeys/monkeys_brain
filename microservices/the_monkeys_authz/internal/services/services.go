@@ -530,6 +530,7 @@ func (as *AuthzSvc) Validate(ctx context.Context, req *pb.ValidateRequest) (*pb.
 		Email:      claims.Email,
 		UserName:   user.Username,
 		AccountId:  claims.AccountId,
+		Role:       user.Role,
 	}, nil
 }
 

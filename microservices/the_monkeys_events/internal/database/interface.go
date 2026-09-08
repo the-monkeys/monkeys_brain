@@ -63,6 +63,7 @@ type EventDB interface {
 
 	// Authorization
 	Authorize(ctx context.Context, req *pb.AuthorizeReq) (*pb.AuthorizeResp, error)
+	ViewerIsHost(ctx context.Context, eventID int64, organizerAccountID, viewerAccountID string) (bool, error)
 
 	// Venues (Meetup-parity)
 	CreateVenue(ctx context.Context, v *pb.Venue, createdByAccountID string) (*pb.Venue, error)
@@ -88,6 +89,23 @@ type EventDB interface {
 	// Background upkeep
 	ClaimDueReminders(ctx context.Context, offset string, earliest, latest time.Duration) ([]Reminder, error)
 	ArchivePastEvents(ctx context.Context) (int64, error)
+
+	AdminListEventPayments(ctx context.Context, req *pb.AdminListEventPaymentsReq) (*pb.AdminListEventPaymentsResp, error)
+	AdminGetEventPayments(ctx context.Context, req *pb.AdminGetEventPaymentsReq) (*pb.AdminGetEventPaymentsResp, error)
+	AdminCreateSettlement(ctx context.Context, req *pb.AdminCreateSettlementReq) (*pb.AdminSettlementResp, error)
+	AdminMarkSettlementPaid(ctx context.Context, req *pb.AdminMarkSettlementPaidReq) (*pb.AdminSettlementResp, error)
+	AdminFlagNsfw(ctx context.Context, req *pb.AdminFlagNsfwReq) error
+	AdminHideEventComment(ctx context.Context, req *pb.AdminHideEventCommentReq) error
+	AdminHideEventQuestion(ctx context.Context, req *pb.AdminHideEventQuestionReq) error
+	AdminListEvents(ctx context.Context, req *pb.AdminListEventsReq) (*pb.AdminListEventsResp, error)
+	AdminCancelEvent(ctx context.Context, req *pb.AdminEventActionReq) (*pb.Event, error)
+	AdminUnpublishEvent(ctx context.Context, req *pb.AdminEventActionReq) (*pb.Event, error)
+	AdminDeleteEvent(ctx context.Context, req *pb.AdminEventActionReq) error
+	AdminEventStats(ctx context.Context) (*pb.AdminEventStatsResp, error)
+	AdminPaymentStats(ctx context.Context) (*pb.AdminPaymentStatsResp, error)
+
+	CheckUserEventRemoval(ctx context.Context, accountID string) ([]string, error)
+	RemoveUserFromEvents(ctx context.Context, accountID string) ([]string, error)
 
 	Close() error
 }

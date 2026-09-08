@@ -48,5 +48,13 @@ type GroupDB interface {
 	// Authorization
 	AuthorizeGroup(ctx context.Context, req *pb.AuthorizeGroupReq) (*pb.AuthorizeGroupResp, error)
 
+	AdminListGroups(ctx context.Context, req *pb.AdminListGroupsReq) (*pb.AdminListGroupsResp, error)
+	AdminSuspendGroup(ctx context.Context, req *pb.AdminSuspendGroupReq) (*pb.Group, error)
+	AdminDeleteGroup(ctx context.Context, req *pb.AdminSuspendGroupReq) error
+	AdminGroupStats(ctx context.Context) (*pb.AdminGroupStatsResp, error)
+
+	CheckUserGroupRemoval(ctx context.Context, accountID string) ([]string, error)
+	RemoveUserFromGroups(ctx context.Context, accountID string) ([]string, error)
+
 	Close() error
 }

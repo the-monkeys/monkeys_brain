@@ -25,6 +25,7 @@ import (
 
 	"github.com/bbrks/go-blurhash"
 	"go.uber.org/zap"
+	"golang.org/x/image/draw"
 	"golang.org/x/image/webp"
 
 	"github.com/gin-gonic/gin"
@@ -36,6 +37,7 @@ import (
 	"github.com/the-monkeys/the_monkeys/config"
 	"github.com/the-monkeys/the_monkeys/constants"
 	"github.com/the-monkeys/the_monkeys/microservices/the_monkeys_gateway/internal/auth"
+	"github.com/the-monkeys/the_monkeys/microservices/the_monkeys_gateway/internal/storage_v2/imgstrip"
 	"github.com/the-monkeys/the_monkeys/microservices/the_monkeys_gateway/utils"
 )
 
@@ -43,13 +45,38 @@ import (
 // This is a thin HTTP layer; implementation wiring to MinIO and image processing will be added next.
 
 type Service struct {
-	mc           *minio.Client
-	storageCli   pb.UploadBlogFileClient
-	bucket       string
-	cdnURL       string
-	publicBase   string // optional public base (scheme+host) to generate presigned URLs for
-	publicSigner *minio.Client
-	log          *zap.SugaredLogger
+	mc                 *minio.Client
+	storageCli         pb.UploadBlogFileClient
+	bucket             string
+	verificationBucket string
+	cdnURL             string
+	publicBase         string // optional public base (scheme+host) to generate presigned URLs for
+	publicSigner       *minio.Client
+	log                *zap.SugaredLogger
+	authz              *auth.AuthMiddlewareConfig
+}
+
+func minioBucketForObjectKey(publicBucket, verificationBucket, objectKey string) string {
+	if strings.HasPrefix(objectKey, "verifications/") {
+		return verificationBucket
+	}
+	return publicBucket
+}
+
+func (s *Service) removeOrphanedMinioObjects(ctx context.Context, orphans []*pb.OrphanedAsset) {
+	for _, o := range orphans {
+		if o == nil {
+			continue
+		}
+		key := o.GetObjectKey()
+		if key == "" {
+			continue
+		}
+		bucket := minioBucketForObjectKey(s.bucket, s.verificationBucket, key)
+		if rmErr := s.mc.RemoveObject(ctx, bucket, key, minio.RemoveObjectOptions{}); rmErr != nil {
+			s.log.Errorf("minio RemoveObject (orphan) error: %v", rmErr)
+		}
+	}
 }
 
 const (
@@ -70,6 +97,41 @@ type preparedAssetUpload struct {
 	cleanup  func()
 }
 
+// preparedPathImage is the stripped body for path-based writers (event/group/profile).
+type preparedPathImage struct {
+	reader io.Reader
+	size   int64
+	meta   map[string]string
+}
+
+// preparePathImage always Strips image bytes. FileHeader.Size must not skip Strip;
+// imageMetadataLimit applies only to blurhash.
+func (s *Service) preparePathImage(file io.Reader, fileHeader *multipart.FileHeader, contentType string) (*preparedPathImage, error) {
+	_ = fileHeader
+	data, err := io.ReadAll(file)
+	if err != nil {
+		return nil, err
+	}
+	stripped, err := imgstrip.Strip(data, contentType)
+	if err != nil {
+		return nil, err
+	}
+	out := &preparedPathImage{
+		reader: bytes.NewReader(stripped),
+		size:   int64(len(stripped)),
+	}
+	if int64(len(stripped)) <= imageMetadataLimit {
+		if hash, w, h, ok := s.computeImageMetadata(contentType, stripped); ok {
+			out.meta = map[string]string{
+				"x-blurhash": hash,
+				"x-width":    strconv.Itoa(w),
+				"x-height":   strconv.Itoa(h),
+			}
+		}
+	}
+	return out, nil
+}
+
 func newService(cfg *config.Config, storageCli pb.UploadBlogFileClient, log *zap.SugaredLogger) (*Service, error) {
 	cli, err := minio.New(cfg.Minio.Endpoint, &minio.Options{
 		Creds:  credentials.NewStaticV4(cfg.Minio.AccessKey, cfg.Minio.SecretKey, ""),
@@ -79,7 +141,18 @@ func newService(cfg *config.Config, storageCli pb.UploadBlogFileClient, log *zap
 		return nil, err
 	}
 
-	svc := &Service{mc: cli, storageCli: storageCli, bucket: cfg.Minio.Bucket, cdnURL: cfg.Minio.CDNURL, log: log}
+	verBucket := strings.TrimSpace(cfg.Minio.VerificationBucket)
+	if verBucket == "" {
+		verBucket = DefaultVerificationBucket
+	}
+	svc := &Service{
+		mc:                 cli,
+		storageCli:         storageCli,
+		bucket:             cfg.Minio.Bucket,
+		verificationBucket: verBucket,
+		cdnURL:             cfg.Minio.CDNURL,
+		log:                log,
+	}
 	// If a public base is provided (e.g., http://localhost:9000), create a signer bound to that host
 	if v := strings.TrimSpace(cfg.Minio.PublicBaseURL); v != "" {
 		svc.publicBase = strings.TrimRight(v, "/")
@@ -143,6 +216,7 @@ func RegisterRoutes(router *gin.Engine, cfg *config.Config, storageCli pb.Upload
 	if err != nil {
 		log.Fatalf("failed to initialize MinIO client: %v", err)
 	}
+	svc.authz = &mw
 
 	v2 := router.Group("/api/v2/storage")
 
@@ -167,13 +241,13 @@ func RegisterRoutes(router *gin.Engine, cfg *config.Config, storageCli pb.Upload
 	}
 	{
 		// Stream legacy blog files and checksum-addressed CAS assets.
-		v2.GET("/posts/:id/:fileName", svc.GetPostFile)
-		v2.GET("/assets/sha256/:p1/:p2/:fileName", svc.GetAssetFile)
-		// Fast-load helpers (public): metadata + presigned/CDN URL
-		// JSON with etag, size, contentType, lastModified, cacheControl, blurhash, width, height, url.
-		v2.GET("/posts/:id/:fileName/meta", svc.GetPostFileMeta)
-		// Returns presigned or CDN URL for direct delivery. Optional ?expires=seconds.
-		v2.GET("/posts/:id/:fileName/url", svc.GetPostFileURL)
+		v2.GET("/posts/:id/:fileName", mw.AuthOptional, svc.GetPostFile)
+		v2.HEAD("/posts/:id/:fileName", mw.AuthOptional, svc.HeadPostFile)
+		v2.GET("/posts/:id", mw.AuthOptional, svc.ListPostFiles)
+		v2.GET("/assets/sha256/:p1/:p2/:fileName", mw.AuthOptional, svc.GetAssetFile)
+		// Fast-load helpers: metadata + presigned/CDN URL. Unpublished blogs 404.
+		v2.GET("/posts/:id/:fileName/meta", mw.AuthOptional, svc.GetPostFileMeta)
+		v2.GET("/posts/:id/:fileName/url", mw.AuthOptional, svc.GetPostFileURL)
 	}
 	{
 		// Stream a group's logo or cover image (public). The write side lives on
@@ -196,10 +270,6 @@ func RegisterRoutes(router *gin.Engine, cfg *config.Config, storageCli pb.Upload
 	{
 		// Upload multipart form field `file`. Stores/reuses a checksum-addressed asset and creates a blog reference.
 		v2.POST("/posts/:id", mw.AuthorizationByID, svc.UploadPostFile)
-		// List all objects under posts/{id}/ (auth required).
-		v2.GET("/posts/:id", svc.ListPostFiles)
-		// Return metadata in headers (ETag, Last-Modified, Cache-Control, X-Blurhash, X-Image-Width, X-Image-Height).
-		v2.HEAD("/posts/:id/:fileName", svc.HeadPostFile)
 		// Replace an existing file with multipart field `file`. Updates metadata for images.
 		v2.PUT("/posts/:id/:fileName", mw.AuthorizationByID, svc.UpdatePostFile)
 		// Delete the blog file reference. Legacy path-based objects are removed as a fallback.
@@ -229,10 +299,12 @@ func RegisterRoutes(router *gin.Engine, cfg *config.Config, storageCli pb.Upload
 		vf.GET("/profiles/:user_id/profile", svc.GetProfileImage)
 		vf.GET("/profiles/:user_id/profile/meta", svc.GetProfileMeta)
 		vf.GET("/profiles/:user_id/profile/url", svc.GetProfileURL)
-		vf.GET("/posts/:id/:fileName", svc.GetPostFile)
-		vf.GET("/assets/sha256/:p1/:p2/:fileName", svc.GetAssetFile)
-		vf.GET("/posts/:id/:fileName/meta", svc.GetPostFileMeta)
-		vf.GET("/posts/:id/:fileName/url", svc.GetPostFileURL)
+		vf.GET("/posts/:id/:fileName", mw.AuthOptional, svc.GetPostFile)
+		vf.HEAD("/posts/:id/:fileName", mw.AuthOptional, svc.HeadPostFile)
+		vf.GET("/posts/:id", mw.AuthOptional, svc.ListPostFiles)
+		vf.GET("/assets/sha256/:p1/:p2/:fileName", mw.AuthOptional, svc.GetAssetFile)
+		vf.GET("/posts/:id/:fileName/meta", mw.AuthOptional, svc.GetPostFileMeta)
+		vf.GET("/posts/:id/:fileName/url", mw.AuthOptional, svc.GetPostFileURL)
 		vf.GET("/groups/:slug/:kind", svc.GetGroupImage)
 		vf.GET("/events/:slug/cover", svc.GetEventCoverImage)
 		vf.GET("/events/:slug/photos", svc.ListEventPhotos)
@@ -242,8 +314,6 @@ func RegisterRoutes(router *gin.Engine, cfg *config.Config, storageCli pb.Upload
 	{
 		// Auth-required writes/deletes (posts)
 		vf.POST("/posts/:id", mw.AuthorizationByID, svc.UploadPostFile)
-		vf.GET("/posts/:id", svc.ListPostFiles)
-		vf.HEAD("/posts/:id/:fileName", svc.HeadPostFile)
 		vf.PUT("/posts/:id/:fileName", mw.AuthorizationByID, svc.UpdatePostFile)
 		vf.DELETE("/posts/:id/:fileName", mw.AuthorizationByID, svc.DeletePostFile)
 		// Auth-required writes/deletes (profiles)
@@ -319,13 +389,51 @@ func (s *Service) computeImageMetadata(contentType string, data []byte) (hash st
 		}
 		img = m
 	}
-	hash, err := blurhash.Encode(4, 3, img)
+	b := img.Bounds()
+	hash, err := blurhash.Encode(4, 3, thumbnailForBlurhash(img))
 	if err != nil {
-		s.log.Warnf("blurhash encode failed (ct=%s, bounds=%v): %v", contentType, img.Bounds(), err)
+		s.log.Warnf("blurhash encode failed (ct=%s, bounds=%v): %v", contentType, b, err)
 		return "", 0, 0, false
 	}
-	b := img.Bounds()
 	return hash, b.Dx(), b.Dy(), true
+}
+
+const maxBlurhashEdge = 32
+
+func thumbnailForBlurhash(src image.Image) image.Image {
+	b := src.Bounds()
+	w, h := b.Dx(), b.Dy()
+	if w <= 0 || h <= 0 {
+		return src
+	}
+	maxEdge := w
+	if h > maxEdge {
+		maxEdge = h
+	}
+	if maxEdge <= maxBlurhashEdge {
+		return src
+	}
+	nw := w * maxBlurhashEdge / maxEdge
+	nh := h * maxBlurhashEdge / maxEdge
+	if nw < 1 {
+		nw = 1
+	}
+	if nh < 1 {
+		nh = 1
+	}
+	dst := image.NewRGBA(image.Rect(0, 0, nw, nh))
+	draw.NearestNeighbor.Scale(dst, dst.Bounds(), src, b, draw.Src, nil)
+	return dst
+}
+
+func (s *Service) abortPrepareError(ctx *gin.Context, err error, fallback string) {
+	if imgstrip.IsUnsupportedFormat(err) {
+		ctx.AbortWithStatusJSON(http.StatusUnsupportedMediaType, gin.H{
+			"message": "HEIC is not supported; convert to JPEG, PNG or WebP",
+		})
+		return
+	}
+	ctx.AbortWithStatusJSON(http.StatusBadRequest, gin.H{"message": fallback})
 }
 
 func (s *Service) prepareAssetUpload(file multipart.File, fileHeader *multipart.FileHeader, contentType string) (*preparedAssetUpload, error) {
@@ -333,6 +441,16 @@ func (s *Service) prepareAssetUpload(file multipart.File, fileHeader *multipart.
 		data, err := io.ReadAll(file)
 		if err != nil {
 			return nil, err
+		}
+		if err := imgstrip.RejectIfUnsupported(data, contentType); err != nil {
+			return nil, err
+		}
+		if strings.HasPrefix(strings.ToLower(contentType), "image/") {
+			stripped, err := imgstrip.Strip(data, contentType)
+			if err != nil {
+				return nil, err
+			}
+			data = stripped
 		}
 		sum := sha256.Sum256(data)
 		prepared := &preparedAssetUpload{
@@ -368,6 +486,53 @@ func (s *Service) prepareAssetUpload(file multipart.File, fileHeader *multipart.
 	if _, err := tmp.Seek(0, io.SeekStart); err != nil {
 		cleanup()
 		return nil, err
+	}
+
+	head := make([]byte, 64)
+	n, _ := io.ReadFull(tmp, head)
+	if _, err := tmp.Seek(0, io.SeekStart); err != nil {
+		cleanup()
+		return nil, err
+	}
+	if err := imgstrip.RejectIfUnsupported(head[:n], contentType); err != nil {
+		cleanup()
+		return nil, err
+	}
+
+	if strings.HasPrefix(strings.ToLower(contentType), "image/") {
+		raw, err := io.ReadAll(tmp)
+		if err != nil {
+			cleanup()
+			return nil, err
+		}
+		stripped, err := imgstrip.Strip(raw, contentType)
+		if err != nil {
+			cleanup()
+			return nil, err
+		}
+		if err := tmp.Truncate(0); err != nil {
+			cleanup()
+			return nil, err
+		}
+		if _, err := tmp.Seek(0, io.SeekStart); err != nil {
+			cleanup()
+			return nil, err
+		}
+		if _, err := tmp.Write(stripped); err != nil {
+			cleanup()
+			return nil, err
+		}
+		if _, err := tmp.Seek(0, io.SeekStart); err != nil {
+			cleanup()
+			return nil, err
+		}
+		sum := sha256.Sum256(stripped)
+		return &preparedAssetUpload{
+			checksum: hex.EncodeToString(sum[:]),
+			reader:   tmp,
+			size:     int64(len(stripped)),
+			cleanup:  cleanup,
+		}, nil
 	}
 
 	return &preparedAssetUpload{
@@ -550,12 +715,12 @@ func (s *Service) UploadPostFile(ctx *gin.Context) {
 
 	fname := uniqueName(fileHeader.Filename)
 	contentType := fileHeader.Header.Get("Content-Type")
-	const cacheControl = "public, max-age=31536000"
+	cacheControl := s.postUploadCacheControl(ctx, blogID)
 
 	prepared, err := s.prepareAssetUpload(file, fileHeader, contentType)
 	if err != nil {
 		s.log.Errorf("prepare asset upload error: %v", err)
-		ctx.AbortWithStatusJSON(http.StatusBadRequest, gin.H{"message": "read failed"})
+		s.abortPrepareError(ctx, err, "read failed")
 		return
 	}
 	if prepared.cleanup != nil {
@@ -607,6 +772,9 @@ func (s *Service) UploadPostFile(ctx *gin.Context) {
 // Behavior: lists objects under posts/{id}/
 // Response: 200 JSON { files: [{ object, fileName, size, etag, lastModified }] }
 func (s *Service) ListPostFiles(ctx *gin.Context) {
+	if !s.gatePostFileRead(ctx) {
+		return
+	}
 	blogID := ctx.Param("id")
 	prefix := "posts/" + blogID + "/"
 
@@ -640,6 +808,9 @@ func (s *Service) ListPostFiles(ctx *gin.Context) {
 //
 //	and if image: X-Blurhash, X-Image-Width, X-Image-Height
 func (s *Service) HeadPostFile(ctx *gin.Context) {
+	if !s.gatePostFileRead(ctx) {
+		return
+	}
 	blogID := ctx.Param("id")
 	fileName := ctx.Param("fileName")
 	objectName := "posts/" + blogID + "/" + fileName
@@ -712,12 +883,12 @@ func (s *Service) UpdatePostFile(ctx *gin.Context) {
 	defer file.Close()
 
 	contentType := fileHeader.Header.Get("Content-Type")
-	const cacheControl = "public, max-age=31536000"
+	cacheControl := s.postUploadCacheControl(ctx, blogID)
 
 	prepared, err := s.prepareAssetUpload(file, fileHeader, contentType)
 	if err != nil {
 		s.log.Errorf("prepare asset update error: %v", err)
-		ctx.AbortWithStatusJSON(http.StatusBadRequest, gin.H{"message": "read failed"})
+		s.abortPrepareError(ctx, err, "read failed")
 		return
 	}
 	if prepared.cleanup != nil {
@@ -759,6 +930,7 @@ func (s *Service) UpdatePostFile(ctx *gin.Context) {
 		"contentType": contentType,
 	}
 	s.enrichPreparedResponse(ctx.Request.Context(), resp, objectName, prepared, cacheControl)
+	s.removeOrphanedMinioObjects(ctx.Request.Context(), refRes.GetOrphans())
 	ctx.JSON(http.StatusOK, resp)
 }
 
@@ -768,6 +940,9 @@ func (s *Service) UpdatePostFile(ctx *gin.Context) {
 //
 //	and if image: X-Blurhash, X-Image-Width, X-Image-Height
 func (s *Service) GetPostFile(ctx *gin.Context) {
+	if !s.gatePostFileRead(ctx) {
+		return
+	}
 	blogID := ctx.Param("id")
 	fileName := ctx.Param("fileName")
 	objectName := "posts/" + blogID + "/" + fileName
@@ -776,6 +951,9 @@ func (s *Service) GetPostFile(ctx *gin.Context) {
 
 func (s *Service) GetAssetFile(ctx *gin.Context) {
 	objectName := "assets/sha256/" + ctx.Param("p1") + "/" + ctx.Param("p2") + "/" + ctx.Param("fileName")
+	if !s.gateAssetFileRead(ctx, objectName) {
+		return
+	}
 	s.streamObject(ctx, objectName, "file not found")
 }
 
@@ -864,6 +1042,7 @@ func (s *Service) DeletePostFile(ctx *gin.Context) {
 		FileName:  fileName,
 	})
 	if err == nil && deleteRes.Success && deleteRes.DeletedCount > 0 {
+		s.removeOrphanedMinioObjects(ctx.Request.Context(), deleteRes.GetOrphans())
 		ctx.JSON(http.StatusOK, gin.H{"message": "deleted", "fileName": fileName, "deletedRefs": deleteRes.DeletedCount})
 		return
 	}
@@ -973,33 +1152,24 @@ func (s *Service) UploadProfileImage(ctx *gin.Context) {
 	ext := extFromContentType(contentType)
 	objectName := "profiles/" + userID + "/profile" + ext
 
-	// Streaming upload
-	const metadataLimit = 5 * 1024 * 1024
-	var finalReader io.Reader = file
-	var objectSize int64 = fileHeader.Size
-
 	opts := minio.PutObjectOptions{
 		ContentType:  contentType,
 		CacheControl: "public, max-age=3600, must-revalidate",
 	}
 
-	if strings.HasPrefix(strings.ToLower(contentType), "image/") && fileHeader.Size <= metadataLimit {
-		data, err := io.ReadAll(file)
-		if err == nil {
-			if hash, w, h, ok := s.computeImageMetadata(contentType, data); ok {
-				opts.UserMetadata = map[string]string{
-					"x-blurhash": hash,
-					"x-width":    strconv.Itoa(w),
-					"x-height":   strconv.Itoa(h),
-				}
-			}
-			finalReader = bytes.NewReader(data)
-			objectSize = int64(len(data))
-		} else {
-			_, _ = file.Seek(0, io.SeekStart)
+	var finalReader io.Reader = file
+	objectSize := fileHeader.Size
+	if strings.HasPrefix(strings.ToLower(contentType), "image/") {
+		prepared, err := s.preparePathImage(file, fileHeader, contentType)
+		if err != nil {
+			s.abortPrepareError(ctx, err, "could not strip image metadata")
+			return
 		}
-	} else {
-		_, _ = file.Seek(0, io.SeekStart)
+		finalReader = prepared.reader
+		objectSize = prepared.size
+		if prepared.meta != nil {
+			opts.UserMetadata = prepared.meta
+		}
 	}
 
 	info, err := s.mc.PutObject(ctx.Request.Context(), s.bucket, objectName, finalReader, objectSize, opts)
@@ -1103,6 +1273,14 @@ func (s *Service) UpdateProfileImage(ctx *gin.Context) {
 		ctx.AbortWithStatusJSON(http.StatusBadRequest, gin.H{"message": "read failed"})
 		return
 	}
+	if strings.HasPrefix(strings.ToLower(contentType), "image/") {
+		stripped, err := imgstrip.Strip(data, contentType)
+		if err != nil {
+			s.abortPrepareError(ctx, err, "could not strip image metadata")
+			return
+		}
+		data = stripped
+	}
 	reader := bytes.NewReader(data)
 
 	opts := minio.PutObjectOptions{
@@ -1149,6 +1327,9 @@ func (s *Service) UpdateProfileImage(ctx *gin.Context) {
 // Behavior: returns JSON metadata for the object including BlurHash, dimensions, and a direct URL (CDN or presigned)
 // Response: 200 JSON FileMetaResponse
 func (s *Service) GetPostFileMeta(ctx *gin.Context) {
+	if !s.gatePostFileRead(ctx) {
+		return
+	}
 	blogID := ctx.Param("id")
 	fileName := ctx.Param("fileName")
 	objectName := "posts/" + blogID + "/" + fileName
@@ -1248,6 +1429,9 @@ func (s *Service) GetProfileMeta(ctx *gin.Context) {
 // Query: expires (seconds, default 600, max 604800)
 // Behavior: returns a direct URL to the object (CDN if configured, otherwise presigned S3 URL)
 func (s *Service) GetPostFileURL(ctx *gin.Context) {
+	if !s.gatePostFileRead(ctx) {
+		return
+	}
 	blogID := ctx.Param("id")
 	fileName := ctx.Param("fileName")
 	objectName := "posts/" + blogID + "/" + fileName
