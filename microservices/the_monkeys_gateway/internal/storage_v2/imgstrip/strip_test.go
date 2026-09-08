@@ -166,6 +166,95 @@ func TestStripJPEGOrientationKeepsStubDropsGPS(t *testing.T) {
 	}
 }
 
+func TestStripJPEGRestartMarkersStillDropsGPS(t *testing.T) {
+	src := image.NewRGBA(image.Rect(0, 0, 16, 16))
+	for y := 0; y < 16; y++ {
+		for x := 0; x < 16; x++ {
+			src.Set(x, y, color.RGBA{R: 40, G: 80, B: 120, A: 255})
+		}
+	}
+	var buf bytes.Buffer
+	if err := jpeg.Encode(&buf, src, &jpeg.Options{Quality: 90}); err != nil {
+		t.Fatal(err)
+	}
+	injected := jpegInjectDRI(jpegInjectExif(buf.Bytes(), 6, true), 16)
+	out, err := Strip(injected, "image/jpeg")
+	if err != nil {
+		t.Fatalf("iPhone-style restart JPEGs must still strip, got %v", err)
+	}
+	if bytes.Contains(out, []byte("GPS")) {
+		t.Fatal("GPS payload must be gone")
+	}
+	orient, ok := jpegAPP1Orientation(out)
+	if !ok || orient != 6 {
+		t.Fatalf("when lossless rotate cannot apply, keep orientation stub, got ok=%v orient=%d", ok, orient)
+	}
+	if _, err := jpeg.Decode(bytes.NewReader(out)); err != nil {
+		t.Fatalf("stripped jpeg must still decode: %v", err)
+	}
+}
+
+func TestJPEGLosslessBudgetSkipsPhoneSizedJPEGs(t *testing.T) {
+	phone := &jpegSOF{width: 4032, height: 3024, comps: []jpegSOFComp{{h: 2, v: 2}, {h: 1, v: 1}, {h: 1, v: 1}}}
+	if jpegLosslessBudgetOK(phone, 3*1024*1024) {
+		t.Fatal("3MiB phone JPEGs must skip DCT rotate")
+	}
+	tiny := &jpegSOF{width: 16, height: 16, comps: []jpegSOFComp{{h: 1, v: 1}}}
+	if !jpegLosslessBudgetOK(tiny, 2048) {
+		t.Fatal("fixture MCU JPEGs must still attempt lossless rotate")
+	}
+}
+
+func TestStripHEICRejected(t *testing.T) {
+	heic := []byte("\x00\x00\x00\x18ftypheic\x00\x00\x00\x00")
+	_, err := Strip(heic, "image/heic")
+	if err == nil {
+		t.Fatal("HEIC must be rejected")
+	}
+	if !IsUnsupportedFormat(err) {
+		t.Fatalf("want unsupported-format error, got %v", err)
+	}
+	_, err = Strip(heic, "image/jpeg")
+	if err == nil {
+		t.Fatal("renamed HEIC must still be rejected")
+	}
+}
+
+func TestStripAVIFMif1Allowed(t *testing.T) {
+	avif := []byte{
+		0x00, 0x00, 0x00, 0x14,
+		'f', 't', 'y', 'p',
+		'm', 'i', 'f', '1',
+		0x00, 0x00, 0x00, 0x00,
+		'a', 'v', 'i', 'f',
+	}
+	out, err := Strip(avif, "image/avif")
+	if err != nil {
+		t.Fatalf("AVIF with mif1 major brand must pass through, got %v", err)
+	}
+	if !bytes.Equal(out, avif) {
+		t.Fatal("AVIF bytes must be unchanged")
+	}
+}
+
+func TestStripHEICMif1StillRejected(t *testing.T) {
+	heif := []byte{
+		0x00, 0x00, 0x00, 0x18,
+		'f', 't', 'y', 'p',
+		'm', 'i', 'f', '1',
+		0x00, 0x00, 0x00, 0x00,
+		'm', 'i', 'f', '1',
+		'h', 'e', 'i', 'c',
+	}
+	_, err := Strip(heif, "application/octet-stream")
+	if err == nil {
+		t.Fatal("HEIC with mif1 major brand must still be rejected")
+	}
+	if !IsUnsupportedFormat(err) {
+		t.Fatalf("want unsupported-format error, got %v", err)
+	}
+}
+
 func TestStripJPEGMCUAlignedOrientation6RotatesPixels(t *testing.T) {
 	src := image.NewRGBA(image.Rect(0, 0, 16, 16))
 	for y := 0; y < 16; y++ {
@@ -293,6 +382,19 @@ func pngChunk(typ string, data []byte) []byte {
 	crc := crc32.ChecksumIEEE(buf[4 : 8+len(data)])
 	binary.BigEndian.PutUint32(buf[8+len(data):], crc)
 	return buf
+}
+
+func jpegInjectDRI(raw []byte, interval uint16) []byte {
+	sos := bytes.Index(raw, []byte{0xFF, 0xDA})
+	if sos < 0 {
+		return raw
+	}
+	dri := []byte{0xFF, 0xDD, 0x00, 0x04, byte(interval >> 8), byte(interval)}
+	out := make([]byte, 0, len(raw)+len(dri))
+	out = append(out, raw[:sos]...)
+	out = append(out, dri...)
+	out = append(out, raw[sos:]...)
+	return out
 }
 
 func jpegWithExifAPP1(t *testing.T, orientation uint16, withGPS bool) []byte {

@@ -95,13 +95,15 @@ func stripJPEG(data []byte) ([]byte, error) {
 		return nil, fail("truncated jpeg")
 	}
 
-	mcuAligned := sof != nil && sof.width%8 == 0 && sof.height%8 == 0 && sof.mcuAligned()
 	stripped := []byte{0xFF, 0xD8}
 	for _, s := range kept {
 		stripped = append(stripped, s...)
 	}
-	if haveOrient && orient >= 2 && orient <= 8 && mcuAligned {
-		return losslessJPEGOrient(stripped, sof, orient)
+	if haveOrient && orient >= 2 && orient <= 8 && jpegLosslessBudgetOK(sof, len(stripped)) {
+		rotated, err := losslessJPEGOrient(stripped, sof, orient)
+		if err == nil {
+			return rotated, nil
+		}
 	}
 
 	out := stripped
@@ -110,6 +112,22 @@ func stripJPEG(data []byte) ([]byte, error) {
 		out = append(out, stripped[2:]...)
 	}
 	return out, nil
+}
+
+const (
+	// Phone JPEGs are MCU-aligned with Orientation 6; lossless DCT rotate of a
+	// 12MP file took ~60s and the editor client timed out. Keep lossless rotate
+	// for small fixtures only; larger files keep an Orientation stub instead.
+	maxLosslessJPEGPixels = 512 * 512
+	maxLosslessJPEGBytes  = 256 * 1024
+)
+
+func jpegLosslessBudgetOK(sof *jpegSOF, nbytes int) bool {
+	if sof == nil || nbytes > maxLosslessJPEGBytes {
+		return false
+	}
+	pixels := sof.width * sof.height
+	return pixels > 0 && pixels <= maxLosslessJPEGPixels && sof.mcuAligned()
 }
 
 func jpegScanHasEOI(scan []byte) bool {

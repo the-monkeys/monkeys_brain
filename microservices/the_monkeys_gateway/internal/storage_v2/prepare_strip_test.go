@@ -10,6 +10,7 @@ import (
 	"io"
 	"mime/multipart"
 	"testing"
+	"time"
 
 	"go.uber.org/zap"
 
@@ -87,6 +88,27 @@ func TestChecksumUsesStrippedBytes(t *testing.T) {
 	}
 }
 
+func TestPrepareAssetUploadRejectsHEIC(t *testing.T) {
+	s := &Service{log: zap.NewNop().Sugar()}
+	heic := []byte("\x00\x00\x00\x18ftypheic\x00\x00\x00\x00")
+	fh := &multipart.FileHeader{Size: int64(len(heic))}
+	_, err := s.prepareAssetUpload(&memMultipartFile{bytes.NewReader(heic)}, fh, "image/heic")
+	if err == nil {
+		t.Fatal("prepareAssetUpload must reject HEIC")
+	}
+	if !imgstrip.IsUnsupportedFormat(err) {
+		t.Fatalf("want unsupported-format error, got %v", err)
+	}
+
+	_, err = s.prepareAssetUpload(&memMultipartFile{bytes.NewReader(heic)}, fh, "application/octet-stream")
+	if err == nil {
+		t.Fatal("blog CAS must reject HEIC even without an image Content-Type")
+	}
+	if !imgstrip.IsUnsupportedFormat(err) {
+		t.Fatalf("octet-stream HEIC: want unsupported-format error, got %v", err)
+	}
+}
+
 func TestPrepareAssetUploadRejectsStripError(t *testing.T) {
 	s := &Service{log: zap.NewNop().Sugar()}
 	payload := []byte{0xFF}
@@ -152,5 +174,28 @@ func TestPrepareAssetUploadTempPathHashesStripped(t *testing.T) {
 	}
 	if bytes.Contains(got, []byte("GPS")) {
 		t.Fatal("temp-path body must not contain GPS")
+	}
+}
+
+func TestComputeImageMetadataPhoneJPEGFinishesQuickly(t *testing.T) {
+	src := image.NewRGBA(image.Rect(0, 0, 2048, 1536))
+	for y := 0; y < 1536; y += 16 {
+		for x := 0; x < 2048; x += 16 {
+			src.Set(x, y, color.RGBA{R: 200, G: 40, B: 80, A: 255})
+		}
+	}
+	var buf bytes.Buffer
+	if err := jpeg.Encode(&buf, src, &jpeg.Options{Quality: 80}); err != nil {
+		t.Fatal(err)
+	}
+	s := &Service{log: zap.NewNop().Sugar()}
+	start := time.Now()
+	hash, w, h, ok := s.computeImageMetadata("image/jpeg", buf.Bytes())
+	elapsed := time.Since(start)
+	if !ok || hash == "" || w != 2048 || h != 1536 {
+		t.Fatalf("metadata: ok=%v hash=%q %dx%d", ok, hash, w, h)
+	}
+	if elapsed > 1500*time.Millisecond {
+		t.Fatalf("blurhash on a 3MP jpeg took %s; phone uploads cannot wait", elapsed)
 	}
 }

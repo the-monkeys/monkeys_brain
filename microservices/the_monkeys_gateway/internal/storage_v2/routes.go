@@ -25,6 +25,7 @@ import (
 
 	"github.com/bbrks/go-blurhash"
 	"go.uber.org/zap"
+	"golang.org/x/image/draw"
 	"golang.org/x/image/webp"
 
 	"github.com/gin-gonic/gin"
@@ -388,19 +389,60 @@ func (s *Service) computeImageMetadata(contentType string, data []byte) (hash st
 		}
 		img = m
 	}
-	hash, err := blurhash.Encode(4, 3, img)
+	b := img.Bounds()
+	hash, err := blurhash.Encode(4, 3, thumbnailForBlurhash(img))
 	if err != nil {
-		s.log.Warnf("blurhash encode failed (ct=%s, bounds=%v): %v", contentType, img.Bounds(), err)
+		s.log.Warnf("blurhash encode failed (ct=%s, bounds=%v): %v", contentType, b, err)
 		return "", 0, 0, false
 	}
-	b := img.Bounds()
 	return hash, b.Dx(), b.Dy(), true
+}
+
+const maxBlurhashEdge = 32
+
+func thumbnailForBlurhash(src image.Image) image.Image {
+	b := src.Bounds()
+	w, h := b.Dx(), b.Dy()
+	if w <= 0 || h <= 0 {
+		return src
+	}
+	maxEdge := w
+	if h > maxEdge {
+		maxEdge = h
+	}
+	if maxEdge <= maxBlurhashEdge {
+		return src
+	}
+	nw := w * maxBlurhashEdge / maxEdge
+	nh := h * maxBlurhashEdge / maxEdge
+	if nw < 1 {
+		nw = 1
+	}
+	if nh < 1 {
+		nh = 1
+	}
+	dst := image.NewRGBA(image.Rect(0, 0, nw, nh))
+	draw.NearestNeighbor.Scale(dst, dst.Bounds(), src, b, draw.Src, nil)
+	return dst
+}
+
+func (s *Service) abortPrepareError(ctx *gin.Context, err error, fallback string) {
+	if imgstrip.IsUnsupportedFormat(err) {
+		ctx.AbortWithStatusJSON(http.StatusUnsupportedMediaType, gin.H{
+			"message": "HEIC is not supported; convert to JPEG, PNG or WebP",
+		})
+		return
+	}
+	ctx.AbortWithStatusJSON(http.StatusBadRequest, gin.H{"message": fallback})
 }
 
 func (s *Service) prepareAssetUpload(file multipart.File, fileHeader *multipart.FileHeader, contentType string) (*preparedAssetUpload, error) {
 	if fileHeader.Size <= memoryUploadLimit {
 		data, err := io.ReadAll(file)
 		if err != nil {
+			return nil, err
+		}
+		if err := imgstrip.RejectIfUnsupported(data, contentType); err != nil {
 			return nil, err
 		}
 		if strings.HasPrefix(strings.ToLower(contentType), "image/") {
@@ -442,6 +484,17 @@ func (s *Service) prepareAssetUpload(file multipart.File, fileHeader *multipart.
 		return nil, err
 	}
 	if _, err := tmp.Seek(0, io.SeekStart); err != nil {
+		cleanup()
+		return nil, err
+	}
+
+	head := make([]byte, 64)
+	n, _ := io.ReadFull(tmp, head)
+	if _, err := tmp.Seek(0, io.SeekStart); err != nil {
+		cleanup()
+		return nil, err
+	}
+	if err := imgstrip.RejectIfUnsupported(head[:n], contentType); err != nil {
 		cleanup()
 		return nil, err
 	}
@@ -667,7 +720,7 @@ func (s *Service) UploadPostFile(ctx *gin.Context) {
 	prepared, err := s.prepareAssetUpload(file, fileHeader, contentType)
 	if err != nil {
 		s.log.Errorf("prepare asset upload error: %v", err)
-		ctx.AbortWithStatusJSON(http.StatusBadRequest, gin.H{"message": "read failed"})
+		s.abortPrepareError(ctx, err, "read failed")
 		return
 	}
 	if prepared.cleanup != nil {
@@ -835,7 +888,7 @@ func (s *Service) UpdatePostFile(ctx *gin.Context) {
 	prepared, err := s.prepareAssetUpload(file, fileHeader, contentType)
 	if err != nil {
 		s.log.Errorf("prepare asset update error: %v", err)
-		ctx.AbortWithStatusJSON(http.StatusBadRequest, gin.H{"message": "read failed"})
+		s.abortPrepareError(ctx, err, "read failed")
 		return
 	}
 	if prepared.cleanup != nil {
@@ -1109,7 +1162,7 @@ func (s *Service) UploadProfileImage(ctx *gin.Context) {
 	if strings.HasPrefix(strings.ToLower(contentType), "image/") {
 		prepared, err := s.preparePathImage(file, fileHeader, contentType)
 		if err != nil {
-			ctx.AbortWithStatusJSON(http.StatusBadRequest, gin.H{"message": "could not strip image metadata"})
+			s.abortPrepareError(ctx, err, "could not strip image metadata")
 			return
 		}
 		finalReader = prepared.reader
@@ -1223,7 +1276,7 @@ func (s *Service) UpdateProfileImage(ctx *gin.Context) {
 	if strings.HasPrefix(strings.ToLower(contentType), "image/") {
 		stripped, err := imgstrip.Strip(data, contentType)
 		if err != nil {
-			ctx.AbortWithStatusJSON(http.StatusBadRequest, gin.H{"message": "could not strip image metadata"})
+			s.abortPrepareError(ctx, err, "could not strip image metadata")
 			return
 		}
 		data = stripped

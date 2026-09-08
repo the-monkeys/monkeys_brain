@@ -61,7 +61,7 @@ func (s *Service) UploadGroupImage(ctx *gin.Context) {
 
 	prepared, err := s.preparePathImage(file, fileHeader, contentType)
 	if err != nil {
-		ctx.AbortWithStatusJSON(http.StatusBadRequest, gin.H{"message": "could not strip image metadata"})
+		s.abortPrepareError(ctx, err, "could not strip image metadata")
 		return
 	}
 	if prepared.meta != nil {
