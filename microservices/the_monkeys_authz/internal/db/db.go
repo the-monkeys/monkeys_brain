@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/jackc/pgx/v5/pgconn"
 	_ "github.com/jackc/pgx/v5/stdlib"
 	"github.com/the-monkeys/the_monkeys/config"
 	"github.com/the-monkeys/the_monkeys/constants"
@@ -427,6 +428,10 @@ func (adh *authDBHandler) UpdateUserName(currentUsername, newUsername string) er
 
 	res, err := stmt.Exec(newUsername, currentUsername)
 	if err != nil {
+		if isFKViolation(err) {
+			adh.log.Errorf("cannot update username %s: a child table still references it, error: %v", currentUsername, err)
+			return err
+		}
 		adh.log.Errorf("cannot execute update username query, error: %v", err)
 		return err
 	}
@@ -823,4 +828,9 @@ func (adh *authDBHandler) IsUserVerified(username string) (bool, error) {
 		return false, fmt.Errorf("failed to check user verification: %w", err)
 	}
 	return isVerified, nil
+}
+
+func isFKViolation(err error) bool {
+	var pgErr *pgconn.PgError
+	return errors.As(err, &pgErr) && pgErr.Code == "23503"
 }
