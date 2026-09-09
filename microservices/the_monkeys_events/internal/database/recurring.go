@@ -40,17 +40,18 @@ type SeriesInput struct {
 // generated occurrence. Duration is applied to each occurrence start to derive
 // its end_time.
 type OccurrenceTemplate struct {
-	EventType   string
-	Location    string
-	MeetingLink string
-	Capacity    int32
-	CoverImage  string
-	Visibility  string
-	Duration    time.Duration
-	Tags        []string
-	Tiers       []*pb.TicketTierInput
-	Latitude    float64
-	Longitude   float64
+	EventType          string
+	Location           string
+	MeetingLink        string
+	Capacity           int32
+	CoverImage         string
+	Visibility         string
+	Duration           time.Duration
+	Tags               []string
+	Tiers              []*pb.TicketTierInput
+	Latitude           float64
+	Longitude          float64
+	RequiresHostReview bool
 }
 
 // CreateSeries records a recurring-event definition and returns its id. The
@@ -170,14 +171,15 @@ func (db *eventDB) GenerateSeriesOccurrences(ctx context.Context, seriesID int64
 					title, description, slug, start_time, end_time, timezone,
 					event_type, location, meeting_link, capacity, cover_image,
 					organizer_id, group_id, visibility, status,
-					series_id, series_occurrence_at, latitude, longitude, rsvp_closes_at
-				) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20)
+					series_id, series_occurrence_at, latitude, longitude, rsvp_closes_at,
+					requires_host_review
+				) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21)
 				RETURNING id`,
 				title, description, slug, occ, occ.Add(tmpl.Duration), defaultTimezone(timezone),
 				tmpl.EventType, tmpl.Location, tmpl.MeetingLink, tmpl.Capacity, tmpl.CoverImage,
 				organizerID, groupCol, visibility, StatusPublished, seriesID, occ,
 				nullCoord(tmpl.Latitude), nullCoord(tmpl.Longitude),
-				rsvpClosesValue(occ, rsvpCloseHours),
+				rsvpClosesValue(occ, rsvpCloseHours), tmpl.RequiresHostReview,
 			).Scan(&eventID); err != nil {
 				return status.Errorf(codes.Internal, "failed to create occurrence: %v", err)
 			}
@@ -236,7 +238,7 @@ func (db *eventDB) CancelSeriesOccurrence(ctx context.Context, slug, accountID s
 		}
 		if _, err := tx.ExecContext(ctx, `
 			UPDATE event_attendees SET status = 'cancelled', updated_at = NOW()
-			WHERE event_id = $1 AND status IN ('confirmed', 'waitlisted', 'pending_payment')`,
+			WHERE event_id = $1 AND status IN ('confirmed', 'waitlisted', 'pending_payment', 'pending_host_review')`,
 			eventID); err != nil {
 			return status.Errorf(codes.Internal, "failed to release rsvps: %v", err)
 		}
@@ -275,11 +277,12 @@ func (db *eventDB) UpdateSeriesFutureOccurrences(ctx context.Context, seriesID i
 		res, err := tx.ExecContext(ctx, `
 			UPDATE events SET
 				event_type = $1, location = $2, meeting_link = $3,
-				capacity = $4, cover_image = $5, visibility = $6, updated_at = NOW()
-			WHERE series_id = $7 AND series_occurrence_at >= $8
-			  AND status IN ($9, $10)`,
+				capacity = $4, cover_image = $5, visibility = $6,
+				requires_host_review = $7, updated_at = NOW()
+			WHERE series_id = $8 AND series_occurrence_at >= $9
+			  AND status IN ($10, $11)`,
 			tmpl.EventType, tmpl.Location, tmpl.MeetingLink, tmpl.Capacity,
-			tmpl.CoverImage, defaultVisibility(tmpl.Visibility),
+			tmpl.CoverImage, defaultVisibility(tmpl.Visibility), tmpl.RequiresHostReview,
 			seriesID, cutoff, StatusDraft, StatusPublished,
 		)
 		if err != nil {
@@ -385,17 +388,18 @@ func (db *eventDB) MaterializeSeries(ctx context.Context, req *pb.CreateSeriesRe
 
 	lat, lng := resolveEventCoords(ctx, req.EventType, req.Latitude, req.Longitude, req.Location)
 	slugs, err := db.GenerateSeriesOccurrences(ctx, seriesID, occs, OccurrenceTemplate{
-		EventType:   req.EventType,
-		Location:    req.Location,
-		MeetingLink: req.MeetingLink,
-		Capacity:    req.Capacity,
-		CoverImage:  req.CoverImage,
-		Visibility:  req.Visibility,
-		Duration:    req.EndTime.AsTime().Sub(req.StartTime.AsTime()),
-		Tags:        req.Tags,
-		Tiers:       req.TicketTiers,
-		Latitude:    lat,
-		Longitude:   lng,
+		EventType:          req.EventType,
+		Location:           req.Location,
+		MeetingLink:        req.MeetingLink,
+		Capacity:           req.Capacity,
+		CoverImage:         req.CoverImage,
+		Visibility:         req.Visibility,
+		Duration:           req.EndTime.AsTime().Sub(req.StartTime.AsTime()),
+		Tags:               req.Tags,
+		Tiers:              req.TicketTiers,
+		Latitude:           lat,
+		Longitude:          lng,
+		RequiresHostReview: req.RequiresHostReview,
 	})
 	if err != nil {
 		return nil, err

@@ -36,6 +36,7 @@ type EventDB interface {
 
 	// RSVP, payments & attendees
 	CreateRSVP(ctx context.Context, req *pb.RSVPReq) (*RSVPResult, error)
+	ReviewRSVP(ctx context.Context, req *pb.ReviewRSVPReq) (*RSVPResult, error)
 	AttachPaymentOrder(ctx context.Context, attendeeID int64, orderID string, amount float64) error
 	ReleaseReservation(ctx context.Context, attendeeID int64) error
 	ConfirmPayment(ctx context.Context, orderID, paymentID string) (*PaymentResult, error)

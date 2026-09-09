@@ -34,6 +34,8 @@ type EventBody struct {
 	RsvpClosesAt *time.Time `json:"rsvp_closes_at"`
 	// Series edits: 0 = Off. Omitted on one-off updates.
 	RsvpCloseHoursBefore *int32 `json:"rsvp_close_hours_before"`
+	// Optional guest screening. Omitted on update leaves the stored flag.
+	RequiresHostReview *bool `json:"requires_host_review"`
 }
 
 type RecurrenceBody struct {
@@ -108,9 +110,16 @@ type CouponBody struct {
 
 // RSVPBody is the JSON payload for responding to an event.
 type RSVPBody struct {
-	TicketTierID int64  `json:"ticket_tier_id" binding:"required"`
-	CouponCode   string `json:"coupon_code"`
-	Scope        string `json:"scope" binding:"omitempty,oneof=this series"`
+	TicketTierID   int64  `json:"ticket_tier_id" binding:"required"`
+	CouponCode     string `json:"coupon_code"`
+	Scope          string `json:"scope" binding:"omitempty,oneof=this series"`
+	SocialProofURL string `json:"social_proof_url"`
+}
+
+// ReviewRSVPBody is the host/co-host decision on a pending application.
+type ReviewRSVPBody struct {
+	Decision string `json:"decision" binding:"required,oneof=approve reject"`
+	Note     string `json:"note"`
 }
 
 // CommentBody is the JSON payload for posting a comment.
@@ -151,4 +160,15 @@ func int32Value(p *int32) *wrapperspb.Int32Value {
 		return nil
 	}
 	return wrapperspb.Int32(*p)
+}
+
+func boolValue(p *bool) *wrapperspb.BoolValue {
+	if p == nil {
+		return nil
+	}
+	return wrapperspb.Bool(*p)
+}
+
+func derefBool(p *bool) bool {
+	return p != nil && *p
 }

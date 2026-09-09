@@ -28,18 +28,19 @@ type GroupEventClient struct {
 // mirrors the standalone event body's core fields; group membership supplies
 // the rest of the context on the service side.
 type GroupEventBody struct {
-	Title       string    `json:"title" binding:"required"`
-	Description string    `json:"description"`
-	StartTime   time.Time `json:"start_time" binding:"required"`
-	EndTime     time.Time `json:"end_time" binding:"required"`
-	Timezone    string    `json:"timezone"`
-	EventType   string    `json:"event_type" binding:"required,oneof=virtual in_person hybrid"`
-	Location    string    `json:"location"`
-	MeetingLink string    `json:"meeting_link"`
-	Capacity    int32     `json:"capacity"`
-	CoverImage  string    `json:"cover_image"`
-	Tags        []string  `json:"tags"`
-	Visibility  string    `json:"visibility" binding:"omitempty,oneof=public group_members private unlisted"`
+	Title              string    `json:"title" binding:"required"`
+	Description        string    `json:"description"`
+	StartTime          time.Time `json:"start_time" binding:"required"`
+	EndTime            time.Time `json:"end_time" binding:"required"`
+	Timezone           string    `json:"timezone"`
+	EventType          string    `json:"event_type" binding:"required,oneof=virtual in_person hybrid"`
+	Location           string    `json:"location"`
+	MeetingLink        string    `json:"meeting_link"`
+	Capacity           int32     `json:"capacity"`
+	CoverImage         string    `json:"cover_image"`
+	Tags               []string  `json:"tags"`
+	Visibility         string    `json:"visibility" binding:"omitempty,oneof=public group_members private unlisted"`
+	RequiresHostReview bool      `json:"requires_host_review"`
 }
 
 // eventClientInfo projects the request fingerprint onto the events service's
@@ -76,21 +77,22 @@ func (gec *GroupEventClient) CreateGroupEvent(ctx *gin.Context) {
 	}
 
 	res, err := gec.client.CreateEvent(ctx, &eventpb.CreateEventReq{
-		AccountId:   accountID(ctx),
-		Title:       body.Title,
-		Description: body.Description,
-		StartTime:   toTimestamp(body.StartTime),
-		EndTime:     toTimestamp(body.EndTime),
-		Timezone:    body.Timezone,
-		EventType:   body.EventType,
-		Location:    body.Location,
-		MeetingLink: body.MeetingLink,
-		Capacity:    body.Capacity,
-		CoverImage:  body.CoverImage,
-		Tags:        body.Tags,
-		GroupSlug:   ctx.Param("slug"),
-		Visibility:  body.Visibility,
-		ClientInfo:  eventClientInfo(ctx),
+		AccountId:          accountID(ctx),
+		Title:              body.Title,
+		Description:        body.Description,
+		StartTime:          toTimestamp(body.StartTime),
+		EndTime:            toTimestamp(body.EndTime),
+		Timezone:           body.Timezone,
+		EventType:          body.EventType,
+		Location:           body.Location,
+		MeetingLink:        body.MeetingLink,
+		Capacity:           body.Capacity,
+		CoverImage:         body.CoverImage,
+		Tags:               body.Tags,
+		GroupSlug:          ctx.Param("slug"),
+		Visibility:         body.Visibility,
+		ClientInfo:         eventClientInfo(ctx),
+		RequiresHostReview: body.RequiresHostReview,
 	})
 	if err != nil {
 		st, ok := status.FromError(err)

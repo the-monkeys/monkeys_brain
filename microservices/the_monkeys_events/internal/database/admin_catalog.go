@@ -124,7 +124,7 @@ func (db *eventDB) AdminCancelEvent(ctx context.Context, req *pb.AdminEventActio
 		}
 		if _, err := tx.ExecContext(ctx, `
 			UPDATE event_attendees SET status = 'cancelled', updated_at = NOW()
-			WHERE event_id = $1 AND status IN ('confirmed', 'waitlisted', 'pending_payment')`, eventID); err != nil {
+			WHERE event_id = $1 AND status IN ('confirmed', 'waitlisted', 'pending_payment', 'pending_host_review')`, eventID); err != nil {
 			return status.Error(codes.Internal, "failed to release rsvps")
 		}
 		return writeAudit(ctx, tx, req.GetActor(), "event.cancel", "event", slug, nil)

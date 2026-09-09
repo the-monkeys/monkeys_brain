@@ -159,6 +159,27 @@ func TestCommonFiltersRadiusOrUnpinnedLocation(t *testing.T) {
 	if !strings.Contains(where, " OR ") {
 		t.Fatalf("unpinned city match must be OR'd with radius, got %s", where)
 	}
+	if !strings.Contains(where, "ILIKE ANY") {
+		t.Fatalf("unpinned match must use locality needles, got %s", where)
+	}
+	if !needlesContain(f, "bellandur") {
+		t.Fatal("Bengaluru near-me must match Bellandur venues without a pin")
+	}
+}
+
+func needlesContain(f *filter, want string) bool {
+	for _, a := range f.args {
+		ss, ok := a.([]string)
+		if !ok {
+			continue
+		}
+		for _, s := range ss {
+			if strings.Contains(strings.ToLower(s), want) {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 func geoRadiusBound(f *filter) int32 {

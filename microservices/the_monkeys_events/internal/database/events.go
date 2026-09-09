@@ -86,7 +86,7 @@ const eventColumns = `
 	e.group_id, COALESCE(g.slug, ''), COALESCE(g.name, ''), COALESCE(e.visibility, 'public'),
 	e.series_id, e.series_occurrence_at, COALESCE(es.recurrence_rule, ''),
 	e.rsvp_closes_at, COALESCE(es.rsvp_close_hours_before, 0),
-	e.latitude, e.longitude`
+	e.latitude, e.longitude, COALESCE(e.requires_host_review, FALSE)`
 
 const eventFrom = ` FROM events e JOIN user_account u ON u.id = e.organizer_id LEFT JOIN groups g ON g.id = e.group_id LEFT JOIN event_series es ON es.id = e.series_id LEFT JOIN (
 	SELECT event_id, COUNT(*)::int AS attendee_count
@@ -113,7 +113,7 @@ func scanEvent(row rowScanner) (*pb.Event, error) {
 		&e.AttendeeCount,
 		&groupID, &e.GroupSlug, &e.GroupName, &e.Visibility,
 		&seriesID, &occAt, &rule, &rsvpCloses, &closeHours,
-		&lat, &lng,
+		&lat, &lng, &e.RequiresHostReview,
 	); err != nil {
 		return nil, err
 	}
@@ -137,6 +137,45 @@ func scanEvent(row rowScanner) (*pb.Event, error) {
 	e.UpdatedAt = timestamppb.New(updated)
 	attachEventCoords(&e, lat, lng)
 	return &e, nil
+}
+
+func needsGeocode(eventType string, lat, lng float64, location string) bool {
+	if eventType == EventTypeOnline {
+		return false
+	}
+	if lat != 0 && lng != 0 {
+		return false
+	}
+	return strings.TrimSpace(location) != ""
+}
+
+// fillMissingCoords geocodes an in-person/hybrid meetup that was saved without
+// a pin so near-me discovery can include it. Best-effort: a Nominatim miss
+// leaves the row unpinned.
+func (db *eventDB) fillMissingCoords(ctx context.Context, event *pb.Event) {
+	if event == nil {
+		return
+	}
+	lat, lng := 0.0, 0.0
+	if event.Venue != nil {
+		lat, lng = event.Venue.Latitude, event.Venue.Longitude
+	}
+	if !needsGeocode(event.EventType, lat, lng, event.Location) {
+		return
+	}
+	resolvedLat, resolvedLng := Geocode(ctx, event.Location)
+	if resolvedLat == 0 && resolvedLng == 0 {
+		return
+	}
+	if _, err := db.db.ExecContext(ctx, `
+		UPDATE events SET latitude = $1, longitude = $2, updated_at = NOW()
+		WHERE slug = $3 AND (latitude IS NULL OR longitude IS NULL)`,
+		resolvedLat, resolvedLng, event.Slug); err != nil {
+		db.log.Warnw("failed to persist geocoded pin", "slug", event.Slug, "err", err)
+		return
+	}
+	attachEventCoords(event, sql.NullFloat64{Float64: resolvedLat, Valid: true},
+		sql.NullFloat64{Float64: resolvedLng, Valid: true})
 }
 
 // attachEventCoords copies a stored event pin onto Venue so GET JSON can
@@ -197,13 +236,13 @@ func (db *eventDB) CreateEvent(ctx context.Context, req *pb.CreateEventReq) (*pb
 			INSERT INTO events (
 				title, description, slug, start_time, end_time, timezone,
 				event_type, location, meeting_link, capacity, cover_image, organizer_id,
-				group_id, visibility, latitude, longitude, rsvp_closes_at
-			) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)
+				group_id, visibility, latitude, longitude, rsvp_closes_at, requires_host_review
+			) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18)
 			RETURNING id`,
 			req.Title, req.Description, slug, req.StartTime.AsTime(), req.EndTime.AsTime(),
 			defaultTimezone(req.Timezone), req.EventType, req.Location, req.MeetingLink,
 			req.Capacity, req.CoverImage, organizerID, groupCol, visibility, nullCoord(lat), nullCoord(lng),
-			nullableTime(req.RsvpClosesAt),
+			nullableTime(req.RsvpClosesAt), req.RequiresHostReview,
 		).Scan(&eventID); err != nil {
 			return status.Errorf(codes.Internal, "failed to create event: %v", err)
 		}
@@ -327,18 +366,24 @@ func (db *eventDB) UpdateEvent(ctx context.Context, req *pb.UpdateEventReq) (*pb
 			}
 		}
 
+		var hostReview any
+		if w := req.GetRequiresHostReview(); w != nil {
+			hostReview = w.GetValue()
+		}
+
 		if _, err := tx.ExecContext(ctx, `
 			UPDATE events SET
 				title = $1, description = $2, start_time = $3, end_time = $4, timezone = $5,
 				event_type = $6, location = $7, meeting_link = $8, capacity = $9,
 				cover_image = $10, visibility = COALESCE(NULLIF($11, ''), visibility),
 				latitude = $12, longitude = $13, rsvp_closes_at = $14,
+				requires_host_review = COALESCE($15, requires_host_review),
 				updated_at = NOW()
-			WHERE id = $15`,
+			WHERE id = $16`,
 			req.Title, req.Description, req.StartTime.AsTime(), req.EndTime.AsTime(),
 			defaultTimezone(req.Timezone), req.EventType, req.Location, req.MeetingLink,
 			req.Capacity, req.CoverImage, req.Visibility, nullCoord(lat), nullCoord(lng),
-			rsvpClose, eventID,
+			rsvpClose, hostReview, eventID,
 		); err != nil {
 			return status.Errorf(codes.Internal, "failed to update event: %v", err)
 		}
@@ -467,14 +512,15 @@ func (db *eventDB) CloneEvent(ctx context.Context, req *pb.CloneEventReq) (*pb.E
 			capacity                                          int32
 			groupID                                           sql.NullInt64
 			srcLat, srcLng                                    sql.NullFloat64
+			requiresReview                                    bool
 		)
 		if err := tx.QueryRowContext(ctx, `
 			SELECT title, COALESCE(description, ''), COALESCE(timezone, 'UTC'), event_type,
 			       COALESCE(location, ''), COALESCE(meeting_link, ''), capacity,
 			       COALESCE(cover_image, ''), COALESCE(visibility, 'public'), group_id,
-			       latitude, longitude
+			       latitude, longitude, COALESCE(requires_host_review, FALSE)
 			FROM events WHERE id = $1`, srcID,
-		).Scan(&title, &desc, &tz, &eventType, &loc, &link, &capacity, &cover, &vis, &groupID, &srcLat, &srcLng); err != nil {
+		).Scan(&title, &desc, &tz, &eventType, &loc, &link, &capacity, &cover, &vis, &groupID, &srcLat, &srcLng, &requiresReview); err != nil {
 			return status.Error(codes.Internal, "failed to load event")
 		}
 
@@ -496,12 +542,12 @@ func (db *eventDB) CloneEvent(ctx context.Context, req *pb.CloneEventReq) (*pb.E
 			INSERT INTO events (
 				title, description, slug, start_time, end_time, timezone,
 				event_type, location, meeting_link, capacity, cover_image, organizer_id,
-				group_id, visibility, latitude, longitude
-			) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)
+				group_id, visibility, latitude, longitude, requires_host_review
+			) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)
 			RETURNING id`,
 			title, desc, slug, req.StartTime.AsTime(), req.EndTime.AsTime(), tz,
 			eventType, loc, link, capacity, cover, organizerID, groupCol, vis,
-			nullCoord(plat), nullCoord(plng),
+			nullCoord(plat), nullCoord(plng), requiresReview,
 		).Scan(&eventID); err != nil {
 			return status.Errorf(codes.Internal, "failed to clone event: %v", err)
 		}
@@ -594,7 +640,7 @@ func (db *eventDB) SetEventStatus(ctx context.Context, req *pb.EventActionReq, n
 		case StatusCancelled:
 			if _, err := tx.ExecContext(ctx, `
 				UPDATE event_attendees SET status = 'cancelled', updated_at = NOW()
-				WHERE event_id = $1 AND status IN ('confirmed', 'waitlisted', 'pending_payment')`,
+				WHERE event_id = $1 AND status IN ('confirmed', 'waitlisted', 'pending_payment', 'pending_host_review')`,
 				eventID); err != nil {
 				return status.Errorf(codes.Internal, "failed to release rsvps: %v", err)
 			}
@@ -609,6 +655,23 @@ func (db *eventDB) SetEventStatus(ctx context.Context, req *pb.EventActionReq, n
 				if _, err := insertTier(ctx, tx, eventID,
 					&pb.TicketTierInput{Name: "General", Currency: defaultCurrency}, 0); err != nil {
 					return err
+				}
+			}
+			var eventType, location string
+			var lat, lng sql.NullFloat64
+			if err := tx.QueryRowContext(ctx, `
+				SELECT event_type, COALESCE(location, ''), latitude, longitude
+				FROM events WHERE id = $1`, eventID).Scan(&eventType, &location, &lat, &lng); err != nil {
+				return status.Error(codes.Internal, "failed to read event pin")
+			}
+			if needsGeocode(eventType, lat.Float64, lng.Float64, location) {
+				glat, glng := Geocode(ctx, location)
+				if glat != 0 || glng != 0 {
+					if _, err := tx.ExecContext(ctx,
+						"UPDATE events SET latitude = $1, longitude = $2 WHERE id = $3",
+						glat, glng, eventID); err != nil {
+						return status.Error(codes.Internal, "failed to store event pin")
+					}
 				}
 			}
 		}
@@ -641,6 +704,7 @@ func (db *eventDB) GetEvent(ctx context.Context, slug, viewerAccountID string) (
 	if err := db.hydrate(ctx, []*pb.Event{event}, true); err != nil {
 		return nil, "", err
 	}
+	db.fillMissingCoords(ctx, event)
 
 	var viewerStatus string
 	if viewerAccountID != "" {
@@ -712,19 +776,18 @@ func commonFilters(f *filter, req *pb.ListEventsReq) {
 		req.EventType != EventTypeOnline && req.EventType != EventTypeHybrid
 	// Text city search when the client is not doing near-me. Combined with a
 	// pin+radius below so unpinned local events (Nominatim miss) still surface.
+	// Known metros also match neighborhood labels (Bellandur under Bengaluru).
 	if locationText != "" && !geoOn {
-		f.add("e.location ILIKE '%%' || $%d || '%%'", locationText)
+		if pos := bindUnpinnedNeedles(f, locationText); pos > 0 {
+			f.conds = append(f.conds, fmt.Sprintf("e.location ILIKE ANY($%d)", pos))
+		}
 	}
 
 	if geoOn {
 		// Virtual/hybrid skip the radius: they are reachable from anywhere.
 		// In-person must sit inside the requested radius; the UI expands that
 		// from city up to country, never worldwide.
-		var locPos int
-		if locationText != "" {
-			f.args = append(f.args, locationText)
-			locPos = len(f.args)
-		}
+		locPos := bindUnpinnedNeedles(f, locationText)
 		minLat, maxLat, minLng, maxLng := geoBox(req.UserLat, req.UserLng, radiusKm)
 		f.args = append(f.args, req.UserLat, req.UserLng, req.UserLat, radiusKm,
 			minLat, maxLat, minLng, maxLng)
@@ -743,7 +806,7 @@ func commonFilters(f *filter, req *pb.ListEventsReq) {
 			minLatPos, maxLatPos, minLngPos, maxLngPos, latPos, lngPos, lat2Pos, radiusPos)
 		pred := inRange
 		if locPos > 0 {
-			pred = fmt.Sprintf("((%s) OR ((e.latitude IS NULL OR e.longitude IS NULL) AND e.location ILIKE '%%' || $%d || '%%'))",
+			pred = fmt.Sprintf("((%s) OR ((e.latitude IS NULL OR e.longitude IS NULL) AND e.location ILIKE ANY($%d)))",
 				inRange, locPos)
 		}
 		if req.EventType == EventTypeInPerson {
@@ -1240,6 +1303,15 @@ func eventHasEnded(status string, end time.Time) bool {
 
 func sameInstant(a, b time.Time) bool {
 	return a.UTC().Truncate(time.Second).Equal(b.UTC().Truncate(time.Second))
+}
+
+func bindUnpinnedNeedles(f *filter, locationText string) int {
+	needles := geo.UnpinnedNeedles(locationText)
+	if len(needles) == 0 {
+		return 0
+	}
+	f.args = append(f.args, needles)
+	return len(f.args)
 }
 
 // resolveEventCoords picks persistence coords: virtual → 0,0 (SQL NULL via

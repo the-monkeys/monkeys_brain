@@ -6,6 +6,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	userpb "github.com/the-monkeys/the_monkeys/apis/serviceconn/gateway_user/pb"
+	"github.com/the-monkeys/the_monkeys/constants"
 )
 
 func (asc *AdminServiceClient) ListUsers(ctx *gin.Context) {
@@ -95,12 +96,50 @@ func (asc *AdminServiceClient) SuspendUser(ctx *gin.Context) {
 	ctx.JSON(http.StatusOK, gin.H{"message": "suspended", "user_id": ctx.Param("id")})
 }
 
+func (asc *AdminServiceClient) lookupUserRole(ctx *gin.Context, username string) (string, bool, error) {
+	res, err := asc.Client.AdminListUsers(ctx.Request.Context(), &userpb.AdminListUsersReq{
+		Query: username, Limit: 20,
+	})
+	if err != nil {
+		return "", false, err
+	}
+	for _, u := range res.Users {
+		if strings.EqualFold(u.GetUsername(), username) {
+			return u.GetRole(), true, nil
+		}
+	}
+	return "", false, nil
+}
+
 func (asc *AdminServiceClient) DeleteUserJWT(ctx *gin.Context) {
+	target := strings.TrimSpace(ctx.Param("id"))
+	actor := strings.TrimSpace(ctx.GetString("userName"))
+	if target == "" {
+		ctx.AbortWithStatusJSON(http.StatusBadRequest, gin.H{"error": "username is required"})
+		return
+	}
+	if strings.EqualFold(target, actor) {
+		ctx.AbortWithStatusJSON(http.StatusForbidden, gin.H{"error": "cannot delete your own account here"})
+		return
+	}
+	if ctx.GetString("user_role") == constants.RoleCommunity {
+		role, found, err := asc.lookupUserRole(ctx, target)
+		if asc.failRPC(ctx, err, "lookup user") {
+			return
+		}
+		if found {
+			switch role {
+			case constants.RoleAdmin, constants.RoleSupport, constants.RoleCommunity, constants.RoleOwner:
+				ctx.AbortWithStatusJSON(http.StatusForbidden, gin.H{"error": "Community cannot delete staff accounts"})
+				return
+			}
+		}
+	}
 	_, err := asc.Client.AdminDeleteUser(ctx.Request.Context(), &userpb.AdminDeleteUserReq{
-		Username: ctx.Param("id"), Actor: asc.userActor(ctx),
+		Username: target, Actor: asc.userActor(ctx),
 	})
 	if asc.failRPC(ctx, err, "delete user") {
 		return
 	}
-	ctx.JSON(http.StatusOK, gin.H{"message": "User successfully deleted", "user_id": ctx.Param("id")})
+	ctx.JSON(http.StatusOK, gin.H{"message": "User successfully deleted", "user_id": target})
 }

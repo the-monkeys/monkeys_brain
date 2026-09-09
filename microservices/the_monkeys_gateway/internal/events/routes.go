@@ -106,6 +106,8 @@ func RegisterEventRouter(router *gin.Engine, cfg *config.Config, authClient *aut
 	// Attendance is host-only: marking an attendee checked in or no-show
 	// touches another person's row, so it needs manage_checkins.
 	write.PUT("/:slug/attendees/:id/attendance", guard.RequireCanCheckIn(), esc.UpdateAttendance)
+	// Host and co-hosts screen guests on paid or unpaid meetups that opted in.
+	write.POST("/:slug/attendees/:id/review", guard.Require(authx.PermManageAttendees), esc.ReviewRSVP)
 
 	// Attendee data carries contact details; the export walks every page.
 	read.GET("/:slug/attendees", guard.RequireCanViewAttendeeContact(), esc.ListAttendees)

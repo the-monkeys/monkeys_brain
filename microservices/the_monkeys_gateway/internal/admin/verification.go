@@ -13,7 +13,7 @@ import (
 
 // ListVerifications handles GET /api/v1/admin/verifications
 // Query params: status (pending|under_review|approved|rejected), limit, offset.
-// Mounted behind AuthRequired + RequireRole(Admin, Support).
+// Mounted behind AuthRequired + RequireRole(Admin, Support, Community).
 func (asc *AdminServiceClient) ListVerifications(ctx *gin.Context) {
 	limit, err := strconv.Atoi(ctx.DefaultQuery("limit", "20"))
 	if err != nil || limit < 0 {

@@ -86,26 +86,27 @@ func (esc *EventServiceClient) CreateEvent(ctx *gin.Context) {
 	}
 
 	res, err := esc.Client.CreateEvent(ctx, &pb.CreateEventReq{
-		AccountId:       accountID(ctx),
-		Title:           body.Title,
-		Description:     body.Description,
-		StartTime:       toTimestamp(&body.StartTime),
-		EndTime:         toTimestamp(&body.EndTime),
-		Timezone:        body.Timezone,
-		EventType:       body.EventType,
-		Location:        body.Location,
-		Latitude:        body.Latitude,
-		Longitude:       body.Longitude,
-		MeetingLink:     body.MeetingLink,
-		Capacity:        body.Capacity,
-		CoverImage:      body.CoverImage,
-		Tags:            body.Tags,
-		CoHostUsernames: body.CoHostUsernames,
-		TicketTiers:     tiersToProto(body.TicketTiers),
-		GroupSlug:       body.GroupSlug,
-		Visibility:      body.Visibility,
-		RsvpClosesAt:    toTimestamp(body.RsvpClosesAt),
-		ClientInfo:      clientInfo(ctx),
+		AccountId:          accountID(ctx),
+		Title:              body.Title,
+		Description:        body.Description,
+		StartTime:          toTimestamp(&body.StartTime),
+		EndTime:            toTimestamp(&body.EndTime),
+		Timezone:           body.Timezone,
+		EventType:          body.EventType,
+		Location:           body.Location,
+		Latitude:           body.Latitude,
+		Longitude:          body.Longitude,
+		MeetingLink:        body.MeetingLink,
+		Capacity:           body.Capacity,
+		CoverImage:         body.CoverImage,
+		Tags:               body.Tags,
+		CoHostUsernames:    body.CoHostUsernames,
+		TicketTiers:        tiersToProto(body.TicketTiers),
+		GroupSlug:          body.GroupSlug,
+		Visibility:         body.Visibility,
+		RsvpClosesAt:       toTimestamp(body.RsvpClosesAt),
+		ClientInfo:         clientInfo(ctx),
+		RequiresHostReview: derefBool(body.RequiresHostReview),
 	})
 	if esc.fail(ctx, err, "create event") {
 		return
@@ -125,25 +126,26 @@ func (esc *EventServiceClient) CreateSeries(ctx *gin.Context) {
 	}
 
 	res, err := esc.Client.CreateSeries(ctx, &pb.CreateSeriesReq{
-		AccountId:   accountID(ctx),
-		Title:       body.Title,
-		Description: body.Description,
-		StartTime:   toTimestamp(&body.StartTime),
-		EndTime:     toTimestamp(&body.EndTime),
-		Timezone:    body.Timezone,
-		EventType:   body.EventType,
-		Location:    body.Location,
-		Latitude:    body.Latitude,
-		Longitude:   body.Longitude,
-		MeetingLink: body.MeetingLink,
-		Capacity:    body.Capacity,
-		CoverImage:  body.CoverImage,
-		Tags:        body.Tags,
-		TicketTiers: tiersToProto(body.TicketTiers),
-		GroupSlug:   body.GroupSlug,
-		Visibility:  body.Visibility,
-		Recurrence:  rec,
-		ClientInfo:  clientInfo(ctx),
+		AccountId:          accountID(ctx),
+		Title:              body.Title,
+		Description:        body.Description,
+		StartTime:          toTimestamp(&body.StartTime),
+		EndTime:            toTimestamp(&body.EndTime),
+		Timezone:           body.Timezone,
+		EventType:          body.EventType,
+		Location:           body.Location,
+		Latitude:           body.Latitude,
+		Longitude:          body.Longitude,
+		MeetingLink:        body.MeetingLink,
+		Capacity:           body.Capacity,
+		CoverImage:         body.CoverImage,
+		Tags:               body.Tags,
+		TicketTiers:        tiersToProto(body.TicketTiers),
+		GroupSlug:          body.GroupSlug,
+		Visibility:         body.Visibility,
+		Recurrence:         rec,
+		ClientInfo:         clientInfo(ctx),
+		RequiresHostReview: derefBool(body.RequiresHostReview),
 	})
 	if esc.fail(ctx, err, "create series") {
 		return
@@ -195,6 +197,7 @@ func (esc *EventServiceClient) UpdateEvent(ctx *gin.Context) {
 		Visibility:           body.Visibility,
 		RsvpClosesAt:         toTimestamp(body.RsvpClosesAt),
 		RsvpCloseHoursBefore: int32Value(body.RsvpCloseHoursBefore),
+		RequiresHostReview:   boolValue(body.RequiresHostReview),
 		ClientInfo:           clientInfo(ctx),
 	})
 
@@ -428,12 +431,13 @@ func (esc *EventServiceClient) RSVP(ctx *gin.Context) {
 	}
 
 	res, err := esc.Client.RSVPEvent(ctx, &pb.RSVPReq{
-		EventSlug:    ctx.Param("slug"),
-		AccountId:    accountID(ctx),
-		TicketTierId: body.TicketTierID,
-		CouponCode:   body.CouponCode,
-		Scope:        body.Scope,
-		ClientInfo:   clientInfo(ctx),
+		EventSlug:      ctx.Param("slug"),
+		AccountId:      accountID(ctx),
+		TicketTierId:   body.TicketTierID,
+		CouponCode:     body.CouponCode,
+		Scope:          body.Scope,
+		SocialProofUrl: body.SocialProofURL,
+		ClientInfo:     clientInfo(ctx),
 	})
 	if esc.fail(ctx, err, "rsvp") {
 		return
@@ -515,7 +519,7 @@ func (esc *EventServiceClient) ExportAttendees(ctx *gin.Context) {
 	w := csv.NewWriter(ctx.Writer)
 	defer w.Flush()
 
-	header := []string{"username", "email", "ticket_tier", "status", "coupon_used", "checked_in", "registered_at"}
+	header := []string{"username", "email", "ticket_tier", "status", "coupon_used", "social_proof_url", "checked_in", "registered_at"}
 	if err := w.Write(header); err != nil {
 		esc.log.Errorw("failed to write csv header", "slug", slug, "err", err)
 		return
@@ -529,7 +533,7 @@ func (esc *EventServiceClient) ExportAttendees(ctx *gin.Context) {
 
 		for _, a := range res.Attendees {
 			record := []string{
-				a.UserName, a.UserEmail, a.TicketTierName, a.Status, a.CouponUsed,
+				a.UserName, a.UserEmail, a.TicketTierName, a.Status, a.CouponUsed, a.SocialProofUrl,
 				strconv.FormatBool(a.CheckedIn), a.CreatedAt.AsTime().Format("2006-01-02 15:04:05"),
 			}
 			if err := w.Write(record); err != nil {
