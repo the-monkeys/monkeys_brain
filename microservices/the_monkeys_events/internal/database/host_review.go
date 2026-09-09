@@ -44,6 +44,13 @@ func refuseSeriesHostReview(requiresReview bool) error {
 	return nil
 }
 
+func effectiveHostReview(requiresReview bool, existingStatus string) bool {
+	if existingStatus == RSVPPendingPayment {
+		return false
+	}
+	return requiresReview
+}
+
 func rsvpAlreadyRecorded(status string) bool {
 	switch status {
 	case RSVPConfirmed, RSVPWaitlisted, RSVPPendingHostReview:

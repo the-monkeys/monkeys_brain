@@ -180,6 +180,7 @@ func applyRSVPSeat(ctx context.Context, tx *sql.Tx, userID, eventID, tierID int6
 		}
 	}
 
+	requiresReview = effectiveHostReview(requiresReview, existingStatus)
 	if requiresReview {
 		if err := validateSocialProofURL(socialProof); err != nil {
 			return nil, err

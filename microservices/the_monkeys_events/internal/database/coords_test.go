@@ -27,6 +27,24 @@ func TestResolveEventCoordsPartialPinFallsThrough(t *testing.T) {
 	}
 }
 
+func TestNeedsGeocode(t *testing.T) {
+	if needsGeocode(EventTypeOnline, 0, 0, "Bengaluru") {
+		t.Fatal("online meetups must not geocode")
+	}
+	if needsGeocode(EventTypeInPerson, 12.97, 77.59, "Bengaluru") {
+		t.Fatal("pinned meetups must not geocode again")
+	}
+	if needsGeocode(EventTypeInPerson, 0, 0, "  ") {
+		t.Fatal("empty location must not geocode")
+	}
+	if !needsGeocode(EventTypeInPerson, 0, 0, "Ecospace Tech Park, Bellandur") {
+		t.Fatal("unpinned in-person with a place must geocode")
+	}
+	if !needsGeocode(EventTypeHybrid, 0, 0, "Bellandur") {
+		t.Fatal("unpinned hybrid with a place must geocode")
+	}
+}
+
 func TestNullCoordZeroIsNil(t *testing.T) {
 	if nullCoord(0) != nil {
 		t.Fatal("0 must become SQL NULL")

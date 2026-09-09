@@ -48,6 +48,18 @@ func TestDecideApproveStatusPaidAndUnpaid(t *testing.T) {
 	}
 }
 
+func TestPendingPaymentRetrySkipsHostReview(t *testing.T) {
+	if effectiveHostReview(true, RSVPPendingPayment) {
+		t.Fatal("approved paid guests must retry checkout, not re-enter host review")
+	}
+	if !effectiveHostReview(true, RSVPCancelled) {
+		t.Fatal("a cancelled guest applying again still needs host review")
+	}
+	if effectiveHostReview(false, "") {
+		t.Fatal("open events stay open")
+	}
+}
+
 func TestRefuseSeriesHostReview(t *testing.T) {
 	if err := refuseSeriesHostReview(false); err != nil {
 		t.Fatal(err)

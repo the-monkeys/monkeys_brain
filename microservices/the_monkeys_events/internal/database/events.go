@@ -139,6 +139,45 @@ func scanEvent(row rowScanner) (*pb.Event, error) {
 	return &e, nil
 }
 
+func needsGeocode(eventType string, lat, lng float64, location string) bool {
+	if eventType == EventTypeOnline {
+		return false
+	}
+	if lat != 0 && lng != 0 {
+		return false
+	}
+	return strings.TrimSpace(location) != ""
+}
+
+// fillMissingCoords geocodes an in-person/hybrid meetup that was saved without
+// a pin so near-me discovery can include it. Best-effort: a Nominatim miss
+// leaves the row unpinned.
+func (db *eventDB) fillMissingCoords(ctx context.Context, event *pb.Event) {
+	if event == nil {
+		return
+	}
+	lat, lng := 0.0, 0.0
+	if event.Venue != nil {
+		lat, lng = event.Venue.Latitude, event.Venue.Longitude
+	}
+	if !needsGeocode(event.EventType, lat, lng, event.Location) {
+		return
+	}
+	resolvedLat, resolvedLng := Geocode(ctx, event.Location)
+	if resolvedLat == 0 && resolvedLng == 0 {
+		return
+	}
+	if _, err := db.db.ExecContext(ctx, `
+		UPDATE events SET latitude = $1, longitude = $2, updated_at = NOW()
+		WHERE slug = $3 AND (latitude IS NULL OR longitude IS NULL)`,
+		resolvedLat, resolvedLng, event.Slug); err != nil {
+		db.log.Warnw("failed to persist geocoded pin", "slug", event.Slug, "err", err)
+		return
+	}
+	attachEventCoords(event, sql.NullFloat64{Float64: resolvedLat, Valid: true},
+		sql.NullFloat64{Float64: resolvedLng, Valid: true})
+}
+
 // attachEventCoords copies a stored event pin onto Venue so GET JSON can
 // restore PlacePin without Event proto lat/lng fields (no protoc this pass).
 func attachEventCoords(e *pb.Event, lat, lng sql.NullFloat64) {
@@ -618,6 +657,23 @@ func (db *eventDB) SetEventStatus(ctx context.Context, req *pb.EventActionReq, n
 					return err
 				}
 			}
+			var eventType, location string
+			var lat, lng sql.NullFloat64
+			if err := tx.QueryRowContext(ctx, `
+				SELECT event_type, COALESCE(location, ''), latitude, longitude
+				FROM events WHERE id = $1`, eventID).Scan(&eventType, &location, &lat, &lng); err != nil {
+				return status.Error(codes.Internal, "failed to read event pin")
+			}
+			if needsGeocode(eventType, lat.Float64, lng.Float64, location) {
+				glat, glng := Geocode(ctx, location)
+				if glat != 0 || glng != 0 {
+					if _, err := tx.ExecContext(ctx,
+						"UPDATE events SET latitude = $1, longitude = $2 WHERE id = $3",
+						glat, glng, eventID); err != nil {
+						return status.Error(codes.Internal, "failed to store event pin")
+					}
+				}
+			}
 		}
 		return nil
 	})
@@ -648,6 +704,7 @@ func (db *eventDB) GetEvent(ctx context.Context, slug, viewerAccountID string) (
 	if err := db.hydrate(ctx, []*pb.Event{event}, true); err != nil {
 		return nil, "", err
 	}
+	db.fillMissingCoords(ctx, event)
 
 	var viewerStatus string
 	if viewerAccountID != "" {
@@ -719,19 +776,18 @@ func commonFilters(f *filter, req *pb.ListEventsReq) {
 		req.EventType != EventTypeOnline && req.EventType != EventTypeHybrid
 	// Text city search when the client is not doing near-me. Combined with a
 	// pin+radius below so unpinned local events (Nominatim miss) still surface.
+	// Known metros also match neighborhood labels (Bellandur under Bengaluru).
 	if locationText != "" && !geoOn {
-		f.add("e.location ILIKE '%%' || $%d || '%%'", locationText)
+		if pos := bindUnpinnedNeedles(f, locationText); pos > 0 {
+			f.conds = append(f.conds, fmt.Sprintf("e.location ILIKE ANY($%d)", pos))
+		}
 	}
 
 	if geoOn {
 		// Virtual/hybrid skip the radius: they are reachable from anywhere.
 		// In-person must sit inside the requested radius; the UI expands that
 		// from city up to country, never worldwide.
-		var locPos int
-		if locationText != "" {
-			f.args = append(f.args, locationText)
-			locPos = len(f.args)
-		}
+		locPos := bindUnpinnedNeedles(f, locationText)
 		minLat, maxLat, minLng, maxLng := geoBox(req.UserLat, req.UserLng, radiusKm)
 		f.args = append(f.args, req.UserLat, req.UserLng, req.UserLat, radiusKm,
 			minLat, maxLat, minLng, maxLng)
@@ -750,7 +806,7 @@ func commonFilters(f *filter, req *pb.ListEventsReq) {
 			minLatPos, maxLatPos, minLngPos, maxLngPos, latPos, lngPos, lat2Pos, radiusPos)
 		pred := inRange
 		if locPos > 0 {
-			pred = fmt.Sprintf("((%s) OR ((e.latitude IS NULL OR e.longitude IS NULL) AND e.location ILIKE '%%' || $%d || '%%'))",
+			pred = fmt.Sprintf("((%s) OR ((e.latitude IS NULL OR e.longitude IS NULL) AND e.location ILIKE ANY($%d)))",
 				inRange, locPos)
 		}
 		if req.EventType == EventTypeInPerson {
@@ -1247,6 +1303,15 @@ func eventHasEnded(status string, end time.Time) bool {
 
 func sameInstant(a, b time.Time) bool {
 	return a.UTC().Truncate(time.Second).Equal(b.UTC().Truncate(time.Second))
+}
+
+func bindUnpinnedNeedles(f *filter, locationText string) int {
+	needles := geo.UnpinnedNeedles(locationText)
+	if len(needles) == 0 {
+		return 0
+	}
+	f.args = append(f.args, needles)
+	return len(f.args)
 }
 
 // resolveEventCoords picks persistence coords: virtual → 0,0 (SQL NULL via
