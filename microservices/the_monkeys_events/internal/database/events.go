@@ -86,7 +86,7 @@ const eventColumns = `
 	e.group_id, COALESCE(g.slug, ''), COALESCE(g.name, ''), COALESCE(e.visibility, 'public'),
 	e.series_id, e.series_occurrence_at, COALESCE(es.recurrence_rule, ''),
 	e.rsvp_closes_at, COALESCE(es.rsvp_close_hours_before, 0),
-	e.latitude, e.longitude`
+	e.latitude, e.longitude, COALESCE(e.requires_host_review, FALSE)`
 
 const eventFrom = ` FROM events e JOIN user_account u ON u.id = e.organizer_id LEFT JOIN groups g ON g.id = e.group_id LEFT JOIN event_series es ON es.id = e.series_id LEFT JOIN (
 	SELECT event_id, COUNT(*)::int AS attendee_count
@@ -113,7 +113,7 @@ func scanEvent(row rowScanner) (*pb.Event, error) {
 		&e.AttendeeCount,
 		&groupID, &e.GroupSlug, &e.GroupName, &e.Visibility,
 		&seriesID, &occAt, &rule, &rsvpCloses, &closeHours,
-		&lat, &lng,
+		&lat, &lng, &e.RequiresHostReview,
 	); err != nil {
 		return nil, err
 	}
@@ -197,13 +197,13 @@ func (db *eventDB) CreateEvent(ctx context.Context, req *pb.CreateEventReq) (*pb
 			INSERT INTO events (
 				title, description, slug, start_time, end_time, timezone,
 				event_type, location, meeting_link, capacity, cover_image, organizer_id,
-				group_id, visibility, latitude, longitude, rsvp_closes_at
-			) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)
+				group_id, visibility, latitude, longitude, rsvp_closes_at, requires_host_review
+			) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18)
 			RETURNING id`,
 			req.Title, req.Description, slug, req.StartTime.AsTime(), req.EndTime.AsTime(),
 			defaultTimezone(req.Timezone), req.EventType, req.Location, req.MeetingLink,
 			req.Capacity, req.CoverImage, organizerID, groupCol, visibility, nullCoord(lat), nullCoord(lng),
-			nullableTime(req.RsvpClosesAt),
+			nullableTime(req.RsvpClosesAt), req.RequiresHostReview,
 		).Scan(&eventID); err != nil {
 			return status.Errorf(codes.Internal, "failed to create event: %v", err)
 		}
@@ -327,18 +327,24 @@ func (db *eventDB) UpdateEvent(ctx context.Context, req *pb.UpdateEventReq) (*pb
 			}
 		}
 
+		var hostReview any
+		if w := req.GetRequiresHostReview(); w != nil {
+			hostReview = w.GetValue()
+		}
+
 		if _, err := tx.ExecContext(ctx, `
 			UPDATE events SET
 				title = $1, description = $2, start_time = $3, end_time = $4, timezone = $5,
 				event_type = $6, location = $7, meeting_link = $8, capacity = $9,
 				cover_image = $10, visibility = COALESCE(NULLIF($11, ''), visibility),
 				latitude = $12, longitude = $13, rsvp_closes_at = $14,
+				requires_host_review = COALESCE($15, requires_host_review),
 				updated_at = NOW()
-			WHERE id = $15`,
+			WHERE id = $16`,
 			req.Title, req.Description, req.StartTime.AsTime(), req.EndTime.AsTime(),
 			defaultTimezone(req.Timezone), req.EventType, req.Location, req.MeetingLink,
 			req.Capacity, req.CoverImage, req.Visibility, nullCoord(lat), nullCoord(lng),
-			rsvpClose, eventID,
+			rsvpClose, hostReview, eventID,
 		); err != nil {
 			return status.Errorf(codes.Internal, "failed to update event: %v", err)
 		}
@@ -467,14 +473,15 @@ func (db *eventDB) CloneEvent(ctx context.Context, req *pb.CloneEventReq) (*pb.E
 			capacity                                          int32
 			groupID                                           sql.NullInt64
 			srcLat, srcLng                                    sql.NullFloat64
+			requiresReview                                    bool
 		)
 		if err := tx.QueryRowContext(ctx, `
 			SELECT title, COALESCE(description, ''), COALESCE(timezone, 'UTC'), event_type,
 			       COALESCE(location, ''), COALESCE(meeting_link, ''), capacity,
 			       COALESCE(cover_image, ''), COALESCE(visibility, 'public'), group_id,
-			       latitude, longitude
+			       latitude, longitude, COALESCE(requires_host_review, FALSE)
 			FROM events WHERE id = $1`, srcID,
-		).Scan(&title, &desc, &tz, &eventType, &loc, &link, &capacity, &cover, &vis, &groupID, &srcLat, &srcLng); err != nil {
+		).Scan(&title, &desc, &tz, &eventType, &loc, &link, &capacity, &cover, &vis, &groupID, &srcLat, &srcLng, &requiresReview); err != nil {
 			return status.Error(codes.Internal, "failed to load event")
 		}
 
@@ -496,12 +503,12 @@ func (db *eventDB) CloneEvent(ctx context.Context, req *pb.CloneEventReq) (*pb.E
 			INSERT INTO events (
 				title, description, slug, start_time, end_time, timezone,
 				event_type, location, meeting_link, capacity, cover_image, organizer_id,
-				group_id, visibility, latitude, longitude
-			) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)
+				group_id, visibility, latitude, longitude, requires_host_review
+			) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)
 			RETURNING id`,
 			title, desc, slug, req.StartTime.AsTime(), req.EndTime.AsTime(), tz,
 			eventType, loc, link, capacity, cover, organizerID, groupCol, vis,
-			nullCoord(plat), nullCoord(plng),
+			nullCoord(plat), nullCoord(plng), requiresReview,
 		).Scan(&eventID); err != nil {
 			return status.Errorf(codes.Internal, "failed to clone event: %v", err)
 		}
@@ -594,7 +601,7 @@ func (db *eventDB) SetEventStatus(ctx context.Context, req *pb.EventActionReq, n
 		case StatusCancelled:
 			if _, err := tx.ExecContext(ctx, `
 				UPDATE event_attendees SET status = 'cancelled', updated_at = NOW()
-				WHERE event_id = $1 AND status IN ('confirmed', 'waitlisted', 'pending_payment')`,
+				WHERE event_id = $1 AND status IN ('confirmed', 'waitlisted', 'pending_payment', 'pending_host_review')`,
 				eventID); err != nil {
 				return status.Errorf(codes.Internal, "failed to release rsvps: %v", err)
 			}

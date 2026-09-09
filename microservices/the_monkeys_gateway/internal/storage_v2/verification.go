@@ -14,6 +14,7 @@ import (
 	userpb "github.com/the-monkeys/the_monkeys/apis/serviceconn/gateway_user/pb"
 	"github.com/the-monkeys/the_monkeys/config"
 	"github.com/the-monkeys/the_monkeys/constants"
+	"github.com/the-monkeys/the_monkeys/microservices/the_monkeys_gateway/internal/admin"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials/insecure"
@@ -271,7 +272,7 @@ func (vh *verificationHandler) UploadVerificationAsset(ctx *gin.Context) {
 func (vh *verificationHandler) GetVerificationAssetURL(ctx *gin.Context) {
 	caller := ctx.GetString("userName")
 	role := ctx.GetString("user_role")
-	canReviewDocs := role == constants.RoleAdmin || role == constants.RoleSupport
+	canReviewDocs := role == constants.RoleAdmin || role == constants.RoleSupport || role == constants.RoleCommunity
 	if caller == "" {
 		ctx.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"message": "unauthorized"})
 		return
@@ -297,9 +298,17 @@ func (vh *verificationHandler) GetVerificationAssetURL(ctx *gin.Context) {
 		return
 	}
 
-	// Scope check: owner, Admin, or Support (Support reviews the queue).
+	// Scope check: owner, Admin, Support, or Community (staff review queue).
 	if !canReviewDocs && req.Username != caller {
 		ctx.AbortWithStatusJSON(http.StatusForbidden, gin.H{"message": "not allowed"})
+		return
+	}
+	// Staff reviewing someone else's ID docs is an admin action: LAN only.
+	// The applicant can still fetch their own uploads from a public IP.
+	if canReviewDocs && req.Username != caller && !admin.RequestIsLocal(ctx) {
+		ctx.AbortWithStatusJSON(http.StatusForbidden, gin.H{
+			"error": "Access denied: Admin API only accessible from local network",
+		})
 		return
 	}
 

@@ -84,6 +84,10 @@ message Event {
     // Series offset in hours before each occurrence start (0 = no extra close).
     // Empty/zero on one-offs; hosts pick Off / 12h / 1d / 3d / 1w.
     int32 rsvp_close_hours_before = 40;
+    // When true, guests apply with a public profile URL and wait for the host
+    // or a co-host to approve before occupying a seat or paying. Default false
+    // keeps today's open RSVP for both paid and unpaid meetups.
+    bool requires_host_review = 41;
 }
 
 message ReactionCount {
@@ -133,7 +137,7 @@ message Attendee {
     string user_email = 5;
     int64 ticket_tier_id = 6;
     string ticket_tier_name = 7;
-    string status = 8;    // 'pending_payment', 'confirmed', 'waitlisted', 'cancelled'
+    string status = 8;    // 'pending_payment', 'pending_host_review', 'confirmed', 'waitlisted', 'cancelled'
     string payment_id = 9;
     string coupon_used = 10;
     bool checked_in = 11;
@@ -144,6 +148,8 @@ message Attendee {
     int32 guest_count = 13;
     string attendance_status = 14;   // 'registered', 'checked_in', 'no_show', 'not_coming'
     google.protobuf.Timestamp checked_in_at = 15;
+    string social_proof_url = 16;
+    string review_note = 17;
 }
 
 message EventComment {
@@ -223,6 +229,7 @@ message CreateEventReq {
     repeated EventQuestion questions = 24;
     double latitude = 25;
     double longitude = 26;
+    bool requires_host_review = 27;
 }
 
 message UpdateEventReq {
@@ -255,6 +262,8 @@ message UpdateEventReq {
     google.protobuf.Int32Value rsvp_close_hours_before = 23;
     double latitude = 24;
     double longitude = 25;
+    // Present to set; omitted leaves the stored flag unchanged.
+    google.protobuf.BoolValue requires_host_review = 26;
 }
 
 // EventActionReq drives the slug-scoped verbs: delete, publish and cancel.
@@ -404,11 +413,13 @@ message RSVPReq {
     // this (default) | series. series RSVPs every open future occurrence
     // in the same series; paid tiers are refused for series scope.
     string scope = 8;
+    // Required when the event has requires_host_review. Public http(s) URL.
+    string social_proof_url = 9;
 }
 
 message RSVPResp {
     string message = 1;
-    string status = 2;             // 'confirmed', 'waitlisted', 'pending_payment'
+    string status = 2;             // 'confirmed', 'waitlisted', 'pending_payment', 'pending_host_review'
     string payment_order_id = 3;   // Razorpay order id when payment is required
     double amount_due = 4;
     string currency = 5;
@@ -433,6 +444,17 @@ message ListAttendeesReq {
     int32 limit = 3;
     int32 offset = 4;
     string status = 5;   // optional filter
+    ClientInfo client_info = 6;
+}
+
+// ReviewRSVPReq is the host/co-host decision on a pending_host_review row.
+// Unpaid approve → confirmed; paid approve → pending_payment + checkout.
+message ReviewRSVPReq {
+    string event_slug = 1;
+    string account_id = 2;   // organizer or co-host with manage_attendees
+    int64 attendee_id = 3;
+    string decision = 4;     // 'approve' | 'reject'
+    string note = 5;         // optional reject reason
     ClientInfo client_info = 6;
 }
 
@@ -592,6 +614,7 @@ message CreateSeriesReq {
     ClientInfo client_info = 17;
     double latitude = 18;
     double longitude = 19;
+    bool requires_host_review = 20;
 }
 
 // -----------------------------------------------------------------------------
@@ -626,6 +649,7 @@ service EventService {
     rpc RSVPEvent(RSVPReq) returns (RSVPResp);
     rpc CancelRSVP(CancelRSVPReq) returns (BasicResp);
     rpc ProcessPaymentWebhook(PaymentWebhookReq) returns (BasicResp);
+    rpc ReviewRSVP(ReviewRSVPReq) returns (RSVPResp);
 
     // Attendees
     rpc GetAttendees(ListAttendeesReq) returns (ListAttendeesResp);

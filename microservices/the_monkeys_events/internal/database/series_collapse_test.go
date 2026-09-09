@@ -38,6 +38,12 @@ func TestEventColumnsMapsSeriesCover(t *testing.T) {
 	}
 }
 
+func TestEventColumnsMapsHostReview(t *testing.T) {
+	if !strings.Contains(eventColumns, "requires_host_review") {
+		t.Fatal("list/detail must project requires_host_review")
+	}
+}
+
 func TestEventColumnsMapsRsvpClose(t *testing.T) {
 	if !strings.Contains(eventColumns, "e.rsvp_closes_at") {
 		t.Fatal("list/detail must project rsvp_closes_at")

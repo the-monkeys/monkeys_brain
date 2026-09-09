@@ -70,3 +70,29 @@ func (esc *EventServiceClient) UpdateAttendance(ctx *gin.Context) {
 	}
 	ctx.JSON(http.StatusOK, res)
 }
+
+// ReviewRSVP lets the organizer or a co-host approve or reject a guest
+// application. Unpaid meetups confirm immediately; paid ones return checkout.
+func (esc *EventServiceClient) ReviewRSVP(ctx *gin.Context) {
+	attendeeID, ok := pathID(ctx, "id")
+	if !ok {
+		return
+	}
+	body, ok := bind[ReviewRSVPBody](ctx)
+	if !ok {
+		return
+	}
+
+	res, err := esc.Client.ReviewRSVP(ctx, &pb.ReviewRSVPReq{
+		EventSlug:  ctx.Param("slug"),
+		AccountId:  accountID(ctx),
+		AttendeeId: attendeeID,
+		Decision:   body.Decision,
+		Note:       body.Note,
+		ClientInfo: clientInfo(ctx),
+	})
+	if esc.fail(ctx, err, "review rsvp") {
+		return
+	}
+	ctx.JSON(http.StatusOK, res)
+}

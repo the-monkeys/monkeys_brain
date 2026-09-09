@@ -39,6 +39,7 @@ const (
 	EventService_RSVPEvent_FullMethodName               = "/event_svc.EventService/RSVPEvent"
 	EventService_CancelRSVP_FullMethodName              = "/event_svc.EventService/CancelRSVP"
 	EventService_ProcessPaymentWebhook_FullMethodName   = "/event_svc.EventService/ProcessPaymentWebhook"
+	EventService_ReviewRSVP_FullMethodName              = "/event_svc.EventService/ReviewRSVP"
 	EventService_GetAttendees_FullMethodName            = "/event_svc.EventService/GetAttendees"
 	EventService_UpdateAttendance_FullMethodName        = "/event_svc.EventService/UpdateAttendance"
 	EventService_SaveEvent_FullMethodName               = "/event_svc.EventService/SaveEvent"
@@ -101,6 +102,7 @@ type EventServiceClient interface {
 	RSVPEvent(ctx context.Context, in *RSVPReq, opts ...grpc.CallOption) (*RSVPResp, error)
 	CancelRSVP(ctx context.Context, in *CancelRSVPReq, opts ...grpc.CallOption) (*BasicResp, error)
 	ProcessPaymentWebhook(ctx context.Context, in *PaymentWebhookReq, opts ...grpc.CallOption) (*BasicResp, error)
+	ReviewRSVP(ctx context.Context, in *ReviewRSVPReq, opts ...grpc.CallOption) (*RSVPResp, error)
 	// Attendees
 	GetAttendees(ctx context.Context, in *ListAttendeesReq, opts ...grpc.CallOption) (*ListAttendeesResp, error)
 	UpdateAttendance(ctx context.Context, in *UpdateAttendanceReq, opts ...grpc.CallOption) (*BasicResp, error)
@@ -348,6 +350,16 @@ func (c *eventServiceClient) ProcessPaymentWebhook(ctx context.Context, in *Paym
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(BasicResp)
 	err := c.cc.Invoke(ctx, EventService_ProcessPaymentWebhook_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *eventServiceClient) ReviewRSVP(ctx context.Context, in *ReviewRSVPReq, opts ...grpc.CallOption) (*RSVPResp, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(RSVPResp)
+	err := c.cc.Invoke(ctx, EventService_ReviewRSVP_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -702,6 +714,7 @@ type EventServiceServer interface {
 	RSVPEvent(context.Context, *RSVPReq) (*RSVPResp, error)
 	CancelRSVP(context.Context, *CancelRSVPReq) (*BasicResp, error)
 	ProcessPaymentWebhook(context.Context, *PaymentWebhookReq) (*BasicResp, error)
+	ReviewRSVP(context.Context, *ReviewRSVPReq) (*RSVPResp, error)
 	// Attendees
 	GetAttendees(context.Context, *ListAttendeesReq) (*ListAttendeesResp, error)
 	UpdateAttendance(context.Context, *UpdateAttendanceReq) (*BasicResp, error)
@@ -814,6 +827,9 @@ func (UnimplementedEventServiceServer) CancelRSVP(context.Context, *CancelRSVPRe
 }
 func (UnimplementedEventServiceServer) ProcessPaymentWebhook(context.Context, *PaymentWebhookReq) (*BasicResp, error) {
 	return nil, status.Error(codes.Unimplemented, "method ProcessPaymentWebhook not implemented")
+}
+func (UnimplementedEventServiceServer) ReviewRSVP(context.Context, *ReviewRSVPReq) (*RSVPResp, error) {
+	return nil, status.Error(codes.Unimplemented, "method ReviewRSVP not implemented")
 }
 func (UnimplementedEventServiceServer) GetAttendees(context.Context, *ListAttendeesReq) (*ListAttendeesResp, error) {
 	return nil, status.Error(codes.Unimplemented, "method GetAttendees not implemented")
@@ -1288,6 +1304,24 @@ func _EventService_ProcessPaymentWebhook_Handler(srv interface{}, ctx context.Co
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 		return srv.(EventServiceServer).ProcessPaymentWebhook(ctx, req.(*PaymentWebhookReq))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _EventService_ReviewRSVP_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ReviewRSVPReq)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(EventServiceServer).ReviewRSVP(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: EventService_ReviewRSVP_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(EventServiceServer).ReviewRSVP(ctx, req.(*ReviewRSVPReq))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -1954,6 +1988,10 @@ var EventService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "ProcessPaymentWebhook",
 			Handler:    _EventService_ProcessPaymentWebhook_Handler,
+		},
+		{
+			MethodName: "ReviewRSVP",
+			Handler:    _EventService_ReviewRSVP_Handler,
 		},
 		{
 			MethodName: "GetAttendees",

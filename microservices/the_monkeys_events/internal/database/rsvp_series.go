@@ -46,14 +46,18 @@ func SeriesRSVPMessage(saved, waitlisted int) string {
 func rsvpSeriesUpcoming(ctx context.Context, tx *sql.Tx, req *pb.RSVPReq, userID int64, out *RSVPResult) error {
 	var clickedID, organizerID int64
 	var seriesID sql.NullInt64
+	var requiresReview bool
 	if err := tx.QueryRowContext(ctx, `
-		SELECT id, organizer_id, series_id, title, slug
+		SELECT id, organizer_id, series_id, title, slug, COALESCE(requires_host_review, FALSE)
 		FROM events WHERE slug = $1`, req.EventSlug,
-	).Scan(&clickedID, &organizerID, &seriesID, &out.EventTitle, &out.EventSlug); err != nil {
+	).Scan(&clickedID, &organizerID, &seriesID, &out.EventTitle, &out.EventSlug, &requiresReview); err != nil {
 		if err == sql.ErrNoRows {
 			return status.Error(codes.NotFound, "event not found")
 		}
 		return status.Error(codes.Internal, "failed to load event")
+	}
+	if err := refuseSeriesHostReview(requiresReview); err != nil {
+		return err
 	}
 	if !seriesID.Valid {
 		return status.Error(codes.InvalidArgument, "this meetup is not part of a series")
@@ -149,7 +153,7 @@ func rsvpSeriesUpcoming(ctx context.Context, tx *sql.Tx, req *pb.RSVPReq, userID
 			return status.Error(codes.Internal, "failed to load ticket tier")
 		}
 
-		seat, err := applyRSVPSeat(ctx, tx, userID, o.id, tierID, o.capacity, tierCap, 0, out.Currency, "")
+		seat, err := applyRSVPSeat(ctx, tx, userID, o.id, tierID, o.capacity, tierCap, 0, out.Currency, "", "", false)
 		if err != nil {
 			return err
 		}

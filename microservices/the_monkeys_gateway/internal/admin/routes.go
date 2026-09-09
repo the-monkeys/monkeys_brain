@@ -43,43 +43,61 @@ func NewAdminServiceClient(cfg *config.Config, log *zap.SugaredLogger) userpb.Us
 	return userpb.NewUserServiceClient(cc)
 }
 
-// LocalNetworkMiddleware restricts access to local network only
+// LocalNetworkMiddleware restricts access to RFC1918 / loopback peers.
+// A public TCP peer cannot spoof access with X-Forwarded-For.
 func LocalNetworkMiddleware(log *zap.SugaredLogger) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		clientIP := c.ClientIP()
-
-		// Parse the IP address
-		ip := net.ParseIP(clientIP)
-		if ip == nil {
-			c.AbortWithStatusJSON(http.StatusForbidden, gin.H{
-				"error": "Access denied: Invalid IP address",
-			})
+		if RequestIsLocal(c) {
+			c.Next()
 			return
 		}
-
-		// Check if IP is from local network
-		if !isLocalNetwork(ip) {
-			log.Warnf("Admin access attempt from non-local IP: %s", clientIP)
-			c.AbortWithStatusJSON(http.StatusForbidden, gin.H{
-				"error": "Access denied: Admin API only accessible from local network",
-			})
-			return
-		}
-
-		c.Next()
+		log.Warnf("Admin access attempt from non-local IP: peer=%s client=%s", c.Request.RemoteAddr, c.ClientIP())
+		c.AbortWithStatusJSON(http.StatusForbidden, gin.H{
+			"error": "Access denied: Admin API only accessible from local network",
+		})
 	}
 }
 
-// isLocalNetwork checks if IP is from local network ranges
+// RequestIsLocal reports whether this request originated on a private network.
+// If the TCP peer is a public address, that peer is used (so a public client
+// cannot pass by sending X-Forwarded-For: 127.0.0.1). If the peer is already
+// private (loopback or docker nginx), gin's ClientIP / forwarded header is used.
+func RequestIsLocal(c *gin.Context) bool {
+	return isLocalNetwork(requestIP(c))
+}
+
+func requestIP(c *gin.Context) net.IP {
+	peer := parseIPHost(c.Request.RemoteAddr)
+	if peer != nil && !isLocalNetwork(peer) {
+		return peer
+	}
+	if ip := net.ParseIP(c.ClientIP()); ip != nil {
+		return ip
+	}
+	return peer
+}
+
+func parseIPHost(remoteAddr string) net.IP {
+	host, _, err := net.SplitHostPort(remoteAddr)
+	if err != nil {
+		host = remoteAddr
+	}
+	return net.ParseIP(host)
+}
+
+// isLocalNetwork checks if IP is from private/loopback ranges. CGNAT
+// (100.64.0.0/10) and public unicast are not local.
 func isLocalNetwork(ip net.IP) bool {
-	// Define local network ranges
+	if ip == nil {
+		return false
+	}
 	localRanges := []string{
-		"127.0.0.0/8",    // localhost
-		"10.0.0.0/8",     // private class A
-		"172.16.0.0/12",  // private class B
-		"192.168.0.0/16", // private class C
-		"::1/128",        // IPv6 localhost
-		"fc00::/7",       // IPv6 unique local
+		"127.0.0.0/8",
+		"10.0.0.0/8",
+		"172.16.0.0/12",
+		"192.168.0.0/16",
+		"::1/128",
+		"fc00::/7",
 	}
 
 	for _, cidr := range localRanges {
@@ -128,35 +146,41 @@ func RegisterAdminRouter(router *gin.Engine, cfg *config.Config, authClient *aut
 	mware := auth.InitAuthMiddleware(authClient, logg)
 
 	staff := router.Group("/api/v1/admin")
+	staff.Use(LocalNetworkMiddleware(logg))
 	staff.Use(mware.AuthRequired)
 
-	pay := staff.Group("/payments", RequireRole(logg, constants.RoleAdmin))
+	pay := staff.Group("/payments", RequireRole(logg, constants.RoleAdmin, constants.RoleCommunity))
 	pay.GET("/events", asc.ListEventPayments)
 	pay.GET("/events/:slug", asc.GetEventPayments)
 	pay.POST("/events/:slug/settlements", asc.CreateSettlement)
 	pay.POST("/settlements/:id/mark-paid", asc.MarkSettlementPaid)
 
+	// Community can search and take takedown actions. Role/flag/orphan stay Admin.
+	catalog := staff.Group("", RequireRole(logg, constants.RoleAdmin, constants.RoleCommunity))
+	catalog.GET("/users", asc.ListUsers)
+	catalog.DELETE("/users/:id", asc.DeleteUserJWT)
+	catalog.GET("/blogs", asc.ListBlogs)
+	catalog.POST("/blogs/:blog_id/unpublish", asc.UnpublishBlog)
+	catalog.DELETE("/blogs/:blog_id", asc.DeleteBlog)
+	catalog.GET("/events", asc.ListAdminEvents)
+	catalog.POST("/events/:slug/cancel", asc.CancelAdminEvent)
+	catalog.POST("/events/:slug/unpublish", asc.UnpublishAdminEvent)
+	catalog.DELETE("/events/:slug", asc.DeleteAdminEvent)
+	catalog.GET("/groups", asc.ListAdminGroups)
+	catalog.POST("/groups/:slug/suspend", asc.SuspendGroup)
+	catalog.DELETE("/groups/:slug", asc.DeleteAdminGroup)
+
 	cat := staff.Group("", RequireRole(logg, constants.RoleAdmin))
-	cat.GET("/users", asc.ListUsers)
 	cat.POST("/users/:id/role", asc.SetUserRole)
 	cat.POST("/users/:id/flag", asc.FlagUser)
 	cat.POST("/users/:id/unflag", asc.UnflagUserJWT)
 	cat.POST("/users/:id/suspend", asc.SuspendUser)
-	cat.DELETE("/users/:id", asc.DeleteUserJWT)
-	cat.GET("/blogs", asc.ListBlogs)
 	cat.GET("/blogs/orphans", asc.ListOrphanBlogs)
-	cat.POST("/blogs/:blog_id/unpublish", asc.UnpublishBlog)
-	cat.DELETE("/blogs/:blog_id", asc.DeleteBlog)
-	cat.GET("/events", asc.ListAdminEvents)
-	cat.POST("/events/:slug/cancel", asc.CancelAdminEvent)
-	cat.POST("/events/:slug/unpublish", asc.UnpublishAdminEvent)
-	cat.DELETE("/events/:slug", asc.DeleteAdminEvent)
-	cat.GET("/groups", asc.ListAdminGroups)
-	cat.POST("/groups/:slug/suspend", asc.SuspendGroup)
-	cat.DELETE("/groups/:slug", asc.DeleteAdminGroup)
 
-	ver := staff.Group("", RequireRole(logg, constants.RoleAdmin, constants.RoleSupport))
-	ver.GET("/stats", asc.GetStats)
+	stats := staff.Group("", RequireRole(logg, constants.RoleAdmin, constants.RoleSupport, constants.RoleCommunity))
+	stats.GET("/stats", asc.GetStats)
+
+	ver := staff.Group("", RequireRole(logg, constants.RoleAdmin, constants.RoleSupport, constants.RoleCommunity))
 	ver.GET("/verifications", asc.ListVerifications)
 	ver.POST("/verifications/:id/review", asc.ReviewVerification)
 

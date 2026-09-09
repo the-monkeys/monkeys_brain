@@ -339,33 +339,65 @@ func (s *EventService) RSVPEvent(ctx context.Context, req *pb.RSVPReq) (*pb.RSVP
 			EventTitle:   result.EventTitle,
 		})
 
+	case database.RSVPPendingHostReview:
+		resp.Message = "waiting for host approval"
+
 	case database.RSVPPendingPayment:
-		if err := s.requirePayments(result.AmountDue); err != nil {
-			_ = s.db.ReleaseReservation(ctx, result.AttendeeID)
+		if err := s.startCheckout(ctx, result.AttendeeID, result.AmountDue, resp); err != nil {
 			return nil, err
 		}
-		duePaise := money.ToPaise(result.AmountDue)
-		orderID, err := s.pay.createOrder(ctx, duePaise, money.CurrencyINR,
-			fmt.Sprintf("evt-rsvp-%d", result.AttendeeID))
-		if err != nil {
-			// Free the held seat so a failed checkout does not block others.
-			_ = s.db.ReleaseReservation(ctx, result.AttendeeID)
-			s.log.Errorw("failed to create payment order", "attendee", result.AttendeeID, "err", err)
-			return nil, status.Error(codes.Unavailable, "could not start the payment, please try again")
-		}
-		if err := s.db.AttachPaymentOrder(ctx, result.AttendeeID, orderID, result.AmountDue); err != nil {
-			return nil, err
-		}
-		resp.Message = "complete the payment to confirm your spot"
-		resp.PaymentOrderId = orderID
-		resp.AmountDue = result.AmountDue
-		resp.RazorpayKeyId = s.cfg.Keys.RazorpayKeyID
 	}
 
 	if msg := database.SeriesRSVPMessage(result.DatesSaved, result.WaitlistedDates); msg != "" {
 		resp.Message = msg
 	}
 
+	return resp, nil
+}
+
+func (s *EventService) startCheckout(ctx context.Context, attendeeID int64, amountDue float64, resp *pb.RSVPResp) error {
+	if err := s.requirePayments(amountDue); err != nil {
+		_ = s.db.ReleaseReservation(ctx, attendeeID)
+		return err
+	}
+	duePaise := money.ToPaise(amountDue)
+	orderID, err := s.pay.createOrder(ctx, duePaise, money.CurrencyINR,
+		fmt.Sprintf("evt-rsvp-%d", attendeeID))
+	if err != nil {
+		_ = s.db.ReleaseReservation(ctx, attendeeID)
+		s.log.Errorw("failed to create payment order", "attendee", attendeeID, "err", err)
+		return status.Error(codes.Unavailable, "could not start the payment, please try again")
+	}
+	if err := s.db.AttachPaymentOrder(ctx, attendeeID, orderID, amountDue); err != nil {
+		return err
+	}
+	resp.Message = "complete the payment to confirm your spot"
+	resp.PaymentOrderId = orderID
+	resp.AmountDue = amountDue
+	resp.RazorpayKeyId = s.cfg.Keys.RazorpayKeyID
+	return nil
+}
+
+// ReviewRSVP lets the organizer or a co-host approve or reject a guest.
+// Unpaid meetups confirm immediately; paid ones return a Razorpay order.
+func (s *EventService) ReviewRSVP(ctx context.Context, req *pb.ReviewRSVPReq) (*pb.RSVPResp, error) {
+	result, err := s.db.ReviewRSVP(ctx, req)
+	if err != nil {
+		return nil, err
+	}
+
+	resp := &pb.RSVPResp{Status: result.Status, Currency: result.Currency}
+	switch result.Status {
+	case database.RSVPCancelled:
+		resp.Message = "application declined"
+	case database.RSVPConfirmed:
+		resp.Message = "guest approved"
+	case database.RSVPPendingPayment:
+		if err := s.startCheckout(ctx, result.AttendeeID, result.AmountDue, resp); err != nil {
+			return nil, err
+		}
+		resp.Message = "guest approved — they need to complete payment"
+	}
 	return resp, nil
 }
 

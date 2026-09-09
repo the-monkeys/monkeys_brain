@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/the-monkeys/the_monkeys/apis/serviceconn/gateway_event/pb"
@@ -82,10 +83,12 @@ func (db *eventDB) CreateRSVP(ctx context.Context, req *pb.RSVPReq) (*RSVPResult
 		var capacity int32
 		var endTime time.Time
 		var rsvpCloses sql.NullTime
+		var requiresReview bool
 		if err := tx.QueryRowContext(ctx, `
-			SELECT e.id, e.organizer_id, e.status, e.capacity, e.title, e.slug, e.end_time, e.rsvp_closes_at
+			SELECT e.id, e.organizer_id, e.status, e.capacity, e.title, e.slug, e.end_time, e.rsvp_closes_at,
+			       COALESCE(e.requires_host_review, FALSE)
 			FROM events e WHERE e.slug = $1 FOR UPDATE`, req.EventSlug,
-		).Scan(&eventID, &organizerID, &eventStatus, &capacity, &out.EventTitle, &out.EventSlug, &endTime, &rsvpCloses); err != nil {
+		).Scan(&eventID, &organizerID, &eventStatus, &capacity, &out.EventTitle, &out.EventSlug, &endTime, &rsvpCloses, &requiresReview); err != nil {
 			if err == sql.ErrNoRows {
 				return status.Error(codes.NotFound, "event not found")
 			}
@@ -126,7 +129,7 @@ func (db *eventDB) CreateRSVP(ctx context.Context, req *pb.RSVPReq) (*RSVPResult
 			return status.Error(codes.Internal, "failed to load ticket tier")
 		}
 
-		seat, err := applyRSVPSeat(ctx, tx, userID, eventID, req.TicketTierId, capacity, tierCapacity, price, out.Currency, req.CouponCode)
+		seat, err := applyRSVPSeat(ctx, tx, userID, eventID, req.TicketTierId, capacity, tierCapacity, price, out.Currency, req.CouponCode, req.GetSocialProofUrl(), requiresReview)
 		if err != nil {
 			return err
 		}
@@ -158,7 +161,7 @@ type rsvpSeatResult struct {
 // applyRSVPSeat writes one attendee row. Callers hold the event row lock.
 // Coupon codes only apply when amount starts from a paid price; waitlisted
 // seats do not consume coupon budget.
-func applyRSVPSeat(ctx context.Context, tx *sql.Tx, userID, eventID, tierID int64, eventCap, tierCap int32, price float64, currency, couponCode string) (*rsvpSeatResult, error) {
+func applyRSVPSeat(ctx context.Context, tx *sql.Tx, userID, eventID, tierID int64, eventCap, tierCap int32, price float64, currency, couponCode, socialProof string, requiresReview bool) (*rsvpSeatResult, error) {
 	var existingID int64
 	var existingStatus string
 	switch err := tx.QueryRowContext(ctx,
@@ -167,7 +170,7 @@ func applyRSVPSeat(ctx context.Context, tx *sql.Tx, userID, eventID, tierID int6
 	case err == sql.ErrNoRows:
 	case err != nil:
 		return nil, status.Error(codes.Internal, "failed to check existing rsvp")
-	case existingStatus == RSVPConfirmed || existingStatus == RSVPWaitlisted:
+	case rsvpAlreadyRecorded(existingStatus):
 		return &rsvpSeatResult{AttendeeID: existingID, Status: existingStatus, Already: true}, nil
 	}
 
@@ -175,6 +178,15 @@ func applyRSVPSeat(ctx context.Context, tx *sql.Tx, userID, eventID, tierID int6
 		if err := releaseCoupon(ctx, tx, eventID, existingID); err != nil {
 			return nil, err
 		}
+	}
+
+	if requiresReview {
+		if err := validateSocialProofURL(socialProof); err != nil {
+			return nil, err
+		}
+		socialProof = strings.TrimSpace(socialProof)
+	} else {
+		socialProof = ""
 	}
 
 	amount := price
@@ -195,36 +207,30 @@ func applyRSVPSeat(ctx context.Context, tx *sql.Tx, userID, eventID, tierID int6
 	}
 
 	out := &rsvpSeatResult{}
-	switch {
-	case full:
-		out.Status, out.AmountDue = RSVPWaitlisted, 0
-	case amount > 0:
-		out.Status, out.AmountDue = RSVPPendingPayment, amount
-	default:
-		out.Status, out.AmountDue = RSVPConfirmed, 0
-	}
+	out.Status, out.AmountDue = decideApplyStatus(requiresReview, full, amount)
 
 	if existingID != 0 {
 		if _, err := tx.ExecContext(ctx, `
 			UPDATE event_attendees
 			SET ticket_tier_id = $1, status = $2, coupon_used = $3, amount_paid = 0,
-				payment_order_id = NULL, payment_id = NULL, updated_at = NOW()
-			WHERE id = $4`,
-			tierID, out.Status, nullableString(usedCode), existingID); err != nil {
+				payment_order_id = NULL, payment_id = NULL, social_proof_url = $4,
+				review_note = NULL, updated_at = NOW()
+			WHERE id = $5`,
+			tierID, out.Status, nullableString(usedCode), nullableString(socialProof), existingID); err != nil {
 			return nil, status.Error(codes.Internal, "failed to update rsvp")
 		}
 		out.AttendeeID = existingID
 	} else {
 		if err := tx.QueryRowContext(ctx, `
-			INSERT INTO event_attendees (event_id, user_id, ticket_tier_id, status, coupon_used, currency)
-			VALUES ($1,$2,$3,$4,$5,$6) RETURNING id`,
-			eventID, userID, tierID, out.Status, nullableString(usedCode), currency,
+			INSERT INTO event_attendees (event_id, user_id, ticket_tier_id, status, coupon_used, currency, social_proof_url)
+			VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING id`,
+			eventID, userID, tierID, out.Status, nullableString(usedCode), currency, nullableString(socialProof),
 		).Scan(&out.AttendeeID); err != nil {
 			return nil, status.Error(codes.Internal, "failed to create rsvp")
 		}
 	}
 
-	if couponID != 0 && out.Status != RSVPWaitlisted {
+	if couponID != 0 && couponHoldsBudget(out.Status) {
 		if _, err := tx.ExecContext(ctx,
 			"UPDATE event_coupons SET current_uses = current_uses + 1 WHERE id = $1", couponID); err != nil {
 			return nil, status.Error(codes.Internal, "failed to record coupon use")
@@ -425,12 +431,17 @@ func (db *eventDB) CancelRSVP(ctx context.Context, req *pb.CancelRSVPReq) (*Canc
 			RSVPCancelled, attendeeID); err != nil {
 			return status.Errorf(codes.Internal, "failed to cancel rsvp: %v", err)
 		}
-		if err := releaseCoupon(ctx, tx, eventID, attendeeID); err != nil {
-			return err
+		if couponHoldsBudget(current) {
+			if err := releaseCoupon(ctx, tx, eventID, attendeeID); err != nil {
+				return err
+			}
+		} else if _, err := tx.ExecContext(ctx,
+			"UPDATE event_attendees SET coupon_used = NULL WHERE id = $1", attendeeID); err != nil {
+			return status.Error(codes.Internal, "failed to clear coupon hold")
 		}
 
-		// A waitlisted seat was never occupied, so nothing frees up.
-		if current == RSVPWaitlisted {
+		// Waitlisted and host-review applies never occupied a seat.
+		if rsvpFreesNoSeat(current) {
 			return nil
 		}
 		return promoteFromWaitlist(ctx, tx, eventID, out)
@@ -578,7 +589,8 @@ func (db *eventDB) ListAttendees(ctx context.Context, req *pb.ListAttendeesReq) 
 	query := fmt.Sprintf(`
 		SELECT a.id, a.event_id, u.account_id, u.username, u.email, a.ticket_tier_id,
 			COALESCE(t.name, ''), a.status, COALESCE(a.payment_id, ''),
-			COALESCE(a.coupon_used, ''), a.checked_in, a.created_at
+			COALESCE(a.coupon_used, ''), a.checked_in, a.created_at,
+			COALESCE(a.social_proof_url, ''), COALESCE(a.review_note, '')
 		%s%s ORDER BY a.created_at ASC LIMIT $%d OFFSET $%d`,
 		from, where, len(args)-1, len(args))
 
@@ -594,13 +606,129 @@ func (db *eventDB) ListAttendees(ctx context.Context, req *pb.ListAttendeesReq) 
 		var created time.Time
 		if err := rows.Scan(&a.Id, &a.EventId, &a.AccountId, &a.UserName, &a.UserEmail,
 			&a.TicketTierId, &a.TicketTierName, &a.Status, &a.PaymentId,
-			&a.CouponUsed, &a.CheckedIn, &created); err != nil {
+			&a.CouponUsed, &a.CheckedIn, &created, &a.SocialProofUrl, &a.ReviewNote); err != nil {
 			return nil, 0, status.Errorf(codes.Internal, "failed to scan attendee: %v", err)
 		}
 		a.CreatedAt = timestamppb.New(created)
 		out = append(out, &a)
 	}
 	return out, total, rows.Err()
+}
+
+// ReviewRSVP is the host/co-host decision on a pending_host_review row.
+// Unpaid approve confirms immediately; paid approve moves to pending_payment
+// so the guest can check out. Rejected rows are cancelled and never occupy a seat.
+func (db *eventDB) ReviewRSVP(ctx context.Context, req *pb.ReviewRSVPReq) (*RSVPResult, error) {
+	approve, err := parseReviewDecision(req.GetDecision())
+	if err != nil {
+		return nil, err
+	}
+
+	out := &RSVPResult{}
+	err = db.inTx(ctx, func(tx *sql.Tx) error {
+		eventID, _, err := authorize(ctx, tx, req.EventSlug, req.AccountId, permManageAttendees)
+		if err != nil {
+			return err
+		}
+
+		var capacity int32
+		var eventStatus string
+		var endTime time.Time
+		if err := tx.QueryRowContext(ctx, `
+			SELECT status, capacity, title, slug, end_time FROM events WHERE id = $1 FOR UPDATE`,
+			eventID).Scan(&eventStatus, &capacity, &out.EventTitle, &out.EventSlug, &endTime); err != nil {
+			return status.Error(codes.Internal, "failed to load event")
+		}
+		if eventHasEnded(eventStatus, endTime) {
+			return status.Error(codes.FailedPrecondition, "event has ended")
+		}
+
+		var tierID int64
+		var current, couponUsed, currency string
+		var price float64
+		var tierCap int32
+		if err := tx.QueryRowContext(ctx, `
+			SELECT a.ticket_tier_id, a.status, COALESCE(a.coupon_used, ''),
+			       COALESCE(a.currency, $2), u.username, t.price, t.capacity
+			FROM event_attendees a
+			JOIN user_account u ON u.id = a.user_id
+			JOIN event_ticket_tiers t ON t.id = a.ticket_tier_id
+			WHERE a.id = $1 AND a.event_id = $3
+			FOR UPDATE OF a`,
+			req.AttendeeId, defaultCurrency, eventID,
+		).Scan(&tierID, &current, &couponUsed, &currency, &out.Username, &price, &tierCap); err != nil {
+			if err == sql.ErrNoRows {
+				return status.Error(codes.NotFound, "application not found")
+			}
+			return status.Error(codes.Internal, "failed to load application")
+		}
+		if current != RSVPPendingHostReview {
+			return status.Error(codes.FailedPrecondition, "this guest is not waiting for host approval")
+		}
+
+		out.AttendeeID = req.AttendeeId
+		out.Currency = currency
+		out.DatesSaved = 1
+
+		if !approve {
+			note := strings.TrimSpace(req.GetNote())
+			if len(note) > 500 {
+				note = note[:500]
+			}
+			if _, err := tx.ExecContext(ctx, `
+				UPDATE event_attendees
+				SET status = $1, review_note = $2, coupon_used = NULL, updated_at = NOW()
+				WHERE id = $3`,
+				RSVPCancelled, nullableString(note), req.AttendeeId); err != nil {
+				return status.Error(codes.Internal, "failed to reject application")
+			}
+			out.Status = RSVPCancelled
+			return nil
+		}
+
+		amount := price
+		var couponID int64
+		usedCode := couponUsed
+		if usedCode != "" && price > 0 {
+			coupon, err := validateCoupon(ctx, tx, eventID, usedCode)
+			if err != nil {
+				usedCode = ""
+			} else {
+				amount = applyDiscount(price, coupon.DiscountPercent)
+				couponID = coupon.Id
+			}
+		}
+
+		full, err := seatsExhausted(ctx, tx, eventID, tierID, capacity, tierCap, req.AttendeeId)
+		if err != nil {
+			return err
+		}
+		st, due, err := decideApproveStatus(full, amount)
+		if err != nil {
+			return err
+		}
+
+		if _, err := tx.ExecContext(ctx, `
+			UPDATE event_attendees
+			SET status = $1, coupon_used = $2, review_note = NULL, amount_paid = 0, updated_at = NOW()
+			WHERE id = $3`,
+			st, nullableString(usedCode), req.AttendeeId); err != nil {
+			return status.Error(codes.Internal, "failed to approve application")
+		}
+		if couponID != 0 && couponHoldsBudget(st) {
+			if _, err := tx.ExecContext(ctx,
+				"UPDATE event_coupons SET current_uses = current_uses + 1 WHERE id = $1", couponID); err != nil {
+				return status.Error(codes.Internal, "failed to record coupon use")
+			}
+		}
+		out.Status = st
+		out.AmountDue = due
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
 }
 
 func nullableString(s string) any {

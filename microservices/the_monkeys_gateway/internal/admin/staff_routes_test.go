@@ -19,16 +19,26 @@ func TestStaffRoleMatrix(t *testing.T) {
 		c.Set("user_role", c.GetHeader("X-Test-Role"))
 		c.Next()
 	})
-	pay := staff.Group("/payments", RequireRole(log, constants.RoleAdmin))
+	pay := staff.Group("/payments", RequireRole(log, constants.RoleAdmin, constants.RoleCommunity))
 	pay.GET("/events", func(c *gin.Context) { c.Status(http.StatusOK) })
-	ver := staff.Group("", RequireRole(log, constants.RoleAdmin, constants.RoleSupport))
+	ver := staff.Group("", RequireRole(log, constants.RoleAdmin, constants.RoleSupport, constants.RoleCommunity))
 	ver.GET("/verifications", func(c *gin.Context) { c.Status(http.StatusOK) })
-	ver.GET("/stats", func(c *gin.Context) { c.Status(http.StatusOK) })
+	ver.POST("/verifications/:id/review", func(c *gin.Context) { c.Status(http.StatusOK) })
+	stats := staff.Group("", RequireRole(log, constants.RoleAdmin, constants.RoleSupport, constants.RoleCommunity))
+	stats.GET("/stats", func(c *gin.Context) { c.Status(http.StatusOK) })
+	catalog := staff.Group("", RequireRole(log, constants.RoleAdmin, constants.RoleCommunity))
+	catalog.GET("/users", func(c *gin.Context) { c.Status(http.StatusOK) })
+	catalog.DELETE("/users/:id", func(c *gin.Context) { c.Status(http.StatusOK) })
+	catalog.GET("/blogs", func(c *gin.Context) { c.Status(http.StatusOK) })
+	catalog.DELETE("/blogs/:blog_id", func(c *gin.Context) { c.Status(http.StatusOK) })
+	catalog.GET("/events", func(c *gin.Context) { c.Status(http.StatusOK) })
+	catalog.POST("/events/:slug/cancel", func(c *gin.Context) { c.Status(http.StatusOK) })
+	catalog.DELETE("/events/:slug", func(c *gin.Context) { c.Status(http.StatusOK) })
+	catalog.GET("/groups", func(c *gin.Context) { c.Status(http.StatusOK) })
+	catalog.POST("/groups/:slug/suspend", func(c *gin.Context) { c.Status(http.StatusOK) })
+	catalog.DELETE("/groups/:slug", func(c *gin.Context) { c.Status(http.StatusOK) })
 	cat := staff.Group("", RequireRole(log, constants.RoleAdmin))
-	cat.GET("/users", func(c *gin.Context) { c.Status(http.StatusOK) })
-	cat.DELETE("/blogs/:blog_id", func(c *gin.Context) { c.Status(http.StatusOK) })
-	cat.DELETE("/events/:slug", func(c *gin.Context) { c.Status(http.StatusOK) })
-	cat.DELETE("/groups/:slug", func(c *gin.Context) { c.Status(http.StatusOK) })
+	cat.POST("/users/:id/role", func(c *gin.Context) { c.Status(http.StatusOK) })
 	mod := staff.Group("", RequireRole(log, constants.RoleAdmin, constants.RoleCommunity))
 	mod.POST("/events/:slug/nsfw", func(c *gin.Context) { c.Status(http.StatusOK) })
 
@@ -41,7 +51,9 @@ func TestStaffRoleMatrix(t *testing.T) {
 		{constants.RoleAdmin, http.MethodGet, "/api/v1/admin/users", http.StatusOK},
 		{constants.RoleSupport, http.MethodGet, "/api/v1/admin/stats", http.StatusOK},
 		{constants.RoleSupport, http.MethodGet, "/api/v1/admin/users", http.StatusForbidden},
-		{constants.RoleCommunity, http.MethodGet, "/api/v1/admin/users", http.StatusForbidden},
+		{constants.RoleCommunity, http.MethodGet, "/api/v1/admin/users", http.StatusOK},
+		{constants.RoleCommunity, http.MethodDelete, "/api/v1/admin/users/x", http.StatusOK},
+		{constants.RoleCommunity, http.MethodPost, "/api/v1/admin/users/x/role", http.StatusForbidden},
 		{constants.RoleViewer, http.MethodGet, "/api/v1/admin/stats", http.StatusForbidden},
 		{constants.RoleAdmin, http.MethodGet, "/api/v1/admin/verifications", http.StatusOK},
 		{constants.RoleAdmin, http.MethodPost, "/api/v1/admin/events/x/nsfw", http.StatusOK},
@@ -49,20 +61,30 @@ func TestStaffRoleMatrix(t *testing.T) {
 		{constants.RoleSupport, http.MethodGet, "/api/v1/admin/payments/events", http.StatusForbidden},
 		{constants.RoleSupport, http.MethodPost, "/api/v1/admin/events/x/nsfw", http.StatusForbidden},
 		{constants.RoleCommunity, http.MethodPost, "/api/v1/admin/events/x/nsfw", http.StatusOK},
-		{constants.RoleCommunity, http.MethodGet, "/api/v1/admin/payments/events", http.StatusForbidden},
-		{constants.RoleCommunity, http.MethodGet, "/api/v1/admin/verifications", http.StatusForbidden},
+		{constants.RoleCommunity, http.MethodGet, "/api/v1/admin/stats", http.StatusOK},
+		{constants.RoleCommunity, http.MethodGet, "/api/v1/admin/payments/events", http.StatusOK},
+		{constants.RoleSupport, http.MethodGet, "/api/v1/admin/payments/events", http.StatusForbidden},
+		{constants.RoleCommunity, http.MethodGet, "/api/v1/admin/verifications", http.StatusOK},
+		{constants.RoleCommunity, http.MethodPost, "/api/v1/admin/verifications/x/review", http.StatusOK},
+		{constants.RoleViewer, http.MethodPost, "/api/v1/admin/verifications/x/review", http.StatusForbidden},
 		{constants.RoleViewer, http.MethodGet, "/api/v1/admin/payments/events", http.StatusForbidden},
 		{constants.RoleViewer, http.MethodGet, "/api/v1/admin/verifications", http.StatusForbidden},
 		{constants.RoleViewer, http.MethodPost, "/api/v1/admin/events/x/nsfw", http.StatusForbidden},
 		{constants.RoleAdmin, http.MethodDelete, "/api/v1/admin/blogs/x", http.StatusOK},
 		{constants.RoleSupport, http.MethodDelete, "/api/v1/admin/blogs/x", http.StatusForbidden},
-		{constants.RoleCommunity, http.MethodDelete, "/api/v1/admin/blogs/x", http.StatusForbidden},
+		{constants.RoleCommunity, http.MethodGet, "/api/v1/admin/blogs", http.StatusOK},
+		{constants.RoleCommunity, http.MethodDelete, "/api/v1/admin/blogs/x", http.StatusOK},
 		{constants.RoleViewer, http.MethodDelete, "/api/v1/admin/blogs/x", http.StatusForbidden},
 		{constants.RoleAdmin, http.MethodDelete, "/api/v1/admin/events/x", http.StatusOK},
 		{constants.RoleSupport, http.MethodDelete, "/api/v1/admin/events/x", http.StatusForbidden},
-		{constants.RoleCommunity, http.MethodDelete, "/api/v1/admin/events/x", http.StatusForbidden},
+		{constants.RoleCommunity, http.MethodGet, "/api/v1/admin/events", http.StatusOK},
+		{constants.RoleCommunity, http.MethodPost, "/api/v1/admin/events/x/cancel", http.StatusOK},
+		{constants.RoleCommunity, http.MethodDelete, "/api/v1/admin/events/x", http.StatusOK},
 		{constants.RoleAdmin, http.MethodDelete, "/api/v1/admin/groups/x", http.StatusOK},
 		{constants.RoleSupport, http.MethodDelete, "/api/v1/admin/groups/x", http.StatusForbidden},
+		{constants.RoleCommunity, http.MethodGet, "/api/v1/admin/groups", http.StatusOK},
+		{constants.RoleCommunity, http.MethodPost, "/api/v1/admin/groups/x/suspend", http.StatusOK},
+		{constants.RoleCommunity, http.MethodDelete, "/api/v1/admin/groups/x", http.StatusOK},
 		{constants.RoleViewer, http.MethodDelete, "/api/v1/admin/groups/x", http.StatusForbidden},
 	}
 	for _, tc := range cases {
