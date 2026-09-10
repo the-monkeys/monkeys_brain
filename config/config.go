@@ -179,6 +179,7 @@ type FreeRangeNotify struct {
 	EmailEnabled bool   `mapstructure:"email_enabled"`
 	SSEPublicURL string `mapstructure:"sse_public_url"`
 	DevEmail     string `mapstructure:"dev_email"` // Override all email recipients in dev
+	AppPublicURL string `mapstructure:"app_public_url"`
 }
 
 type Redis struct {
@@ -412,6 +413,7 @@ func bindEnvVars() {
 	viper.BindEnv("freerangenotify.email_enabled", "FRN_EMAIL_ENABLED")
 	viper.BindEnv("freerangenotify.sse_public_url", "FRN_SSE_PUBLIC_URL")
 	viper.BindEnv("freerangenotify.dev_email", "FRN_DEV_EMAIL")
+	viper.BindEnv("freerangenotify.app_public_url", "APP_PUBLIC_URL")
 }
 
 // handleArrayEnvVars manually handles array environment variables

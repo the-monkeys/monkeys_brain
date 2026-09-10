@@ -82,9 +82,15 @@ func (s *EventService) CreateEvent(ctx context.Context, req *pb.CreateEventReq) 
 }
 
 func (s *EventService) UpdateEvent(ctx context.Context, req *pb.UpdateEventReq) (*pb.EventResp, error) {
+	before, _, getErr := s.db.GetEvent(ctx, req.Slug, req.AccountId)
 	event, err := s.db.UpdateEvent(ctx, req)
 	if err != nil {
 		return nil, err
+	}
+	if getErr == nil && before != nil && eventIsOpen(event.Status) {
+		if summary := planChangeSummary(before, event); summary != "" {
+			s.notifyGoing(ctx, event, summary)
+		}
 	}
 	return &pb.EventResp{Message: "event updated", Event: event}, nil
 }
@@ -149,6 +155,22 @@ func (s *EventService) PublishEvent(ctx context.Context, req *pb.EventActionReq)
 			EventSlug:    event.Slug,
 			EventTitle:   event.Title,
 		})
+	}
+
+	if event.GroupSlug != "" {
+		members, err := s.db.GroupMemberUsernames(ctx, event.Slug)
+		if err != nil {
+			s.log.Warnw("failed to load group members for event announcement", "slug", event.Slug, "err", err)
+		} else {
+			s.notifyAll(members, eventNotification{
+				Username:   event.OrganizerUsername,
+				Action:     constants.GROUP_EVENT_PUBLISHED,
+				GroupSlug:  event.GroupSlug,
+				GroupName:  event.GroupName,
+				EventSlug:  event.Slug,
+				EventTitle: event.Title,
+			})
+		}
 	}
 
 	return &pb.EventResp{Message: "event published", Event: event}, nil
@@ -257,9 +279,13 @@ func (s *EventService) UpdateTicketTier(ctx context.Context, req *pb.UpdateTicke
 	if err := s.requirePayments(req.Tier.GetPrice()); err != nil {
 		return nil, err
 	}
+	before, _, getErr := s.db.GetEvent(ctx, req.EventSlug, req.AccountId)
 	tier, err := s.db.UpdateTicketTier(ctx, req)
 	if err != nil {
 		return nil, err
+	}
+	if getErr == nil && before != nil && eventIsOpen(before.Status) && ticketPriceChanged(before, req.TierId, req.Tier.GetPrice()) {
+		s.notifyGoing(ctx, before, "The ticket price changed.")
 	}
 	return &pb.TicketTierResp{Message: "ticket tier updated", Tier: tier}, nil
 }
@@ -348,6 +374,15 @@ func (s *EventService) RSVPEvent(ctx context.Context, req *pb.RSVPReq) (*pb.RSVP
 		}
 	}
 
+	if action := hostNoticeAction(result.Status); action != "" {
+		s.notifyHosts(ctx, result.EventSlug, eventNotification{
+			Username:   result.Username,
+			Action:     action,
+			EventSlug:  result.EventSlug,
+			EventTitle: result.EventTitle,
+		})
+	}
+
 	if msg := database.SeriesRSVPMessage(result.DatesSaved, result.WaitlistedDates); msg != "" {
 		resp.Message = msg
 	}
@@ -386,17 +421,39 @@ func (s *EventService) ReviewRSVP(ctx context.Context, req *pb.ReviewRSVPReq) (*
 		return nil, err
 	}
 
+	actor, resolveErr := s.db.UsernameByAccountID(ctx, req.AccountId)
+	if resolveErr != nil {
+		s.log.Warnw("failed to resolve reviewer username", "account_id", req.AccountId, "err", resolveErr)
+	}
+
 	resp := &pb.RSVPResp{Status: result.Status, Currency: result.Currency}
 	switch result.Status {
 	case database.RSVPCancelled:
 		resp.Message = "application declined"
-	case database.RSVPConfirmed:
-		resp.Message = "guest approved"
-	case database.RSVPPendingPayment:
-		if err := s.startCheckout(ctx, result.AttendeeID, result.AmountDue, resp); err != nil {
+		s.notify(eventNotification{
+			Username:    actor,
+			NewUsername: result.Username,
+			Action:      constants.EVENT_APPLICATION_REJECTED,
+			EventSlug:   result.EventSlug,
+			EventTitle:  result.EventTitle,
+			Reason:      req.GetNote(),
+		})
+	case database.RSVPConfirmed, database.RSVPPendingPayment:
+		if result.Status == database.RSVPConfirmed {
+			resp.Message = "guest approved"
+		} else if err := s.startCheckout(ctx, result.AttendeeID, result.AmountDue, resp); err != nil {
 			return nil, err
+		} else {
+			resp.Message = "guest approved — they need to complete payment"
 		}
-		resp.Message = "guest approved — they need to complete payment"
+		s.notify(eventNotification{
+			Username:    actor,
+			NewUsername: result.Username,
+			Action:      constants.EVENT_APPLICATION_APPROVED,
+			EventSlug:   result.EventSlug,
+			EventTitle:  result.EventTitle,
+			NextStep:    approveNextStep(result.Status, result.AmountDue),
+		})
 	}
 	return resp, nil
 }

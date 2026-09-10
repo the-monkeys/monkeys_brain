@@ -16,7 +16,7 @@ import (
 	"go.uber.org/zap"
 )
 
-func ConsumeFromQueue(mgr *rabbitmq.ConnManager, conf config.RabbitMQ, log *zap.SugaredLogger, frn *freerangenotify.Client) {
+func ConsumeFromQueue(mgr *rabbitmq.ConnManager, conf config.RabbitMQ, log *zap.SugaredLogger, frn *freerangenotify.Client, blogTitle BlogTitleFn) {
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
 	go func() {
@@ -25,11 +25,11 @@ func ConsumeFromQueue(mgr *rabbitmq.ConnManager, conf config.RabbitMQ, log *zap.
 		os.Exit(0)
 	}()
 
-	go consumeQueue(mgr, conf.Queues[4], log, frn)
+	go consumeQueue(mgr, conf.Queues[4], log, frn, blogTitle)
 	select {}
 }
 
-func consumeQueue(mgr *rabbitmq.ConnManager, queueName string, log *zap.SugaredLogger, frn *freerangenotify.Client) {
+func consumeQueue(mgr *rabbitmq.ConnManager, queueName string, log *zap.SugaredLogger, frn *freerangenotify.Client, blogTitle BlogTitleFn) {
 	backoff := time.Second
 
 	for {
@@ -68,7 +68,7 @@ func consumeQueue(mgr *rabbitmq.ConnManager, queueName string, log *zap.SugaredL
 				"account_id", user.AccountId,
 				"email", user.Email,
 			)
-			handleUserAction(user, log, frn)
+			handleUserAction(user, log, frn, blogTitle)
 		}
 
 		log.Warn("Notification consumer: channel closed, reconnecting...")
@@ -76,8 +76,9 @@ func consumeQueue(mgr *rabbitmq.ConnManager, queueName string, log *zap.SugaredL
 	}
 }
 
-func handleUserAction(user models.TheMonkeysMessage, log *zap.SugaredLogger, frn *freerangenotify.Client) {
+func handleUserAction(user models.TheMonkeysMessage, log *zap.SugaredLogger, frn *freerangenotify.Client, blogTitle BlogTitleFn) {
 	ctx := context.Background()
+	title := resolveBlogTitle(ctx, user, blogTitle)
 
 	switch user.Action {
 	case constants.USER_REGISTER:
@@ -105,9 +106,8 @@ func handleUserAction(user models.TheMonkeysMessage, log *zap.SugaredLogger, frn
 
 	case constants.BLOG_LIKE:
 		log.Debugf("Received blog like: %s liked %s", user.NewUsername, user.BlogId)
-		blogTitle := user.BlogTitle
-		if blogTitle == "" {
-			blogTitle = user.BlogId // Fallback: publisher doesn't always include title
+		if title == "" {
+			title = user.BlogId
 		}
 		if err := freerangenotify.Notify(ctx, frn, freerangenotify.NotifyRequest{
 			UserID:   user.Username,
@@ -118,7 +118,7 @@ func handleUserAction(user models.TheMonkeysMessage, log *zap.SugaredLogger, frn
 			Data: map[string]interface{}{
 				"liker_name": user.NewUsername,
 				"blog_id":    user.BlogId,
-				"blog_title": blogTitle,
+				"blog_title": title,
 			},
 		}, log); err != nil {
 			log.Errorw("FRN like notification failed", "user", user.Username, "err", err)
@@ -135,7 +135,7 @@ func handleUserAction(user models.TheMonkeysMessage, log *zap.SugaredLogger, frn
 			Category: constants.FRNCategoryCollaboration,
 			Data: map[string]interface{}{
 				"inviter_name": user.Username,
-				"blog_title":   user.BlogTitle,
+				"blog_title":   title,
 				"blog_id":      user.BlogId,
 			},
 		}, log); err != nil {
@@ -152,7 +152,7 @@ func handleUserAction(user models.TheMonkeysMessage, log *zap.SugaredLogger, frn
 			Category: constants.FRNCategoryCollaboration,
 			Data: map[string]interface{}{
 				"coauthor_name": user.Username,
-				"blog_title":    user.BlogTitle,
+				"blog_title":    title,
 				"blog_id":       user.BlogId,
 			},
 		}, log); err != nil {
@@ -168,7 +168,7 @@ func handleUserAction(user models.TheMonkeysMessage, log *zap.SugaredLogger, frn
 			Category: constants.FRNCategoryCollaboration,
 			Data: map[string]interface{}{
 				"coauthor_name": user.Username,
-				"blog_title":    user.BlogTitle,
+				"blog_title":    title,
 				"blog_id":       user.BlogId,
 			},
 		}, log); err != nil {
@@ -185,7 +185,7 @@ func handleUserAction(user models.TheMonkeysMessage, log *zap.SugaredLogger, frn
 			Category: constants.FRNCategoryCollaboration,
 			Data: map[string]interface{}{
 				"remover_name": user.Username,
-				"blog_title":   user.BlogTitle,
+				"blog_title":   title,
 				"blog_id":      user.BlogId,
 			},
 		}, log); err != nil {
@@ -202,8 +202,8 @@ func handleUserAction(user models.TheMonkeysMessage, log *zap.SugaredLogger, frn
 			Category: constants.FRNCategoryContent,
 			Data: map[string]interface{}{
 				"publisher_name": user.Username,
-				// "blog_title":     user.BlogTitle,
-				"blog_id": user.BlogId,
+				"blog_title":     title,
+				"blog_id":        user.BlogId,
 			},
 		}, log); err != nil {
 			log.Errorw("FRN co-author blog published notification failed", "err", err)
@@ -405,49 +405,77 @@ func handleUserAction(user models.TheMonkeysMessage, log *zap.SugaredLogger, frn
 	}
 }
 
-// eventTemplates maps each event action to the FRN templates it renders with.
+// eventTemplates maps each event/group action to the FRN templates it renders with.
 // Ticketing and cancellation also go out by email because they carry money or
-// a change of plans; the rest stay in-app.
+// a change of plans; the rest stay in-app. New catalog items add SSE so the
+// bell updates live.
 var eventTemplates = map[string]struct {
 	inApp    string
+	sse      string
 	email    string
 	priority string
 }{
-	constants.EVENT_RSVP_CONFIRMED:    {constants.FRNTplEventRSVPConfirmedInApp, constants.FRNTplEventRSVPConfirmedEmail, "normal"},
-	constants.EVENT_RSVP_WAITLISTED:   {constants.FRNTplEventRSVPWaitlistedInApp, "", "normal"},
-	constants.EVENT_WAITLIST_PROMOTED: {constants.FRNTplEventWaitlistPromoInApp, constants.FRNTplEventWaitlistPromoEmail, "high"},
-	constants.EVENT_REMINDER:          {constants.FRNTplEventReminderInApp, constants.FRNTplEventReminderEmail, "high"},
-	constants.EVENT_CANCELLED:         {constants.FRNTplEventCancelledInApp, constants.FRNTplEventCancelledEmail, "high"},
-	constants.EVENT_NEW_BY_FOLLOWED:   {constants.FRNTplEventNewByFollowedInApp, "", "low"},
-	constants.EVENT_COMMENT_NEW:       {constants.FRNTplEventCommentInApp, "", "low"},
-	constants.EVENT_PAYMENT_REFUND:    {constants.FRNTplEventRefundInApp, constants.FRNTplEventRefundEmail, "high"},
+	constants.EVENT_RSVP_CONFIRMED:    {constants.FRNTplEventRSVPConfirmedInApp, "", constants.FRNTplEventRSVPConfirmedEmail, "normal"},
+	constants.EVENT_RSVP_WAITLISTED:   {constants.FRNTplEventRSVPWaitlistedInApp, "", "", "normal"},
+	constants.EVENT_WAITLIST_PROMOTED: {constants.FRNTplEventWaitlistPromoInApp, "", constants.FRNTplEventWaitlistPromoEmail, "high"},
+	constants.EVENT_REMINDER:          {constants.FRNTplEventReminderInApp, "", constants.FRNTplEventReminderEmail, "high"},
+	constants.EVENT_CANCELLED:         {constants.FRNTplEventCancelledInApp, "", constants.FRNTplEventCancelledEmail, "high"},
+	constants.EVENT_NEW_BY_FOLLOWED:   {constants.FRNTplEventNewByFollowedInApp, "", "", "low"},
+	constants.EVENT_COMMENT_NEW:       {constants.FRNTplEventCommentInApp, "", "", "low"},
+	constants.EVENT_PAYMENT_REFUND:    {constants.FRNTplEventRefundInApp, "", constants.FRNTplEventRefundEmail, "high"},
+
+	constants.EVENT_APPLICATION_RECEIVED: {constants.FRNTplEventApplicationReceivedInApp, constants.FRNTplEventApplicationReceivedSSE, constants.FRNTplEventApplicationReceivedEmail, "high"},
+	constants.EVENT_APPLICATION_APPROVED: {constants.FRNTplEventApplicationApprovedInApp, constants.FRNTplEventApplicationApprovedSSE, constants.FRNTplEventApplicationApprovedEmail, "high"},
+	constants.EVENT_APPLICATION_REJECTED: {constants.FRNTplEventApplicationRejectedInApp, constants.FRNTplEventApplicationRejectedSSE, constants.FRNTplEventApplicationRejectedEmail, "high"},
+	constants.EVENT_RSVP_HOST_NOTICE:     {constants.FRNTplEventRSVPHostNoticeInApp, constants.FRNTplEventRSVPHostNoticeSSE, "", "normal"},
+	constants.EVENT_UPDATED:              {constants.FRNTplEventUpdatedInApp, constants.FRNTplEventUpdatedSSE, constants.FRNTplEventUpdatedEmail, "high"},
+
+	constants.GROUP_JOIN_REQUESTED:  {constants.FRNTplGroupJoinRequestedInApp, constants.FRNTplGroupJoinRequestedSSE, constants.FRNTplGroupJoinRequestedEmail, "high"},
+	constants.GROUP_JOIN_APPROVED:   {constants.FRNTplGroupJoinApprovedInApp, constants.FRNTplGroupJoinApprovedSSE, constants.FRNTplGroupJoinApprovedEmail, "high"},
+	constants.GROUP_JOIN_REJECTED:   {constants.FRNTplGroupJoinRejectedInApp, constants.FRNTplGroupJoinRejectedSSE, constants.FRNTplGroupJoinRejectedEmail, "high"},
+	constants.GROUP_MEMBER_JOINED:   {constants.FRNTplGroupMemberJoinedInApp, constants.FRNTplGroupMemberJoinedSSE, "", "normal"},
+	constants.GROUP_EVENT_PUBLISHED: {constants.FRNTplGroupEventPublishedInApp, constants.FRNTplGroupEventPublishedSSE, "", "normal"},
 }
 
-// handleEventAction dispatches the events service notifications. Every event
-// action shares one payload shape, so a table keeps this to a single branch.
+func fanoutNotifyRequest(user models.TheMonkeysMessage) (freerangenotify.NotifyRequest, bool) {
+	tpl, ok := eventTemplates[user.Action]
+	if !ok {
+		return freerangenotify.NotifyRequest{}, false
+	}
+	return freerangenotify.NotifyRequest{
+		UserID:   user.NewUsername,
+		InAppTpl: tpl.inApp,
+		SSETpl:   tpl.sse,
+		EmailTpl: tpl.email,
+		Priority: tpl.priority,
+		Category: constants.FRNCategoryEvents,
+		Data: map[string]interface{}{
+			"event_slug":      user.EventSlug,
+			"event_title":     user.EventTitle,
+			"actor_name":      user.Username,
+			"message":         user.Notification,
+			"group_slug":      user.GroupSlug,
+			"group_name":      user.GroupName,
+			"next_step":       user.NextStep,
+			"change_summary":  user.ChangeSummary,
+			"reason":          user.Reason,
+		},
+	}, true
+}
+
+// handleEventAction dispatches the events and groups service notifications.
+// Every action shares one payload shape, so a table keeps this to a single branch.
 // It reports whether the action was recognised.
 func handleEventAction(ctx context.Context, user models.TheMonkeysMessage, log *zap.SugaredLogger, frn *freerangenotify.Client) bool {
-	tpl, ok := eventTemplates[user.Action]
+	req, ok := fanoutNotifyRequest(user)
 	if !ok {
 		return false
 	}
 
 	log.Debugw("Processing event notification",
-		"action", user.Action, "recipient", user.NewUsername, "event", user.EventSlug)
+		"action", user.Action, "recipient", user.NewUsername, "event", user.EventSlug, "group", user.GroupSlug)
 
-	if err := freerangenotify.Notify(ctx, frn, freerangenotify.NotifyRequest{
-		UserID:   user.NewUsername,
-		InAppTpl: tpl.inApp,
-		EmailTpl: tpl.email,
-		Priority: tpl.priority,
-		Category: constants.FRNCategoryEvents,
-		Data: map[string]interface{}{
-			"event_slug":  user.EventSlug,
-			"event_title": user.EventTitle,
-			"actor_name":  user.Username,
-			"message":     user.Notification,
-		},
-	}, log); err != nil {
+	if err := freerangenotify.Notify(ctx, frn, req, log); err != nil {
 		log.Errorw("FRN event notification failed",
 			"action", user.Action, "recipient", user.NewUsername, "err", err)
 	}

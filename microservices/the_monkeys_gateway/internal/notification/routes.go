@@ -8,6 +8,7 @@ import (
 	"io"
 	"net/http"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -291,6 +292,7 @@ func (nsc *NotificationServiceClient) GetSSEToken(ctx *gin.Context) {
 	}
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", "Bearer "+frnCfg.APIKey)
+	req.Header.Set("X-API-Key", frnCfg.APIKey)
 
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
@@ -307,8 +309,22 @@ func (nsc *NotificationServiceClient) GetSSEToken(ctx *gin.Context) {
 		return
 	}
 
-	// Forward FRN's JSON response (contains token + sse_public_url) directly.
-	ctx.Data(http.StatusOK, "application/json", body)
+	// FRN returns {sse_token, user_id, expires_in}. The browser must connect to
+	// the same FRN that issued the token, so attach the public URL from config.
+	var frnResp map[string]any
+	if err := json.Unmarshal(body, &frnResp); err != nil {
+		ctx.Data(http.StatusOK, "application/json", body)
+		return
+	}
+	if pub := strings.TrimRight(frnCfg.SSEPublicURL, "/"); pub != "" {
+		frnResp["sse_public_url"] = pub
+	}
+	out, err := json.Marshal(frnResp)
+	if err != nil {
+		ctx.Data(http.StatusOK, "application/json", body)
+		return
+	}
+	ctx.Data(http.StatusOK, "application/json", out)
 }
 
 // GetFRNNotifications proxies the FRN notification list for the authenticated user.

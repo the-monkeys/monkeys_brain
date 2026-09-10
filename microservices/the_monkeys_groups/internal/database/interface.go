@@ -56,5 +56,11 @@ type GroupDB interface {
 	CheckUserGroupRemoval(ctx context.Context, accountID string) ([]string, error)
 	RemoveUserFromGroups(ctx context.Context, accountID string) ([]string, error)
 
+	// Notification fan-out
+	StaffUsernames(ctx context.Context, slug string) ([]string, error)
+	ActiveMemberUsernames(ctx context.Context, slug string) ([]string, error)
+	GroupName(ctx context.Context, slug string) (string, error)
+	UsernameByAccountID(ctx context.Context, accountID string) (string, error)
+
 	Close() error
 }

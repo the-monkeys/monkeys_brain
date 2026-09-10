@@ -1265,6 +1265,55 @@ func (db *eventDB) FollowerUsernames(ctx context.Context, slug string) ([]string
 		WHERE e.slug = $1`, slug)
 }
 
+// HostUsernames is the organizer plus every co-host.
+func (db *eventDB) HostUsernames(ctx context.Context, slug string) ([]string, error) {
+	return db.usernames(ctx, `
+		SELECT u.username FROM events e
+		JOIN user_account u ON u.id = e.organizer_id
+		WHERE e.slug = $1
+		UNION
+		SELECT u.username FROM event_co_hosts c
+		JOIN events e ON e.id = c.event_id
+		JOIN user_account u ON u.id = c.co_host_id
+		WHERE e.slug = $1`, slug)
+}
+
+// GoingUsernames is confirmed guests plus people still paying. Waitlist and
+// host-review rows are excluded so plan-breaking edits do not ping them.
+func (db *eventDB) GoingUsernames(ctx context.Context, slug string) ([]string, error) {
+	return db.usernames(ctx, `
+		SELECT u.username FROM event_attendees a
+		JOIN user_account u ON u.id = a.user_id
+		JOIN events e ON e.id = a.event_id
+		WHERE e.slug = $1 AND a.status IN ('confirmed', 'pending_payment')`, slug)
+}
+
+// GroupMemberUsernames is every active member of the group this event belongs to.
+func (db *eventDB) GroupMemberUsernames(ctx context.Context, slug string) ([]string, error) {
+	return db.usernames(ctx, `
+		SELECT u.username FROM group_members gm
+		JOIN user_account u ON u.id = gm.user_id
+		JOIN groups g ON g.id = gm.group_id
+		JOIN events e ON e.group_id = g.id
+		WHERE e.slug = $1 AND gm.status = 'active'`, slug)
+}
+
+func (db *eventDB) UsernameByAccountID(ctx context.Context, accountID string) (string, error) {
+	if accountID == "" {
+		return "", status.Error(codes.Unauthenticated, "account id is required")
+	}
+	var username string
+	err := db.db.QueryRowContext(ctx,
+		"SELECT username FROM user_account WHERE account_id = $1", accountID).Scan(&username)
+	if err == sql.ErrNoRows {
+		return "", status.Error(codes.NotFound, "account not found")
+	}
+	if err != nil {
+		return "", status.Error(codes.Internal, "failed to resolve account")
+	}
+	return username, nil
+}
+
 func (db *eventDB) usernames(ctx context.Context, query, slug string) ([]string, error) {
 	rows, err := db.db.QueryContext(ctx, query, slug)
 	if err != nil {

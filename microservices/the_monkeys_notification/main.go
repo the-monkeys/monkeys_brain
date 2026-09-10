@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net"
 
+	blogpb "github.com/the-monkeys/the_monkeys/apis/serviceconn/gateway_blog/pb"
 	"github.com/the-monkeys/the_monkeys/apis/serviceconn/gateway_notification/pb"
 	"github.com/the-monkeys/the_monkeys/config"
 	"github.com/the-monkeys/the_monkeys/logger"
@@ -60,9 +61,17 @@ func main() {
 		log.Errorf("failed to listen at port %v, error: %+v", listenAddr, err)
 	}
 
+	var blogTitle consumer.BlogTitleFn
+	blogAddr := fmt.Sprintf("%s:%d", cfg.Microservices.TheMonkeysBlog, cfg.Microservices.BlogPort)
+	if conn, err := BlogServiceConn(blogAddr); err != nil {
+		log.Errorf("blog service dial failed; like notifications may not include titles: %v", err)
+	} else {
+		blogTitle = consumer.NewBlogTitleFn(blogpb.NewBlogServiceClient(conn), log)
+	}
+
 	// Connect to rabbitmq server — consumer now calls FRN instead of PostgreSQL
 	qConn := rabbitmq.NewConnManager(cfg.RabbitMQ)
-	go consumer.ConsumeFromQueue(qConn, cfg.RabbitMQ, log, frn)
+	go consumer.ConsumeFromQueue(qConn, cfg.RabbitMQ, log, frn, blogTitle)
 
 	// Background sync: ensure all existing Monkeys users are registered in FRN.
 	// Runs once at startup; skips users already in FRN (409). Non-blocking.

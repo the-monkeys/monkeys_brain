@@ -42,6 +42,10 @@ type Message struct {
 	EventIds            []string  `json:"event_ids,omitempty"`
 	GroupIds            []string  `json:"group_ids,omitempty"`
 	GroupSlug           string    `json:"group_slug,omitempty"`
+	GroupName           string    `json:"group_name,omitempty"`
+	NextStep            string    `json:"next_step,omitempty"`
+	ChangeSummary       string    `json:"change_summary,omitempty"`
+	Reason              string    `json:"reason,omitempty"`
 }
 
 type messageDTO struct {
@@ -76,6 +80,10 @@ type messageDTO struct {
 	EventIds            []string   `json:"event_ids,omitempty"`
 	GroupIds            []string   `json:"group_ids,omitempty"`
 	GroupSlug           string     `json:"group_slug,omitempty"`
+	GroupName           string     `json:"group_name,omitempty"`
+	NextStep            string     `json:"next_step,omitempty"`
+	ChangeSummary       string     `json:"change_summary,omitempty"`
+	Reason              string     `json:"reason,omitempty"`
 }
 
 func (m Message) MarshalJSON() ([]byte, error) {
@@ -109,6 +117,10 @@ func (m Message) MarshalJSON() ([]byte, error) {
 		EventIds:      m.EventIds,
 		GroupIds:      m.GroupIds,
 		GroupSlug:     m.GroupSlug,
+		GroupName:     m.GroupName,
+		NextStep:      m.NextStep,
+		ChangeSummary: m.ChangeSummary,
+		Reason:        m.Reason,
 	}
 	if !m.ScheduleTime.IsZero() {
 		t := m.ScheduleTime
@@ -165,5 +177,9 @@ func (m *Message) UnmarshalJSON(data []byte) error {
 	m.EventIds = d.EventIds
 	m.GroupIds = d.GroupIds
 	m.GroupSlug = d.GroupSlug
+	m.GroupName = d.GroupName
+	m.NextStep = d.NextStep
+	m.ChangeSummary = d.ChangeSummary
+	m.Reason = d.Reason
 	return nil
 }

@@ -1,0 +1,247 @@
+{
+  "templates": [
+    {
+      "name": "event_application_received_inapp",
+      "channel": "in_app",
+      "locale": "en",
+      "subject": "New application",
+      "body": "{{.actor_name}} applied to join \"{{.event_title}}\".",
+      "variables": ["actor_name", "event_title", "event_slug"],
+      "metadata": { "category": "events", "priority": "high" }
+    },
+    {
+      "name": "event_application_received_sse",
+      "channel": "sse",
+      "locale": "en",
+      "subject": "New application",
+      "body": "{{.actor_name}} applied to join \"{{.event_title}}\".",
+      "variables": ["actor_name", "event_title", "event_slug"],
+      "metadata": { "category": "events", "priority": "high" }
+    },
+    {
+      "name": "event_application_received_email",
+      "channel": "email",
+      "locale": "en",
+      "subject": "New application for {{.event_title}}",
+      "body": "<a href=\"{{.actor_url}}\">@{{.actor_name}}</a> applied to join \"<a href=\"{{.event_url}}\">{{.event_title}}</a>\". Open the event to approve or reject.",
+      "variables": ["actor_name", "actor_url", "event_title", "event_slug", "event_url"],
+      "metadata": { "category": "events", "priority": "high" }
+    },
+    {
+      "name": "event_application_approved_inapp",
+      "channel": "in_app",
+      "locale": "en",
+      "subject": "Application approved",
+      "body": "{{.actor_name}} approved your application for \"{{.event_title}}\". {{.next_step}}",
+      "variables": ["actor_name", "event_title", "event_slug", "next_step"],
+      "metadata": { "category": "events", "priority": "high" }
+    },
+    {
+      "name": "event_application_approved_sse",
+      "channel": "sse",
+      "locale": "en",
+      "subject": "Application approved",
+      "body": "{{.actor_name}} approved your application for \"{{.event_title}}\". {{.next_step}}",
+      "variables": ["actor_name", "event_title", "event_slug", "next_step"],
+      "metadata": { "category": "events", "priority": "high" }
+    },
+    {
+      "name": "event_application_approved_email",
+      "channel": "email",
+      "locale": "en",
+      "subject": "You were approved for {{.event_title}}",
+      "body": "<a href=\"{{.actor_url}}\">@{{.actor_name}}</a> approved your application for \"<a href=\"{{.event_url}}\">{{.event_title}}</a>\". {{.next_step}} Open the event to continue.",
+      "variables": ["actor_name", "actor_url", "event_title", "event_slug", "event_url", "next_step"],
+      "metadata": { "category": "events", "priority": "high" }
+    },
+    {
+      "name": "event_application_rejected_inapp",
+      "channel": "in_app",
+      "locale": "en",
+      "subject": "Application not approved",
+      "body": "{{.actor_name}} did not approve your application for \"{{.event_title}}\".",
+      "variables": ["actor_name", "event_title", "event_slug", "reason"],
+      "metadata": { "category": "events", "priority": "high" }
+    },
+    {
+      "name": "event_application_rejected_sse",
+      "channel": "sse",
+      "locale": "en",
+      "subject": "Application not approved",
+      "body": "{{.actor_name}} did not approve your application for \"{{.event_title}}\".",
+      "variables": ["actor_name", "event_title", "event_slug", "reason"],
+      "metadata": { "category": "events", "priority": "high" }
+    },
+    {
+      "name": "event_application_rejected_email",
+      "channel": "email",
+      "locale": "en",
+      "subject": "Your application for {{.event_title}} was not approved",
+      "body": "<a href=\"{{.actor_url}}\">@{{.actor_name}}</a> did not approve your application for \"<a href=\"{{.event_url}}\">{{.event_title}}</a>\". You can apply to other <a href=\"{{.events_home_url}}\">meetups</a>.",
+      "variables": ["actor_name", "actor_url", "event_title", "event_slug", "event_url", "reason", "events_home_url"],
+      "metadata": { "category": "events", "priority": "high" }
+    },
+    {
+      "name": "event_rsvp_host_notice_inapp",
+      "channel": "in_app",
+      "locale": "en",
+      "subject": "New RSVP",
+      "body": "{{.actor_name}} RSVP'd to \"{{.event_title}}\".",
+      "variables": ["actor_name", "event_title", "event_slug"],
+      "metadata": { "category": "events", "priority": "normal" }
+    },
+    {
+      "name": "event_rsvp_host_notice_sse",
+      "channel": "sse",
+      "locale": "en",
+      "subject": "New RSVP",
+      "body": "{{.actor_name}} RSVP'd to \"{{.event_title}}\".",
+      "variables": ["actor_name", "event_title", "event_slug"],
+      "metadata": { "category": "events", "priority": "normal" }
+    },
+    {
+      "name": "event_updated_inapp",
+      "channel": "in_app",
+      "locale": "en",
+      "subject": "Event updated",
+      "body": "\"{{.event_title}}\" changed. {{.change_summary}}",
+      "variables": ["event_title", "event_slug", "change_summary"],
+      "metadata": { "category": "events", "priority": "high" }
+    },
+    {
+      "name": "event_updated_sse",
+      "channel": "sse",
+      "locale": "en",
+      "subject": "Event updated",
+      "body": "\"{{.event_title}}\" changed. {{.change_summary}}",
+      "variables": ["event_title", "event_slug", "change_summary"],
+      "metadata": { "category": "events", "priority": "high" }
+    },
+    {
+      "name": "event_updated_email",
+      "channel": "email",
+      "locale": "en",
+      "subject": "{{.event_title}} was updated",
+      "body": "\"<a href=\"{{.event_url}}\">{{.event_title}}</a>\" changed. {{.change_summary}} Open the event to see the new details.",
+      "variables": ["event_title", "event_slug", "event_url", "change_summary"],
+      "metadata": { "category": "events", "priority": "high" }
+    },
+    {
+      "name": "group_join_requested_inapp",
+      "channel": "in_app",
+      "locale": "en",
+      "subject": "Join request",
+      "body": "{{.actor_name}} asked to join \"{{.group_name}}\".",
+      "variables": ["actor_name", "group_name", "group_slug"],
+      "metadata": { "category": "events", "priority": "high" }
+    },
+    {
+      "name": "group_join_requested_sse",
+      "channel": "sse",
+      "locale": "en",
+      "subject": "Join request",
+      "body": "{{.actor_name}} asked to join \"{{.group_name}}\".",
+      "variables": ["actor_name", "group_name", "group_slug"],
+      "metadata": { "category": "events", "priority": "high" }
+    },
+    {
+      "name": "group_join_requested_email",
+      "channel": "email",
+      "locale": "en",
+      "subject": "Join request for {{.group_name}}",
+      "body": "<a href=\"{{.actor_url}}\">@{{.actor_name}}</a> asked to join \"<a href=\"{{.group_url}}\">{{.group_name}}</a>\". Open the group to approve or reject.",
+      "variables": ["actor_name", "actor_url", "group_name", "group_slug", "group_url"],
+      "metadata": { "category": "events", "priority": "high" }
+    },
+    {
+      "name": "group_join_approved_inapp",
+      "channel": "in_app",
+      "locale": "en",
+      "subject": "You joined the group",
+      "body": "{{.actor_name}} approved your request to join \"{{.group_name}}\".",
+      "variables": ["actor_name", "group_name", "group_slug"],
+      "metadata": { "category": "events", "priority": "high" }
+    },
+    {
+      "name": "group_join_approved_sse",
+      "channel": "sse",
+      "locale": "en",
+      "subject": "You joined the group",
+      "body": "{{.actor_name}} approved your request to join \"{{.group_name}}\".",
+      "variables": ["actor_name", "group_name", "group_slug"],
+      "metadata": { "category": "events", "priority": "high" }
+    },
+    {
+      "name": "group_join_approved_email",
+      "channel": "email",
+      "locale": "en",
+      "subject": "You can join {{.group_name}}",
+      "body": "<a href=\"{{.actor_url}}\">@{{.actor_name}}</a> approved your request to join \"<a href=\"{{.group_url}}\">{{.group_name}}</a>\". Open the group to say hello.",
+      "variables": ["actor_name", "actor_url", "group_name", "group_slug", "group_url"],
+      "metadata": { "category": "events", "priority": "high" }
+    },
+    {
+      "name": "group_join_rejected_inapp",
+      "channel": "in_app",
+      "locale": "en",
+      "subject": "Join request not approved",
+      "body": "{{.actor_name}} did not approve your request to join \"{{.group_name}}\".",
+      "variables": ["actor_name", "group_name", "group_slug"],
+      "metadata": { "category": "events", "priority": "high" }
+    },
+    {
+      "name": "group_join_rejected_sse",
+      "channel": "sse",
+      "locale": "en",
+      "subject": "Join request not approved",
+      "body": "{{.actor_name}} did not approve your request to join \"{{.group_name}}\".",
+      "variables": ["actor_name", "group_name", "group_slug"],
+      "metadata": { "category": "events", "priority": "high" }
+    },
+    {
+      "name": "group_join_rejected_email",
+      "channel": "email",
+      "locale": "en",
+      "subject": "Your request to join {{.group_name}} was not approved",
+      "body": "<a href=\"{{.actor_url}}\">@{{.actor_name}}</a> did not approve your request to join \"<a href=\"{{.group_url}}\">{{.group_name}}</a>\". You can join other public <a href=\"{{.groups_home_url}}\">groups</a>.",
+      "variables": ["actor_name", "actor_url", "group_name", "group_slug", "group_url", "groups_home_url"],
+      "metadata": { "category": "events", "priority": "high" }
+    },
+    {
+      "name": "group_member_joined_inapp",
+      "channel": "in_app",
+      "locale": "en",
+      "subject": "New member",
+      "body": "{{.actor_name}} joined \"{{.group_name}}\".",
+      "variables": ["actor_name", "group_name", "group_slug"],
+      "metadata": { "category": "events", "priority": "normal" }
+    },
+    {
+      "name": "group_member_joined_sse",
+      "channel": "sse",
+      "locale": "en",
+      "subject": "New member",
+      "body": "{{.actor_name}} joined \"{{.group_name}}\".",
+      "variables": ["actor_name", "group_name", "group_slug"],
+      "metadata": { "category": "events", "priority": "normal" }
+    },
+    {
+      "name": "group_event_published_inapp",
+      "channel": "in_app",
+      "locale": "en",
+      "subject": "New group event",
+      "body": "New event in \"{{.group_name}}\": \"{{.event_title}}\".",
+      "variables": ["actor_name", "group_name", "group_slug", "event_title", "event_slug"],
+      "metadata": { "category": "events", "priority": "normal" }
+    },
+    {
+      "name": "group_event_published_sse",
+      "channel": "sse",
+      "locale": "en",
+      "subject": "New group event",
+      "body": "New event in \"{{.group_name}}\": \"{{.event_title}}\".",
+      "variables": ["actor_name", "group_name", "group_slug", "event_title", "event_slug"],
+      "metadata": { "category": "events", "priority": "normal" }
+    }
+  ]
+}

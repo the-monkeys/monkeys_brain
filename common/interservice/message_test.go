@@ -126,6 +126,45 @@ func TestUnmarshalEventNotificationPayload(t *testing.T) {
 	}
 }
 
+func TestUnmarshalEventGroupFanoutPayload(t *testing.T) {
+	raw := []byte(`{
+		"username":"guest",
+		"new_username":"host",
+		"action":"event_application_received",
+		"event_slug":"tea-talk",
+		"event_title":"Tea Talk",
+		"group_slug":"writers",
+		"group_name":"Writers",
+		"next_step":"You are in.",
+		"change_summary":"The time changed.",
+		"reason":"full"
+	}`)
+	var m Message
+	if err := json.Unmarshal(raw, &m); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if m.GroupName != "Writers" || m.NextStep != "You are in." {
+		t.Fatalf("got %+v", m)
+	}
+	if m.ChangeSummary != "The time changed." || m.Reason != "full" {
+		t.Fatalf("got %+v", m)
+	}
+	if m.GroupSlug != "writers" {
+		t.Fatalf("got %+v", m)
+	}
+
+	out, err := json.Marshal(m)
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	s := string(out)
+	for _, key := range []string{`"group_name":"Writers"`, `"next_step":"You are in."`, `"change_summary":"The time changed."`, `"reason":"full"`} {
+		if !strings.Contains(s, key) {
+			t.Fatalf("missing %s in %s", key, s)
+		}
+	}
+}
+
 func TestMarshalEmitsBothAliases(t *testing.T) {
 	raw, err := json.Marshal(Message{
 		IpAddress:  "1.2.3.4",

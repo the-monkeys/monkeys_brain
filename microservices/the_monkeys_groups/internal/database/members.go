@@ -510,3 +510,65 @@ func (db *groupDB) RejectJoinRequest(ctx context.Context, req *pb.JoinDecisionRe
 		return nil
 	})
 }
+
+func (db *groupDB) StaffUsernames(ctx context.Context, slug string) ([]string, error) {
+	return db.usernames(ctx, `
+		SELECT u.username FROM group_members m
+		JOIN user_account u ON u.id = m.user_id
+		JOIN groups g ON g.id = m.group_id
+		WHERE g.slug = $1 AND m.status = 'active' AND m.role IN ('organizer', 'co_organizer')`, slug)
+}
+
+func (db *groupDB) ActiveMemberUsernames(ctx context.Context, slug string) ([]string, error) {
+	return db.usernames(ctx, `
+		SELECT u.username FROM group_members m
+		JOIN user_account u ON u.id = m.user_id
+		JOIN groups g ON g.id = m.group_id
+		WHERE g.slug = $1 AND m.status = 'active'`, slug)
+}
+
+func (db *groupDB) GroupName(ctx context.Context, slug string) (string, error) {
+	var name string
+	err := db.db.QueryRowContext(ctx, `SELECT name FROM groups WHERE slug = $1`, slug).Scan(&name)
+	if err == sql.ErrNoRows {
+		return "", status.Error(codes.NotFound, "group not found")
+	}
+	if err != nil {
+		return "", status.Error(codes.Internal, "failed to load group")
+	}
+	return name, nil
+}
+
+func (db *groupDB) UsernameByAccountID(ctx context.Context, accountID string) (string, error) {
+	if accountID == "" {
+		return "", status.Error(codes.Unauthenticated, "account id is required")
+	}
+	var username string
+	err := db.db.QueryRowContext(ctx,
+		"SELECT username FROM user_account WHERE account_id = $1", accountID).Scan(&username)
+	if err == sql.ErrNoRows {
+		return "", status.Error(codes.NotFound, "account not found")
+	}
+	if err != nil {
+		return "", status.Error(codes.Internal, "failed to resolve account")
+	}
+	return username, nil
+}
+
+func (db *groupDB) usernames(ctx context.Context, query, slug string) ([]string, error) {
+	rows, err := db.db.QueryContext(ctx, query, slug)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var out []string
+	for rows.Next() {
+		var u string
+		if err := rows.Scan(&u); err != nil {
+			return nil, err
+		}
+		out = append(out, u)
+	}
+	return out, rows.Err()
+}
