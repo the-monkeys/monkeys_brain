@@ -45,6 +45,18 @@ const (
 	EVENT_COMMENT_NEW       = "event_comment_new"
 	EVENT_PAYMENT_REFUND    = "event_payment_refund"
 
+	EVENT_APPLICATION_RECEIVED = "event_application_received"
+	EVENT_APPLICATION_APPROVED = "event_application_approved"
+	EVENT_APPLICATION_REJECTED = "event_application_rejected"
+	EVENT_RSVP_HOST_NOTICE     = "event_rsvp_host_notice"
+	EVENT_UPDATED              = "event_updated"
+
+	GROUP_JOIN_REQUESTED  = "group_join_requested"
+	GROUP_JOIN_APPROVED   = "group_join_approved"
+	GROUP_JOIN_REJECTED   = "group_join_rejected"
+	GROUP_MEMBER_JOINED   = "group_member_joined"
+	GROUP_EVENT_PUBLISHED = "group_event_published"
+
 	// Storage fan-out after a successful unpaid hard delete (RoutingKeys[0]).
 	EVENT_DELETE = "event_delete"
 	GROUP_DELETE = "group_delete"

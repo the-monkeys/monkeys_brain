@@ -45,6 +45,8 @@ func isConflictErr(err error) bool {
 // pollute FRN with junk rows). USER_REGISTER is the single source of truth for
 // creating FRN users; SyncUsers handles backfill at startup.
 func Notify(ctx context.Context, client *Client, req NotifyRequest, log *zap.SugaredLogger) error {
+	req.Data = EnrichData(req.Data)
+
 	// in_app — always sent, error propagated
 	if err := client.Send(ctx, frn.NotificationSendParams{
 		UserID:     req.UserID,

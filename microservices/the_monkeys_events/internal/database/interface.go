@@ -61,6 +61,10 @@ type EventDB interface {
 	// Notification fan-out
 	AttendeeUsernames(ctx context.Context, slug string) ([]string, error)
 	FollowerUsernames(ctx context.Context, slug string) ([]string, error)
+	HostUsernames(ctx context.Context, slug string) ([]string, error)
+	GoingUsernames(ctx context.Context, slug string) ([]string, error)
+	GroupMemberUsernames(ctx context.Context, slug string) ([]string, error)
+	UsernameByAccountID(ctx context.Context, accountID string) (string, error)
 
 	// Authorization
 	Authorize(ctx context.Context, req *pb.AuthorizeReq) (*pb.AuthorizeResp, error)

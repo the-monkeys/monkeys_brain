@@ -192,6 +192,7 @@ func (s *GroupService) JoinGroup(ctx context.Context, req *pb.JoinGroupReq) (*pb
 	if member.Status == "pending" {
 		msg = "join request submitted"
 	}
+	s.notifyStaff(ctx, req.Slug, member.Username, groupJoinAction(member.Status))
 	return &pb.BasicResp{Message: msg, Success: true}, nil
 }
 
@@ -235,6 +236,13 @@ func (s *GroupService) ApproveJoinRequest(ctx context.Context, req *pb.JoinDecis
 	if err := s.db.ApproveJoinRequest(ctx, req); err != nil {
 		return nil, err
 	}
+	s.notify(groupNotification{
+		Username:    s.actorUsername(ctx, req.AccountId),
+		NewUsername: req.TargetUsername,
+		Action:      constants.GROUP_JOIN_APPROVED,
+		GroupSlug:   req.Slug,
+		GroupName:   s.groupName(ctx, req.Slug),
+	})
 	return &pb.BasicResp{Message: "join request approved", Success: true}, nil
 }
 
@@ -242,6 +250,13 @@ func (s *GroupService) RejectJoinRequest(ctx context.Context, req *pb.JoinDecisi
 	if err := s.db.RejectJoinRequest(ctx, req); err != nil {
 		return nil, err
 	}
+	s.notify(groupNotification{
+		Username:    s.actorUsername(ctx, req.AccountId),
+		NewUsername: req.TargetUsername,
+		Action:      constants.GROUP_JOIN_REJECTED,
+		GroupSlug:   req.Slug,
+		GroupName:   s.groupName(ctx, req.Slug),
+	})
 	return &pb.BasicResp{Message: "join request rejected", Success: true}, nil
 }
 

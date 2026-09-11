@@ -1,0 +1,400 @@
+{
+  "templates": [
+    {
+      "name": "new_follower_inapp",
+      "channel": "in_app",
+      "locale": "en",
+      "subject": "New follower",
+      "body": "{{.follower_name}} started following you.",
+      "variables": ["follower_name"],
+      "metadata": { "category": "social", "priority": "normal" }
+    },
+    {
+      "name": "new_follower_sse",
+      "channel": "sse",
+      "locale": "en",
+      "subject": "New follower",
+      "body": "{{.follower_name}} started following you.",
+      "variables": ["follower_name"],
+      "metadata": { "category": "social", "priority": "normal" }
+    },
+    {
+      "name": "new_comment_inapp",
+      "channel": "in_app",
+      "locale": "en",
+      "subject": "New comment",
+      "body": "{{.commenter_name}} commented on your post.",
+      "variables": ["commenter_name", "blog_id", "blog_title"],
+      "metadata": { "category": "social", "priority": "normal" }
+    },
+    {
+      "name": "new_comment_sse",
+      "channel": "sse",
+      "locale": "en",
+      "subject": "New comment",
+      "body": "{{.commenter_name}} commented on your post.",
+      "variables": ["commenter_name", "blog_id", "blog_title"],
+      "metadata": { "category": "social", "priority": "normal" }
+    },
+    {
+      "name": "blog_liked_inapp",
+      "channel": "in_app",
+      "locale": "en",
+      "subject": "Blog liked",
+      "body": "{{.liker_name}} liked your post \"{{.blog_title}}\".",
+      "variables": ["liker_name", "blog_id", "blog_title"],
+      "metadata": { "category": "social", "priority": "low" }
+    },
+    {
+      "name": "blog_liked_sse",
+      "channel": "sse",
+      "locale": "en",
+      "subject": "Blog liked",
+      "body": "{{.liker_name}} liked your post \"{{.blog_title}}\".",
+      "variables": ["liker_name", "blog_id", "blog_title"],
+      "metadata": { "category": "social", "priority": "low" }
+    },
+    {
+      "name": "coauthor_invite_inapp",
+      "channel": "in_app",
+      "locale": "en",
+      "subject": "Co-author invitation",
+      "body": "{{.inviter_name}} invited you to co-author \"{{.blog_title}}\".",
+      "variables": ["inviter_name", "blog_title", "blog_id"],
+      "metadata": { "category": "collaboration", "priority": "high" }
+    },
+    {
+      "name": "coauthor_invite_sse",
+      "channel": "sse",
+      "locale": "en",
+      "subject": "Co-author invitation",
+      "body": "{{.inviter_name}} invited you to co-author \"{{.blog_title}}\".",
+      "variables": ["inviter_name", "blog_title", "blog_id"],
+      "metadata": { "category": "collaboration", "priority": "high" }
+    },
+    {
+      "name": "coauthor_invite_email",
+      "channel": "email",
+      "locale": "en",
+      "subject": "You were invited to co-author a blog",
+      "body": "<a href=\"{{.inviter_url}}\">@{{.inviter_name}}</a> invited you to co-author \"<a href=\"{{.blog_url}}\">{{.blog_title}}</a>\". Log in to accept or decline.",
+      "variables": ["inviter_name", "inviter_url", "blog_title", "blog_id", "blog_url"],
+      "metadata": { "category": "collaboration", "priority": "high" }
+    },
+    {
+      "name": "coauthor_accept_inapp",
+      "channel": "in_app",
+      "locale": "en",
+      "subject": "Invitation accepted",
+      "body": "{{.coauthor_name}} accepted your co-author invitation for \"{{.blog_title}}\".",
+      "variables": ["coauthor_name", "blog_title", "blog_id"],
+      "metadata": { "category": "collaboration", "priority": "normal" }
+    },
+    {
+      "name": "coauthor_accept_sse",
+      "channel": "sse",
+      "locale": "en",
+      "subject": "Invitation accepted",
+      "body": "{{.coauthor_name}} accepted your co-author invitation for \"{{.blog_title}}\".",
+      "variables": ["coauthor_name", "blog_title", "blog_id"],
+      "metadata": { "category": "collaboration", "priority": "normal" }
+    },
+    {
+      "name": "coauthor_decline_inapp",
+      "channel": "in_app",
+      "locale": "en",
+      "subject": "Invitation declined",
+      "body": "{{.coauthor_name}} declined your co-author invitation for \"{{.blog_title}}\".",
+      "variables": ["coauthor_name", "blog_title", "blog_id"],
+      "metadata": { "category": "collaboration", "priority": "normal" }
+    },
+    {
+      "name": "coauthor_removed_inapp",
+      "channel": "in_app",
+      "locale": "en",
+      "subject": "Removed as co-author",
+      "body": "{{.remover_name}} removed you as co-author from \"{{.blog_title}}\".",
+      "variables": ["remover_name", "blog_title", "blog_id"],
+      "metadata": { "category": "collaboration", "priority": "normal" }
+    },
+    {
+      "name": "coauthor_removed_sse",
+      "channel": "sse",
+      "locale": "en",
+      "subject": "Removed as co-author",
+      "body": "{{.remover_name}} removed you as co-author from \"{{.blog_title}}\".",
+      "variables": ["remover_name", "blog_title", "blog_id"],
+      "metadata": { "category": "collaboration", "priority": "normal" }
+    },
+    {
+      "name": "blog_published_coauthor_inapp",
+      "channel": "in_app",
+      "locale": "en",
+      "subject": "Blog published",
+      "body": "{{.publisher_name}} published \"{{.blog_title}}\" that you co-authored.",
+      "variables": ["publisher_name", "blog_title", "blog_id"],
+      "metadata": { "category": "content", "priority": "normal" }
+    },
+    {
+      "name": "blog_published_coauthor_sse",
+      "channel": "sse",
+      "locale": "en",
+      "subject": "Blog published",
+      "body": "{{.publisher_name}} published \"{{.blog_title}}\" that you co-authored.",
+      "variables": ["publisher_name", "blog_title", "blog_id"],
+      "metadata": { "category": "content", "priority": "normal" }
+    },
+    {
+      "name": "password_changed_inapp",
+      "channel": "in_app",
+      "locale": "en",
+      "subject": "Password changed",
+      "body": "Your password was changed. If this was not you, secure your account now.",
+      "variables": [],
+      "metadata": { "category": "security", "priority": "high" }
+    },
+    {
+      "name": "password_changed_email",
+      "channel": "email",
+      "locale": "en",
+      "subject": "Your password was changed",
+      "body": "Your password was changed. If this was not you, open your <a href=\"{{.settings_url}}\">account settings</a>.",
+      "variables": ["settings_url"],
+      "metadata": { "category": "security", "priority": "high" }
+    },
+    {
+      "name": "email_verified_inapp",
+      "channel": "in_app",
+      "locale": "en",
+      "subject": "Welcome",
+      "body": "Your email has been verified. Welcome to The Monkeys.",
+      "variables": [],
+      "metadata": { "category": "security", "priority": "high" }
+    },
+    {
+      "name": "login_detected_inapp",
+      "channel": "in_app",
+      "locale": "en",
+      "subject": "New login detected",
+      "body": "A new login from {{.client}} ({{.ip_address}}) via {{.login_method}}.",
+      "variables": ["client", "ip_address", "login_method"],
+      "metadata": { "category": "security", "priority": "high" }
+    },
+    {
+      "name": "login_detected_sse",
+      "channel": "sse",
+      "locale": "en",
+      "subject": "New login detected",
+      "body": "A new login from {{.client}} ({{.ip_address}}) via {{.login_method}}.",
+      "variables": ["client", "ip_address", "login_method"],
+      "metadata": { "category": "security", "priority": "high" }
+    },
+    {
+      "name": "login_detected_email",
+      "channel": "email",
+      "locale": "en",
+      "subject": "New login to your account",
+      "body": "We detected a new login from {{.client}} ({{.ip_address}}) via {{.login_method}}. If this was not you, open your <a href=\"{{.settings_url}}\">account settings</a>.",
+      "variables": ["client", "ip_address", "login_method", "settings_url"],
+      "metadata": { "category": "security", "priority": "high" }
+    },
+    {
+      "name": "password_reset_requested_inapp",
+      "channel": "in_app",
+      "locale": "en",
+      "subject": "Password reset requested",
+      "body": "A password reset was requested from {{.ip_address}}. If this was not you, ignore this.",
+      "variables": ["ip_address"],
+      "metadata": { "category": "security", "priority": "high" }
+    },
+    {
+      "name": "password_reset_requested_email",
+      "channel": "email",
+      "locale": "en",
+      "subject": "Password reset requested",
+      "body": "A password reset was requested for your account from {{.ip_address}}. If this was not you, ignore this email. You can also open <a href=\"{{.settings_url}}\">account settings</a>.",
+      "variables": ["ip_address", "settings_url"],
+      "metadata": { "category": "security", "priority": "high" }
+    },
+    {
+      "name": "email_changed_inapp",
+      "channel": "in_app",
+      "locale": "en",
+      "subject": "Email changed",
+      "body": "Your email was changed to {{.new_email}}. If this was not you, contact support.",
+      "variables": ["new_email"],
+      "metadata": { "category": "security", "priority": "high" }
+    },
+    {
+      "name": "email_changed_email",
+      "channel": "email",
+      "locale": "en",
+      "subject": "Your email address was changed",
+      "body": "Your email was changed to {{.new_email}}. If this was not you, contact support now.",
+      "variables": ["new_email"],
+      "metadata": { "category": "security", "priority": "high" }
+    },
+    {
+      "name": "username_changed_inapp",
+      "channel": "in_app",
+      "locale": "en",
+      "subject": "Username changed",
+      "body": "Your username was changed to {{.new_username}}.",
+      "variables": ["new_username"],
+      "metadata": { "category": "security", "priority": "normal" }
+    },
+    {
+      "name": "event_rsvp_confirmed_inapp",
+      "channel": "in_app",
+      "locale": "en",
+      "subject": "You are in",
+      "body": "Your spot for \"{{.event_title}}\" is confirmed.",
+      "variables": ["event_title", "event_slug"],
+      "metadata": { "category": "events", "priority": "normal" }
+    },
+    {
+      "name": "event_rsvp_confirmed_email",
+      "channel": "email",
+      "locale": "en",
+      "subject": "Your spot for {{.event_title}} is confirmed",
+      "body": "Your spot for \"<a href=\"{{.event_url}}\">{{.event_title}}</a>\" is confirmed. Open the event for details.",
+      "variables": ["event_title", "event_slug", "event_url"],
+      "metadata": { "category": "events", "priority": "normal" }
+    },
+    {
+      "name": "event_rsvp_waitlisted_inapp",
+      "channel": "in_app",
+      "locale": "en",
+      "subject": "You are on the waitlist",
+      "body": "\"{{.event_title}}\" is full. You are on the waitlist.",
+      "variables": ["event_title", "event_slug"],
+      "metadata": { "category": "events", "priority": "normal" }
+    },
+    {
+      "name": "event_waitlist_promoted_inapp",
+      "channel": "in_app",
+      "locale": "en",
+      "subject": "A seat opened",
+      "body": "A seat opened for \"{{.event_title}}\". Your spot is now confirmed.",
+      "variables": ["event_title", "event_slug"],
+      "metadata": { "category": "events", "priority": "high" }
+    },
+    {
+      "name": "event_waitlist_promoted_email",
+      "channel": "email",
+      "locale": "en",
+      "subject": "A seat opened for {{.event_title}}",
+      "body": "A seat opened for \"<a href=\"{{.event_url}}\">{{.event_title}}</a>\". Your spot is now confirmed.",
+      "variables": ["event_title", "event_slug", "event_url"],
+      "metadata": { "category": "events", "priority": "high" }
+    },
+    {
+      "name": "event_reminder_inapp",
+      "channel": "in_app",
+      "locale": "en",
+      "subject": "Event reminder",
+      "body": "\"{{.event_title}}\" is coming up soon.",
+      "variables": ["event_title", "event_slug"],
+      "metadata": { "category": "events", "priority": "high" }
+    },
+    {
+      "name": "event_reminder_email",
+      "channel": "email",
+      "locale": "en",
+      "subject": "Reminder: {{.event_title}}",
+      "body": "\"<a href=\"{{.event_url}}\">{{.event_title}}</a>\" is coming up soon. Open the event for time and place.",
+      "variables": ["event_title", "event_slug", "event_url"],
+      "metadata": { "category": "events", "priority": "high" }
+    },
+    {
+      "name": "event_cancelled_inapp",
+      "channel": "in_app",
+      "locale": "en",
+      "subject": "Event cancelled",
+      "body": "\"{{.event_title}}\" was cancelled.",
+      "variables": ["event_title", "event_slug"],
+      "metadata": { "category": "events", "priority": "high" }
+    },
+    {
+      "name": "event_cancelled_email",
+      "channel": "email",
+      "locale": "en",
+      "subject": "{{.event_title}} was cancelled",
+      "body": "\"<a href=\"{{.event_url}}\">{{.event_title}}</a>\" was cancelled. If you paid, a refund will follow.",
+      "variables": ["event_title", "event_slug", "event_url"],
+      "metadata": { "category": "events", "priority": "high" }
+    },
+    {
+      "name": "event_new_by_followed_inapp",
+      "channel": "in_app",
+      "locale": "en",
+      "subject": "New event",
+      "body": "{{.actor_name}} published \"{{.event_title}}\".",
+      "variables": ["actor_name", "event_title", "event_slug"],
+      "metadata": { "category": "events", "priority": "low" }
+    },
+    {
+      "name": "event_comment_inapp",
+      "channel": "in_app",
+      "locale": "en",
+      "subject": "New event comment",
+      "body": "{{.actor_name}} commented on \"{{.event_title}}\".",
+      "variables": ["actor_name", "event_title", "event_slug"],
+      "metadata": { "category": "events", "priority": "low" }
+    },
+    {
+      "name": "event_refund_inapp",
+      "channel": "in_app",
+      "locale": "en",
+      "subject": "Refund issued",
+      "body": "A refund was issued for \"{{.event_title}}\".",
+      "variables": ["event_title", "event_slug"],
+      "metadata": { "category": "events", "priority": "high" }
+    },
+    {
+      "name": "event_refund_email",
+      "channel": "email",
+      "locale": "en",
+      "subject": "Refund for {{.event_title}}",
+      "body": "A refund was issued for \"<a href=\"{{.event_url}}\">{{.event_title}}</a>\". It can take a few days to reach your bank.",
+      "variables": ["event_title", "event_slug", "event_url"],
+      "metadata": { "category": "events", "priority": "high" }
+    },
+    {
+      "name": "account_deleted_inapp",
+      "channel": "in_app",
+      "locale": "en",
+      "subject": "Account deleted",
+      "body": "Your Monkeys account was deleted.",
+      "variables": [],
+      "metadata": { "category": "account", "priority": "high" }
+    },
+    {
+      "name": "account_deleted_email",
+      "channel": "email",
+      "locale": "en",
+      "subject": "Your Monkeys account was deleted",
+      "body": "Your Monkeys account was deleted. If this was not you, contact support.",
+      "variables": [],
+      "metadata": { "category": "account", "priority": "high" }
+    },
+    {
+      "name": "account_deactivated_inapp",
+      "channel": "in_app",
+      "locale": "en",
+      "subject": "Account deactivated",
+      "body": "Your Monkeys account was deactivated.",
+      "variables": [],
+      "metadata": { "category": "account", "priority": "high" }
+    },
+    {
+      "name": "account_reactivated_inapp",
+      "channel": "in_app",
+      "locale": "en",
+      "subject": "Account reactivated",
+      "body": "Your Monkeys account is active again.",
+      "variables": [],
+      "metadata": { "category": "account", "priority": "normal" }
+    }
+  ]
+}
