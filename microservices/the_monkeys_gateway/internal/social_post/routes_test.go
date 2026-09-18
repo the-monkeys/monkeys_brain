@@ -250,4 +250,34 @@ func TestToValidationMetadataResponseDTO(t *testing.T) {
 	}
 }
 
+func TestToRenditionDTOIncludesScheduledOverrides(t *testing.T) {
+	rend := &pb.Rendition{
+		Id:               "rend-override-1",
+		SocialAccountId:  "acc-123",
+		Platform:         pb.Platform_PLATFORM_X,
+		TextOverride:     "override text",
+		ScheduledAt:      "2026-10-01T12:00:00Z",
+		ScheduleTimezone: "America/New_York",
+		State:            "draft",
+		Version:          1,
+	}
+	dto := toRenditionDTO(rend)
+	if dto == nil {
+		t.Fatal("expected non-nil RenditionDTO")
+	}
+	if dto.ScheduledAtOverride != "2026-10-01T12:00:00Z" {
+		t.Fatalf("expected ScheduledAtOverride %q, got %q", "2026-10-01T12:00:00Z", dto.ScheduledAtOverride)
+	}
+	if dto.ScheduleTimezoneOverride != "America/New_York" {
+		t.Fatalf("expected ScheduleTimezoneOverride %q, got %q", "America/New_York", dto.ScheduleTimezoneOverride)
+	}
+	if dto.ScheduledAt != "2026-10-01T12:00:00Z" {
+		t.Fatalf("expected ScheduledAt %q, got %q", "2026-10-01T12:00:00Z", dto.ScheduledAt)
+	}
+	if dto.ScheduleTimezone != "America/New_York" {
+		t.Fatalf("expected ScheduleTimezone %q, got %q", "America/New_York", dto.ScheduleTimezone)
+	}
+}
+
+
 
