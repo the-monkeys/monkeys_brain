@@ -22,6 +22,7 @@ import (
 	"github.com/the-monkeys/the_monkeys/microservices/the_monkeys_gateway/internal/groups"
 	"github.com/the-monkeys/the_monkeys/microservices/the_monkeys_gateway/internal/notification"
 	"github.com/the-monkeys/the_monkeys/microservices/the_monkeys_gateway/internal/snapshot"
+	"github.com/the-monkeys/the_monkeys/microservices/the_monkeys_gateway/internal/social_post"
 	"github.com/the-monkeys/the_monkeys/microservices/the_monkeys_gateway/internal/storage"
 	"github.com/the-monkeys/the_monkeys/microservices/the_monkeys_gateway/internal/storage_v2"
 	"github.com/the-monkeys/the_monkeys/microservices/the_monkeys_gateway/internal/systems"
@@ -112,6 +113,7 @@ func main() {
 	blogsearch.RegisterRoutes(server.router, cfg, searchCache, log)
 	storageClient := storage.RegisterFileStorageRouter(server.router, cfg, authClient, log)
 	storageV2Svc := storage_v2.RegisterRoutes(server.router, cfg, storageClient.Client, authClient, log)
+	social_post.RegisterRoutes(server.router, cfg, authClient, log, storageV2Svc)
 	notification.RegisterNotificationRoute(server.router, cfg, authClient, log)
 	eventClient := events.RegisterEventRouter(server.router, cfg, authClient, storageV2Svc, log)
 	groupClient := groups.RegisterGroupRouter(server.router, cfg, authClient, eventClient.Client, storageV2Svc, log)

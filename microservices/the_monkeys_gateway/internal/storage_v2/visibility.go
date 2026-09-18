@@ -14,6 +14,45 @@ func blogStatusAllowsPublic(status string) bool {
 	return status == constants.BlogStatusPublished
 }
 
+// VerifySocialAssetReference applies the same storage visibility gate used by
+// v2 asset reads to an authenticated Studio import. A checksum/object-key
+// reference is accepted only when the asset is public or the caller has
+// access to one of the unpublished owners returned by storage.
+func (s *Service) VerifySocialAssetReference(ctx *gin.Context, reference string) bool {
+	if s == nil || s.storageCli == nil || strings.TrimSpace(reference) == "" {
+		return false
+	}
+	checksum := reference
+	if parsed, ok := checksumFromAssetObjectName(reference); ok {
+		checksum = parsed
+	}
+	res, err := s.storageCli.ResolveAssetRead(ctx.Request.Context(), &pb.ResolveAssetReadReq{Checksum: checksum})
+	if err != nil || !socialAssetVisible(res, ctx.GetString("accountId") != "", func(blogID string) bool {
+		return s.authz != nil && s.authz.HasBlogAccess(ctx, blogID)
+	}) {
+		return false
+	}
+	return true
+}
+
+func socialAssetVisible(res *pb.ResolveAssetReadResp, hasAccount bool, hasBlogAccess func(string) bool) bool {
+	if res == nil || res.GetVerificationOnly() {
+		return false
+	}
+	if res.GetAllowPublic() {
+		return true
+	}
+	if !hasAccount || hasBlogAccess == nil {
+		return false
+	}
+	for _, blogID := range res.GetUnpublishedBlogIds() {
+		if hasBlogAccess(blogID) {
+			return true
+		}
+	}
+	return false
+}
+
 func decideAssetRead(allowPublic, verificationOnly, hasJWT, anyDraftAccess bool) bool {
 	if verificationOnly {
 		return false

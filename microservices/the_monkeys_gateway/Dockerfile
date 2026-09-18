@@ -1,3 +1,4 @@
+# syntax=docker/dockerfile:1.7
 # Build stage
 FROM golang:1.26.1-alpine AS builder
 
@@ -8,11 +9,14 @@ WORKDIR /app
 
 # Copy go mod files first (for better caching)
 COPY go.mod go.sum ./
+ARG GOPROXY=https://proxy.golang.org,direct
 
 # Download dependencies with a persistent cache mount so modules
 # are shared across all service builds and survive layer invalidation.
 RUN --mount=type=cache,target=/go/pkg/mod \
-    go mod download
+    --mount=type=secret,id=ca_cert,required=false,target=/tmp/extra-ca.crt \
+    if [ -f /tmp/extra-ca.crt ]; then cp /tmp/extra-ca.crt /usr/local/share/ca-certificates/extra-ca.crt && update-ca-certificates; fi; \
+    GOPROXY=${GOPROXY} GOSUMDB=off go mod download
 
 # Copy source code
 COPY . .

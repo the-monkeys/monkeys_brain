@@ -46,3 +46,21 @@ proto-gen:
 
 freeze:
 	pip freeze > requirements.txt
+
+# Containerized Go/protobuf toolchain for the social-post domain: no host Go
+# or protoc installation is required. Optionally pass
+# SOCIAL_POST_CA_CERT=/absolute/path/to/your-ca.crt to trust a local
+# TLS-intercepting proxy inside the container; the certificate is mounted
+# read-only at build time and is never copied into the repository or image.
+social-post-dev:
+	docker run --rm -v "$$(pwd):/src" \
+		$(if $(SOCIAL_POST_CA_CERT),-v "$(SOCIAL_POST_CA_CERT):/usr/local/share/ca-certificates/extra-ca.crt:ro",) \
+		-w /src golang:1.26.1-alpine sh -ec '\
+		apk add --no-cache protobuf git ca-certificates; \
+		update-ca-certificates; \
+		go install google.golang.org/protobuf/cmd/protoc-gen-go@v1.36.10; \
+		go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@v1.5.1; \
+		export PATH="$$PATH:/go/bin"; \
+		protoc -I . --go_out=. --go-grpc_out=. apis/serviceconn/gateway_social_post/pb/gw_social_post.proto; \
+		gofmt -w microservices/the_monkeys_social_post microservices/the_monkeys_gateway/internal/social_post; \
+		go test ./microservices/the_monkeys_social_post/... ./microservices/the_monkeys_gateway/internal/social_post/...'

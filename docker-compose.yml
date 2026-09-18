@@ -415,6 +415,35 @@ services:
       retries: 3
       start_period: 15s
 
+  the_monkeys_social_post:
+    container_name: "the-monkeys-social-post"
+    build:
+      context: .
+      dockerfile: microservices/the_monkeys_social_post/Dockerfile
+      args:
+        SOCIAL_POST_SERVICE_PORT: ${MICROSERVICES_SOCIAL_POST_INTERNAL_PORT}
+    networks:
+      - monkeys-network
+    depends_on:
+      db-migrations:
+        condition: service_completed_successfully
+      the_monkeys_db:
+        condition: service_healthy
+    ports:
+      - "${MICROSERVICES_SOCIAL_POST_PORT}:${MICROSERVICES_SOCIAL_POST_INTERNAL_PORT}"
+    restart: unless-stopped
+    env_file:
+      - .env
+    user: "1001:1001"
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+          cpus: '0.7'
+        reservations:
+          memory: 128M
+          cpus: '0.2'
+
   the_monkeys_notification:
     container_name: "the_monkeys_notification"
     build:

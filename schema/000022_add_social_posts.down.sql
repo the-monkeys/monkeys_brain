@@ -1,0 +1,13 @@
+DROP TRIGGER IF EXISTS trg_provision_social_mock_accounts ON user_account;
+DROP FUNCTION IF EXISTS provision_social_mock_accounts();
+DROP TABLE IF EXISTS social_command_idempotency;
+DROP TABLE IF EXISTS social_post_audit_log;
+DROP TABLE IF EXISTS social_post_events;
+DROP TABLE IF EXISTS social_publish_attempts;
+DROP TABLE IF EXISTS social_outbox;
+DROP TABLE IF EXISTS social_publish_jobs;
+DROP TABLE IF EXISTS social_rendition_media;
+DROP TABLE IF EXISTS social_post_renditions;
+DROP TABLE IF EXISTS social_media_assets;
+DROP TABLE IF EXISTS social_accounts;
+DROP TABLE IF EXISTS social_posts;

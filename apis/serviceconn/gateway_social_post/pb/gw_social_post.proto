@@ -1,0 +1,197 @@
+syntax = "proto3";
+
+package social_post_svc;
+
+option go_package = "./apis/serviceconn/gateway_social_post/pb";
+
+enum Platform {
+  PLATFORM_UNSPECIFIED = 0;
+  PLATFORM_X = 1;
+  PLATFORM_LINKEDIN = 2;
+  PLATFORM_INSTAGRAM = 3;
+  PLATFORM_FACEBOOK = 4;
+  PLATFORM_YOUTUBE = 5;
+  PLATFORM_TIKTOK = 6;
+}
+
+message RequestContext {
+  string account_id = 1;
+  string idempotency_key = 2;
+  string correlation_id = 3;
+  string source_ip = 4;
+  string user_agent = 5;
+}
+
+message FieldViolation {
+  string field = 1;
+  string rule_id = 2;
+  string message = 3;
+  string actual = 4;
+  string allowed = 5;
+}
+
+message ValidationMetadata {
+  Platform platform = 1;
+  int32 max_text_characters = 2;
+  repeated string allowed_media_kinds = 3;
+  int32 max_media_count = 4;
+  int64 max_media_bytes = 5;
+  int64 max_video_duration_ms = 6;
+  bool media_required = 7;
+}
+
+message MediaAsset {
+  string id = 1;
+  string object_key = 2;
+  string checksum = 3;
+  string content_type = 4;
+  int64 byte_size = 5;
+  string media_kind = 6;
+  int32 width = 7;
+  int32 height = 8;
+  int64 duration_ms = 9;
+  string source_kind = 10;
+}
+
+message Rendition {
+  string id = 1;
+  string social_account_id = 2;
+  Platform platform = 3;
+  string text_override = 4;
+  string scheduled_at = 5;
+  string schedule_timezone = 6;
+  string state = 7;
+  int64 version = 8;
+  repeated MediaAsset media = 9;
+  string provider_post_ref = 10;
+  string last_error_code = 11;
+  string last_error_message = 12;
+}
+
+message SocialPost {
+  string id = 1;
+  string base_text = 2;
+  string state = 3;
+  int64 version = 4;
+  string scheduled_at = 5;
+  string schedule_timezone = 6;
+  int64 queue_position = 7;
+  repeated Rendition renditions = 8;
+  string created_at = 9;
+  string updated_at = 10;
+}
+
+message CreatePostRequest { RequestContext context = 1; string base_text = 2; }
+message GetPostRequest { RequestContext context = 1; string post_id = 2; }
+message UpdatePostRequest { RequestContext context = 1; string post_id = 2; string base_text = 3; int64 expected_version = 4; }
+message DeleteDraftRequest { RequestContext context = 1; string post_id = 2; int64 expected_version = 3; }
+message PostResponse { SocialPost post = 1; repeated FieldViolation violations = 2; }
+
+message ListPostsRequest {
+  RequestContext context = 1;
+  repeated string states = 2;
+  Platform platform = 3;
+  string from = 4;
+  string to = 5;
+  int32 page_size = 6;
+  string page_token = 7;
+}
+message ListPostsResponse { repeated SocialPost posts = 1; string next_page_token = 2; }
+
+message UpsertRenditionRequest {
+  RequestContext context = 1;
+  string post_id = 2;
+  string social_account_id = 3;
+  string text_override = 4;
+  string scheduled_at_override = 5;
+  string schedule_timezone_override = 6;
+  int64 expected_version = 7;
+}
+message SetRenditionMediaRequest {
+  RequestContext context = 1;
+  string post_id = 2;
+  string social_account_id = 3;
+  repeated string asset_ids = 4;
+  int64 expected_version = 5;
+}
+
+message SchedulePostRequest {
+  RequestContext context = 1;
+  string post_id = 2;
+  string scheduled_at = 3;
+  string schedule_timezone = 4;
+  int64 expected_version = 5;
+}
+message PostActionRequest { RequestContext context = 1; string post_id = 2; int64 expected_version = 3; }
+message JobStatusRequest { RequestContext context = 1; string job_id = 2; }
+message ReplayJobRequest { RequestContext context = 1; string job_id = 2; }
+message JobStatus {
+  string id = 1;
+  string post_id = 2;
+  string rendition_id = 3;
+  string status = 4;
+  int32 attempt_count = 5;
+  string run_at = 6;
+  string last_error_code = 7;
+  string last_error_message = 8;
+}
+
+message ListAccountsRequest { RequestContext context = 1; }
+message SocialAccount {
+  string id = 1;
+  Platform platform = 2;
+  string display_name = 3;
+  string handle = 4;
+  string status = 5;
+  ValidationMetadata validation = 6;
+}
+message ListAccountsResponse { repeated SocialAccount accounts = 1; }
+message ListValidationMetadataRequest { RequestContext context = 1; }
+message ListValidationMetadataResponse { repeated ValidationMetadata platforms = 1; }
+
+message ImportStudioAssetRequest {
+  RequestContext context = 1;
+  string source_asset_ref = 2;
+  string source_kind = 3;
+}
+message ImportStudioAssetResponse { MediaAsset asset = 1; }
+message ListMediaAssetsRequest { RequestContext context = 1; int32 page_size = 2; string page_token = 3; }
+message ListMediaAssetsResponse { repeated MediaAsset assets = 1; string next_page_token = 2; }
+message DeleteMediaAssetRequest { RequestContext context = 1; string asset_id = 2; }
+message DeleteMediaAssetResponse { bool deleted = 1; }
+message ReorderQueueRequest { RequestContext context = 1; repeated string post_ids_in_order = 2; }
+message ReorderQueueResponse { repeated SocialPost posts = 1; }
+message HistoryRequest { RequestContext context = 1; string post_id = 2; int32 page_size = 3; string page_token = 4; }
+message HistoryEvent {
+  string id = 1;
+  string event_type = 2;
+  string actor_type = 3;
+  string created_at = 4;
+  string detail_json = 5;
+}
+message HistoryResponse { repeated HistoryEvent events = 1; string next_page_token = 2; }
+
+service SocialPostService {
+  rpc CreatePost(CreatePostRequest) returns (PostResponse);
+  rpc GetPost(GetPostRequest) returns (PostResponse);
+  rpc UpdatePost(UpdatePostRequest) returns (PostResponse);
+  rpc DeleteDraft(DeleteDraftRequest) returns (PostResponse);
+  rpc ListPosts(ListPostsRequest) returns (ListPostsResponse);
+  rpc UpsertRendition(UpsertRenditionRequest) returns (PostResponse);
+  rpc SetRenditionMedia(SetRenditionMediaRequest) returns (PostResponse);
+  rpc SchedulePost(SchedulePostRequest) returns (PostResponse);
+  rpc CancelSchedule(PostActionRequest) returns (PostResponse);
+  rpc ReschedulePost(SchedulePostRequest) returns (PostResponse);
+  rpc PublishNow(PostActionRequest) returns (PostResponse);
+  rpc ListCalendar(ListPostsRequest) returns (ListPostsResponse);
+  rpc ListQueue(ListPostsRequest) returns (ListPostsResponse);
+  rpc GetJobStatus(JobStatusRequest) returns (JobStatus);
+  rpc ReplayJob(ReplayJobRequest) returns (JobStatus);
+  rpc ListAccounts(ListAccountsRequest) returns (ListAccountsResponse);
+  rpc ListValidationMetadata(ListValidationMetadataRequest) returns (ListValidationMetadataResponse);
+  rpc ImportStudioAsset(ImportStudioAssetRequest) returns (ImportStudioAssetResponse);
+  rpc ListMediaAssets(ListMediaAssetsRequest) returns (ListMediaAssetsResponse);
+  rpc DeleteMediaAsset(DeleteMediaAssetRequest) returns (DeleteMediaAssetResponse);
+  rpc ReorderQueue(ReorderQueueRequest) returns (ReorderQueueResponse);
+  rpc ListPostHistory(HistoryRequest) returns (HistoryResponse);
+}
