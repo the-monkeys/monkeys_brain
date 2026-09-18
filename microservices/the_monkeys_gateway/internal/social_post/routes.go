@@ -60,6 +60,319 @@ type reorderQueueRequest struct {
 	PostIDsInOrder []string `json:"post_ids_in_order" binding:"required"`
 }
 
+var platformToString = map[pb.Platform]string{
+	pb.Platform_PLATFORM_X:         "x",
+	pb.Platform_PLATFORM_LINKEDIN:  "linkedin",
+	pb.Platform_PLATFORM_INSTAGRAM: "instagram",
+	pb.Platform_PLATFORM_FACEBOOK:  "facebook",
+	pb.Platform_PLATFORM_YOUTUBE:   "youtube",
+	pb.Platform_PLATFORM_TIKTOK:    "tiktok",
+}
+
+func platformToName(p pb.Platform) string {
+	if s, ok := platformToString[p]; ok {
+		return s
+	}
+	return ""
+}
+
+type MediaAssetDTO struct {
+	ID          string `json:"id"`
+	ObjectKey   string `json:"object_key"`
+	Checksum    string `json:"checksum,omitempty"`
+	ContentType string `json:"content_type"`
+	ByteSize    int64  `json:"byte_size"`
+	MediaKind   string `json:"media_kind"`
+	SourceKind  string `json:"source_kind,omitempty"`
+	Width       int32  `json:"width,omitempty"`
+	Height      int32  `json:"height,omitempty"`
+	DurationMs  int64  `json:"duration_ms,omitempty"`
+}
+
+type ValidationMetadataDTO struct {
+	Platform           string   `json:"platform"`
+	MaxTextCharacters  int32    `json:"max_text_characters"`
+	AllowedMediaKinds  []string `json:"allowed_media_kinds"`
+	MaxMediaCount      int32    `json:"max_media_count"`
+	MaxMediaBytes      int64    `json:"max_media_bytes"`
+	MaxVideoDurationMs int64    `json:"max_video_duration_ms"`
+	MediaRequired      bool     `json:"media_required"`
+}
+
+type SocialAccountDTO struct {
+	ID          string                 `json:"id"`
+	Platform    string                 `json:"platform"`
+	DisplayName string                 `json:"display_name"`
+	Handle      string                 `json:"handle"`
+	Status      string                 `json:"status"`
+	Validation  *ValidationMetadataDTO `json:"validation,omitempty"`
+}
+
+type RenditionDTO struct {
+	ID                       string          `json:"id"`
+	SocialAccountID          string          `json:"social_account_id"`
+	Platform                 string          `json:"platform"`
+	TextOverride             string          `json:"text_override,omitempty"`
+	ScheduledAt              string          `json:"scheduled_at,omitempty"`
+	ScheduleTimezone         string          `json:"schedule_timezone,omitempty"`
+	ScheduledAtOverride      string          `json:"scheduled_at_override,omitempty"`
+	ScheduleTimezoneOverride string          `json:"schedule_timezone_override,omitempty"`
+	State                    string          `json:"state"`
+	Status                   string          `json:"status,omitempty"`
+	Version                  int64           `json:"version"`
+	Media                    []MediaAssetDTO `json:"media"`
+	MediaAssetIDs            []string        `json:"media_asset_ids,omitempty"`
+	ProviderPostRef          string          `json:"provider_post_ref,omitempty"`
+	LastErrorCode            string          `json:"last_error_code,omitempty"`
+	LastErrorMessage         string          `json:"last_error_message,omitempty"`
+}
+
+type SocialPostDTO struct {
+	ID               string         `json:"id"`
+	BaseText         string         `json:"base_text"`
+	Text             string         `json:"text,omitempty"`
+	State            string         `json:"state"`
+	Status           string         `json:"status"`
+	Version          int64          `json:"version"`
+	ScheduledAt      string         `json:"scheduled_at,omitempty"`
+	ScheduleTimezone string         `json:"schedule_timezone,omitempty"`
+	QueuePosition    *int64         `json:"queue_position,omitempty"`
+	Renditions       []RenditionDTO `json:"renditions"`
+	CreatedAt        string         `json:"created_at,omitempty"`
+	UpdatedAt        string         `json:"updated_at,omitempty"`
+}
+
+type FieldViolationDTO struct {
+	Field   string `json:"field"`
+	RuleID  string `json:"rule_id"`
+	Message string `json:"message"`
+	Actual  string `json:"actual,omitempty"`
+	Allowed string `json:"allowed,omitempty"`
+}
+
+func toMediaAssetDTO(a *pb.MediaAsset) *MediaAssetDTO {
+	if a == nil {
+		return nil
+	}
+	return &MediaAssetDTO{
+		ID:          a.GetId(),
+		ObjectKey:   a.GetObjectKey(),
+		Checksum:    a.GetChecksum(),
+		ContentType: a.GetContentType(),
+		ByteSize:    a.GetByteSize(),
+		MediaKind:   a.GetMediaKind(),
+		SourceKind:  a.GetSourceKind(),
+		Width:       a.GetWidth(),
+		Height:      a.GetHeight(),
+		DurationMs:  a.GetDurationMs(),
+	}
+}
+
+func toValidationMetadataDTO(v *pb.ValidationMetadata) *ValidationMetadataDTO {
+	if v == nil {
+		return nil
+	}
+	allowedMedia := v.GetAllowedMediaKinds()
+	if allowedMedia == nil {
+		allowedMedia = []string{}
+	}
+	return &ValidationMetadataDTO{
+		Platform:           platformToName(v.GetPlatform()),
+		MaxTextCharacters:  v.GetMaxTextCharacters(),
+		AllowedMediaKinds:  allowedMedia,
+		MaxMediaCount:      v.GetMaxMediaCount(),
+		MaxMediaBytes:      v.GetMaxMediaBytes(),
+		MaxVideoDurationMs: v.GetMaxVideoDurationMs(),
+		MediaRequired:      v.GetMediaRequired(),
+	}
+}
+
+func toSocialAccountDTO(a *pb.SocialAccount) *SocialAccountDTO {
+	if a == nil {
+		return nil
+	}
+	return &SocialAccountDTO{
+		ID:          a.GetId(),
+		Platform:    platformToName(a.GetPlatform()),
+		DisplayName: a.GetDisplayName(),
+		Handle:      a.GetHandle(),
+		Status:      a.GetStatus(),
+		Validation:  toValidationMetadataDTO(a.GetValidation()),
+	}
+}
+
+func toRenditionDTO(r *pb.Rendition) *RenditionDTO {
+	if r == nil {
+		return nil
+	}
+	media := make([]MediaAssetDTO, 0, len(r.GetMedia()))
+	mediaIDs := make([]string, 0, len(r.GetMedia()))
+	for _, m := range r.GetMedia() {
+		if dto := toMediaAssetDTO(m); dto != nil {
+			media = append(media, *dto)
+			mediaIDs = append(mediaIDs, dto.ID)
+		}
+	}
+	return &RenditionDTO{
+		ID:                       r.GetId(),
+		SocialAccountID:          r.GetSocialAccountId(),
+		Platform:                 platformToName(r.GetPlatform()),
+		TextOverride:             r.GetTextOverride(),
+		ScheduledAt:              r.GetScheduledAt(),
+		ScheduleTimezone:         r.GetScheduleTimezone(),
+		ScheduledAtOverride:      r.GetScheduledAt(),
+		ScheduleTimezoneOverride: r.GetScheduleTimezone(),
+		State:                    r.GetState(),
+		Status:                   r.GetState(),
+		Version:                  r.GetVersion(),
+		Media:                    media,
+		MediaAssetIDs:            mediaIDs,
+		ProviderPostRef:          r.GetProviderPostRef(),
+		LastErrorCode:            r.GetLastErrorCode(),
+		LastErrorMessage:         r.GetLastErrorMessage(),
+	}
+}
+
+func toPostDTO(p *pb.SocialPost) *SocialPostDTO {
+	if p == nil {
+		return nil
+	}
+	renditions := make([]RenditionDTO, 0, len(p.GetRenditions()))
+	for _, r := range p.GetRenditions() {
+		if dto := toRenditionDTO(r); dto != nil {
+			renditions = append(renditions, *dto)
+		}
+	}
+	var queuePos *int64
+	if p.GetQueuePosition() > 0 {
+		qp := p.GetQueuePosition()
+		queuePos = &qp
+	}
+	return &SocialPostDTO{
+		ID:               p.GetId(),
+		BaseText:         p.GetBaseText(),
+		Text:             p.GetBaseText(),
+		State:            p.GetState(),
+		Status:           p.GetState(),
+		Version:          p.GetVersion(),
+		ScheduledAt:      p.GetScheduledAt(),
+		ScheduleTimezone: p.GetScheduleTimezone(),
+		QueuePosition:    queuePos,
+		Renditions:       renditions,
+		CreatedAt:        p.GetCreatedAt(),
+		UpdatedAt:        p.GetUpdatedAt(),
+	}
+}
+
+func toViolationsDTO(violations []*pb.FieldViolation) []FieldViolationDTO {
+	if violations == nil {
+		return []FieldViolationDTO{}
+	}
+	out := make([]FieldViolationDTO, 0, len(violations))
+	for _, v := range violations {
+		if v == nil {
+			continue
+		}
+		out = append(out, FieldViolationDTO{
+			Field:   v.GetField(),
+			RuleID:  v.GetRuleId(),
+			Message: v.GetMessage(),
+			Actual:  v.GetActual(),
+			Allowed: v.GetAllowed(),
+		})
+	}
+	return out
+}
+
+func toPostResponseDTO(resp *pb.PostResponse) gin.H {
+	if resp == nil {
+		return gin.H{
+			"post":       nil,
+			"violations": []FieldViolationDTO{},
+		}
+	}
+	return gin.H{
+		"post":       toPostDTO(resp.GetPost()),
+		"violations": toViolationsDTO(resp.GetViolations()),
+	}
+}
+
+func toListPostsResponseDTO(resp *pb.ListPostsResponse) gin.H {
+	if resp == nil {
+		return gin.H{
+			"items":           []SocialPostDTO{},
+			"posts":           []SocialPostDTO{},
+			"next_page_token": "",
+		}
+	}
+	posts := make([]SocialPostDTO, 0, len(resp.GetPosts()))
+	for _, p := range resp.GetPosts() {
+		if dto := toPostDTO(p); dto != nil {
+			posts = append(posts, *dto)
+		}
+	}
+	return gin.H{
+		"items":           posts,
+		"posts":           posts,
+		"next_page_token": resp.GetNextPageToken(),
+	}
+}
+
+func toListAccountsResponseDTO(resp *pb.ListAccountsResponse) gin.H {
+	if resp == nil {
+		return gin.H{
+			"accounts": []SocialAccountDTO{},
+		}
+	}
+	accounts := make([]SocialAccountDTO, 0, len(resp.GetAccounts()))
+	for _, a := range resp.GetAccounts() {
+		if dto := toSocialAccountDTO(a); dto != nil {
+			accounts = append(accounts, *dto)
+		}
+	}
+	return gin.H{
+		"accounts": accounts,
+	}
+}
+
+func toListMediaResponseDTO(resp *pb.ListMediaAssetsResponse) gin.H {
+	if resp == nil {
+		return gin.H{
+			"assets":          []MediaAssetDTO{},
+			"items":           []MediaAssetDTO{},
+			"next_page_token": "",
+		}
+	}
+	assets := make([]MediaAssetDTO, 0, len(resp.GetAssets()))
+	for _, a := range resp.GetAssets() {
+		if dto := toMediaAssetDTO(a); dto != nil {
+			assets = append(assets, *dto)
+		}
+	}
+	return gin.H{
+		"assets":          assets,
+		"items":           assets,
+		"next_page_token": resp.GetNextPageToken(),
+	}
+}
+
+func toValidationMetadataResponseDTO(resp *pb.ListValidationMetadataResponse) gin.H {
+	if resp == nil {
+		return gin.H{
+			"platforms": []ValidationMetadataDTO{},
+		}
+	}
+	platforms := make([]ValidationMetadataDTO, 0, len(resp.GetPlatforms()))
+	for _, vm := range resp.GetPlatforms() {
+		if dto := toValidationMetadataDTO(vm); dto != nil {
+			platforms = append(platforms, *dto)
+		}
+	}
+	return gin.H{
+		"platforms": platforms,
+	}
+}
+
 type AssetOwnershipVerifier interface {
 	VerifySocialAssetReference(*gin.Context, string) bool
 }
@@ -85,7 +398,34 @@ func RegisterRoutes(router *gin.Engine, cfg *config.Config, authClient *auth.Ser
 			writeGRPCError(c, err)
 			return
 		}
-		c.JSON(http.StatusOK, resp)
+		switch v := resp.(type) {
+		case *pb.PostResponse:
+			c.JSON(http.StatusOK, toPostResponseDTO(v))
+		case *pb.ListPostsResponse:
+			c.JSON(http.StatusOK, toListPostsResponseDTO(v))
+		case *pb.ListAccountsResponse:
+			c.JSON(http.StatusOK, toListAccountsResponseDTO(v))
+		case *pb.ListValidationMetadataResponse:
+			c.JSON(http.StatusOK, toValidationMetadataResponseDTO(v))
+		case *pb.ListMediaAssetsResponse:
+			c.JSON(http.StatusOK, toListMediaResponseDTO(v))
+		case *pb.ImportStudioAssetResponse:
+			var assetDTO *MediaAssetDTO
+			if v.GetAsset() != nil {
+				assetDTO = toMediaAssetDTO(v.GetAsset())
+			}
+			c.JSON(http.StatusOK, gin.H{"asset": assetDTO})
+		case *pb.ReorderQueueResponse:
+			posts := make([]SocialPostDTO, 0, len(v.GetPosts()))
+			for _, p := range v.GetPosts() {
+				if dto := toPostDTO(p); dto != nil {
+					posts = append(posts, *dto)
+				}
+			}
+			c.JSON(http.StatusOK, gin.H{"items": posts, "posts": posts})
+		default:
+			c.JSON(http.StatusOK, resp)
+		}
 	}
 
 	routes.POST("", func(c *gin.Context) {
@@ -108,7 +448,7 @@ func RegisterRoutes(router *gin.Engine, cfg *config.Config, authClient *auth.Ser
 			writeGRPCError(c, err)
 			return
 		}
-		c.JSON(http.StatusCreated, resp)
+		c.JSON(http.StatusCreated, toPostResponseDTO(resp))
 	})
 
 	routes.GET("", func(c *gin.Context) {
@@ -330,7 +670,7 @@ func scheduleRoute(c *gin.Context, client pb.SocialPostServiceClient, reschedule
 		writeGRPCError(c, err)
 		return
 	}
-	c.JSON(http.StatusOK, resp)
+	c.JSON(http.StatusOK, toPostResponseDTO(resp))
 }
 
 func requestContext(c *gin.Context) *pb.RequestContext {
