@@ -19,7 +19,7 @@ var schedulableStates = map[string]bool{"draft": true, "scheduled": true, "faile
 func enqueueJobForRendition(ctx context.Context, tx *sql.Tx, postID, renditionID string, renditionVersion int64, runAt string) error {
 	_, err := tx.ExecContext(ctx, `
 		INSERT INTO social_publish_jobs (post_id, rendition_id, rendition_version, dedupe_key, run_at, provider_idempotency_key)
-		VALUES ($1::uuid, $2::uuid, $3, $2 || ':' || $3,
+		VALUES ($1::uuid, $2::uuid, $3::bigint, $2::text || ':' || $3::text,
 		        CASE WHEN $4 = 'NOW()' THEN NOW() ELSE NULLIF($4, '')::timestamptz END,
 		        gen_random_uuid()::text)
 		ON CONFLICT (dedupe_key) DO NOTHING`,
@@ -93,24 +93,51 @@ func runScheduleTx(ctx context.Context, db *sql.DB, userID int64, postID, schedu
 		runAtExpr = scheduledAt
 	}
 
+	// A post entering the "scheduled" state joins the manual publishing
+	// queue automatically (if it isn't already queued), otherwise the Queue
+	// view would never show posts scheduled from the Composer — the queue
+	// column was previously only ever populated by explicit reordering.
+	// PublishNow's targetState is "publishing", not "scheduled", so it never
+	// touches queue_position here; the decision is made in Go (not SQL) to
+	// avoid ambiguous parameter typing from a runtime state comparison.
+	queuePositionFragment := func(userIDParamIdx int) string {
+		if targetState != "scheduled" {
+			return ""
+		}
+		return fmt.Sprintf(`,
+		    queue_position = COALESCE(queue_position,
+		        (SELECT COALESCE(MAX(queue_position), 0) + 1 FROM social_posts WHERE owner_user_id = $%d))`,
+			userIDParamIdx)
+	}
+	queueArgs := func() []interface{} {
+		if targetState != "scheduled" {
+			return nil
+		}
+		return []interface{}{userID}
+	}
+
 	p := &Post{}
 	if scheduledAt == "now" {
-		err = tx.QueryRowContext(ctx, `
+		args := append([]interface{}{targetState, timezone, postID}, queueArgs()...)
+		err = tx.QueryRowContext(ctx, fmt.Sprintf(`
 			UPDATE social_posts SET state = $1, version = version + 1, updated_at = NOW(),
-			    scheduled_at = NOW(), schedule_timezone = $2
+			    scheduled_at = NOW(), schedule_timezone = $2%s
 			WHERE id = $3::uuid
 			RETURNING id::text, base_text, state, version, scheduled_at::text, COALESCE(schedule_timezone, ''),
 			          queue_position, last_error_code, last_error_message, created_at::text, updated_at::text`,
-			targetState, timezone, postID).Scan(&p.ID, &p.BaseText, &p.State, &p.Version, &p.ScheduledAt,
+			queuePositionFragment(4)),
+			args...).Scan(&p.ID, &p.BaseText, &p.State, &p.Version, &p.ScheduledAt,
 			&p.ScheduleTimezone, &p.QueuePosition, &p.LastErrorCode, &p.LastErrorMessage, &p.CreatedAt, &p.UpdatedAt)
 	} else {
-		err = tx.QueryRowContext(ctx, `
+		args := append([]interface{}{targetState, scheduledAt, timezone, postID}, queueArgs()...)
+		err = tx.QueryRowContext(ctx, fmt.Sprintf(`
 			UPDATE social_posts SET state = $1, version = version + 1, updated_at = NOW(),
-			    scheduled_at = $2::timestamptz, schedule_timezone = $3
+			    scheduled_at = $2::timestamptz, schedule_timezone = $3%s
 			WHERE id = $4::uuid
 			RETURNING id::text, base_text, state, version, scheduled_at::text, COALESCE(schedule_timezone, ''),
 			          queue_position, last_error_code, last_error_message, created_at::text, updated_at::text`,
-			targetState, scheduledAt, timezone, postID).Scan(&p.ID, &p.BaseText, &p.State, &p.Version, &p.ScheduledAt,
+			queuePositionFragment(5)),
+			args...).Scan(&p.ID, &p.BaseText, &p.State, &p.Version, &p.ScheduledAt,
 			&p.ScheduleTimezone, &p.QueuePosition, &p.LastErrorCode, &p.LastErrorMessage, &p.CreatedAt, &p.UpdatedAt)
 	}
 	if err != nil {
@@ -200,7 +227,7 @@ func CancelSchedule(ctx context.Context, db *sql.DB, userID int64, postID string
 	p := &Post{}
 	if err := tx.QueryRowContext(ctx, `
 		UPDATE social_posts SET state = 'draft', version = version + 1, updated_at = NOW(),
-		    scheduled_at = NULL, schedule_timezone = NULL
+		    scheduled_at = NULL, schedule_timezone = NULL, queue_position = NULL
 		WHERE id = $1::uuid
 		RETURNING id::text, base_text, state, version, scheduled_at::text, COALESCE(schedule_timezone, ''),
 		          queue_position, last_error_code, last_error_message, created_at::text, updated_at::text`,

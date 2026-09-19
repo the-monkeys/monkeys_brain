@@ -232,7 +232,14 @@ func (s *Service) ListCalendar(ctx context.Context, req *pb.ListPostsRequest) (*
 }
 
 func (s *Service) ListQueue(ctx context.Context, req *pb.ListPostsRequest) (*pb.ListPostsResponse, error) {
-	return s.listPosts(ctx, req, database.ListFilter{QueueOnly: true, OrderByQueue: true})
+	// Scope to posts still on their way out; once a post finishes
+	// publishing (or fails terminally) it should drop off the "upcoming"
+	// queue view even though its queue_position column is left set.
+	return s.listPosts(ctx, req, database.ListFilter{
+		States:       []string{"scheduled", "publishing"},
+		QueueOnly:    true,
+		OrderByQueue: true,
+	})
 }
 
 func (s *Service) listPosts(ctx context.Context, req *pb.ListPostsRequest, base database.ListFilter) (*pb.ListPostsResponse, error) {

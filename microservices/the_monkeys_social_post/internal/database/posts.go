@@ -112,7 +112,7 @@ func CreatePostIdempotent(ctx context.Context, db *sql.DB, userID int64, baseTex
 	}
 	if _, err := tx.ExecContext(ctx, `
 		INSERT INTO social_command_idempotency (owner_user_id, action, idempotency_key, request_hash, response)
-		VALUES ($1, 'post.create', $2, md5($3), jsonb_build_object('post_id', $4))`,
+		VALUES ($1, 'post.create', $2, md5($3), jsonb_build_object('post_id', $4::text))`,
 		userID, idempotencyKey, baseText, p.ID); err != nil {
 		return nil, false, fmt.Errorf("record social post idempotency command: %w", err)
 	}
