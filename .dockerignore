@@ -57,6 +57,17 @@ Makefile
 LICENSE
 requirements.txt
 
+# AI/ML tool metadata, configs, and skills
+.agents/
+Skills/
+skills/
+skills-lock.json
+.cursor/
+.copilot/
+.gemini/
+.anthropic/
+.claude/
+
 # Explicitly allow necessary files
 !go.mod
 !go.sum

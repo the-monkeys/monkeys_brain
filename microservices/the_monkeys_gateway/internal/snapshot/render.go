@@ -266,7 +266,6 @@ func (s *SnapshotService) encodeSegmented(videoPath, overlayPath, outputPath str
 // Overlay PNG is the full branded frame (with alpha hole); video sits beneath it.
 
 func buildFilter(req RenderRequest) string {
-
 	cw, ch := int(req.CanvasW), int(req.CanvasH)
 	fx, fy := int(req.FrameX), int(req.FrameY)
 	fw, fh := int(req.FrameW), int(req.FrameH)
@@ -277,13 +276,12 @@ func buildFilter(req RenderRequest) string {
 
 	return fmt.Sprintf(
 		"color=c=%s:s=%dx%d[bg];"+
-			"[1:v]scale=%d:%d,format=rgba[ov];"+
-			"[bg][ov]overlay=0:0[base];"+
 			"[0:v]scale=%d:%d:force_original_aspect_ratio=increase,crop=%d:%d[v];"+
-			"[base][v]overlay=%d:%d:format=auto:shortest=1[out]",
-		bg, cw, ch, cw, ch, fw, fh, fw, fh, fx, fy,
+			"[bg][v]overlay=%d:%d[under];"+
+			"[1:v]scale=%d:%d,format=rgba[ov];"+
+			"[under][ov]overlay=0:0:format=auto:shortest=1[out]",
+		bg, cw, ch, fw, fh, fw, fh, fx, fy, cw, ch,
 	)
-
 }
 
 func runEncode(videoPath, overlayPath, outputPath string, req RenderRequest, ss, duration float64) error {

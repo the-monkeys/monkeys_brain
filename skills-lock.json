@@ -1,0 +1,89 @@
+{
+  "version": 1,
+  "skills": {
+    "docker": {
+      "source": "codewithmukesh/dotnet-claude-kit",
+      "sourceType": "github",
+      "skillPath": "skills/docker/SKILL.md",
+      "computedHash": "2520a3339657f27ca2ef1e96dc336bafb3b294198c828ca1b088e104c18c6828"
+    },
+    "elasticsearch-index-design": {
+      "source": "elastic/agent-skills",
+      "sourceType": "github",
+      "skillPath": "skills/elasticsearch/elasticsearch-index-design/SKILL.md",
+      "computedHash": "cd8600bea92fec7d32a3ca9b8b424038c41f2a8567bef2aff1569b36b3405e8a"
+    },
+    "elasticsearch-search-relevance": {
+      "source": "elastic/agent-skills",
+      "sourceType": "github",
+      "skillPath": "skills/elasticsearch/elasticsearch-search-relevance/SKILL.md",
+      "computedHash": "e2882aebc40ccc7b7a897c1da11b83c861b9ff4b9306c43e9feff8bbc5f9d201"
+    },
+    "github-actions": {
+      "source": "full-stack-skills/devops-skills",
+      "sourceType": "github",
+      "skillPath": "skills/github-actions/SKILL.md",
+      "computedHash": "54900cad7f6f2c8db42068ef698b843406bb071f4358d46a00df316bf2a92c60"
+    },
+    "golang-gin-api": {
+      "source": "henriqueatila/golang-gin-best-practices",
+      "sourceType": "github",
+      "skillPath": "skills/golang-gin-api/SKILL.md",
+      "computedHash": "d6d1192dfcd91e9078094b46e960de101c7e949ffc822cb6f5ede2d1c0adf4b5"
+    },
+    "golang-gopls": {
+      "source": "samber/cc-skills-golang",
+      "sourceType": "github",
+      "skillPath": "skills/golang-gopls/SKILL.md",
+      "computedHash": "3dec70d143315f5fcb02ac6a3ca9a797bb6cdb82dd34f12be5d15282f9d0b015"
+    },
+    "golang-grpc": {
+      "source": "bobmatnyc/claude-mpm-skills",
+      "sourceType": "github",
+      "skillPath": "toolchains/golang/golang-grpc/SKILL.md",
+      "computedHash": "59311114a8d2642f12a5c7ed482bdbfb9e333cf6dd1084eb62c3d1778c3a7e16"
+    },
+    "mc": {
+      "source": "minio/skills",
+      "sourceType": "github",
+      "skillPath": "mc/SKILL.md",
+      "computedHash": "f99a0de9a5919ae22381be3ef762105ccc816744e48c3ec7d84e2358e518a0ad"
+    },
+    "oauth": {
+      "source": "mcollina/skills",
+      "sourceType": "github",
+      "skillPath": "skills/oauth/SKILL.md",
+      "computedHash": "cf0ec2396dbf94504eb74ac7191c7b7b082dba3ef080a42688e79ca5c856eddc"
+    },
+    "opentelemetry": {
+      "source": "grafana/skills",
+      "sourceType": "github",
+      "skillPath": "skills/grafana-core/opentelemetry/SKILL.md",
+      "computedHash": "abdf5df50836781e22422495d92d5a8cf66906e72bccf1aebaa211058a292401"
+    },
+    "postgresql": {
+      "source": "bagelhole/devops-security-agent-skills",
+      "sourceType": "github",
+      "skillPath": "infrastructure/databases/postgresql/SKILL.md",
+      "computedHash": "f38a12265301cb828ba6514eea04ead63992fcaa573231c52bf43ca715a170a0"
+    },
+    "rabbitmq-development": {
+      "source": "mindrally/skills",
+      "sourceType": "github",
+      "skillPath": "rabbitmq-development/SKILL.md",
+      "computedHash": "5696250d6eb09665ce24ee60d6528f0cd0492c7341a708d0ac2937c307b37a12"
+    },
+    "redis-core": {
+      "source": "redis/agent-skills",
+      "sourceType": "github",
+      "skillPath": "skills/redis-core/SKILL.md",
+      "computedHash": "3b6196044dfba0f77942f20030faab03ca0741c396ba8d759c179710ebd2a7dd"
+    },
+    "redis-security": {
+      "source": "redis/agent-skills",
+      "sourceType": "github",
+      "skillPath": "skills/redis-security/SKILL.md",
+      "computedHash": "34cd6ea1099c4c77ba727a9c64832996f2e6274d459f70060f7c852619978c4b"
+    }
+  }
+}
