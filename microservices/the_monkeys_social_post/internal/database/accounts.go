@@ -119,48 +119,85 @@ func DisconnectAccount(ctx context.Context, db *sql.DB, userID int64, accountID 
 		return 0, 0, ErrNotFound
 	}
 
-	// 2. Cancel pending publish jobs (status IN ('ready', 'retry_wait')).
-	resJobs, err := tx.ExecContext(ctx, `
-		UPDATE social_publish_jobs
-		SET status = 'cancelled', cancelled_at = NOW(), updated_at = NOW()
-		WHERE rendition_id IN (
-			SELECT id FROM social_post_renditions WHERE social_account_id = $1::uuid
-		) AND status IN ('ready', 'retry_wait')`,
+	// 2. Identify scheduled posts that have a rendition on this account, and revert them to draft.
+	rows, err := tx.QueryContext(ctx, `
+		UPDATE social_posts
+		SET state = 'draft', version = version + 1, updated_at = NOW(),
+			scheduled_at = NULL, schedule_timezone = NULL, queue_position = NULL
+		WHERE owner_user_id = $2
+		  AND state = 'scheduled'
+		  AND id IN (
+			  SELECT DISTINCT post_id FROM social_post_renditions WHERE social_account_id = $1::uuid
+		  )
+		RETURNING id::text`,
+		accountID, userID)
+	if err != nil {
+		return 0, 0, fmt.Errorf("revert scheduled posts: %w", err)
+	}
+	defer rows.Close()
+
+	var revertedPostIDs []string
+	for rows.Next() {
+		var pid string
+		if err := rows.Scan(&pid); err != nil {
+			return 0, 0, fmt.Errorf("scan reverted post id: %w", err)
+		}
+		revertedPostIDs = append(revertedPostIDs, pid)
+	}
+	if err := rows.Err(); err != nil {
+		return 0, 0, fmt.Errorf("iterate reverted post ids: %w", err)
+	}
+	draftsReverted := int64(len(revertedPostIDs))
+
+	// 3. For all reverted multi-account posts, revert all other non-published renditions to draft as well.
+	if len(revertedPostIDs) > 0 {
+		_, err = tx.ExecContext(ctx, `
+			UPDATE social_post_renditions
+			SET state = 'draft', version = version + 1, updated_at = NOW()
+			WHERE post_id = ANY($1) AND state <> 'published'`,
+			revertedPostIDs)
+		if err != nil {
+			return 0, 0, fmt.Errorf("revert post renditions to draft: %w", err)
+		}
+	}
+
+	// Also revert any remaining scheduled renditions directly belonging to this account.
+	_, err = tx.ExecContext(ctx, `
+		UPDATE social_post_renditions
+		SET state = 'draft', version = version + 1, updated_at = NOW()
+		WHERE social_account_id = $1::uuid AND state = 'scheduled'`,
 		accountID)
+	if err != nil {
+		return 0, 0, fmt.Errorf("revert account renditions to draft: %w", err)
+	}
+
+	// 4. Cancel pending publish jobs (status IN ('ready', 'retry_wait')):
+	// This cancels jobs directly tied to this account's renditions, plus any pending jobs on reverted posts.
+	var resJobs sql.Result
+	if len(revertedPostIDs) > 0 {
+		resJobs, err = tx.ExecContext(ctx, `
+			UPDATE social_publish_jobs
+			SET status = 'cancelled', cancelled_at = NOW(), updated_at = NOW()
+			WHERE (
+				rendition_id IN (SELECT id FROM social_post_renditions WHERE social_account_id = $1::uuid)
+				OR post_id = ANY($2)
+			) AND status IN ('ready', 'retry_wait')`,
+			accountID, revertedPostIDs)
+	} else {
+		resJobs, err = tx.ExecContext(ctx, `
+			UPDATE social_publish_jobs
+			SET status = 'cancelled', cancelled_at = NOW(), updated_at = NOW()
+			WHERE rendition_id IN (
+				SELECT id FROM social_post_renditions WHERE social_account_id = $1::uuid
+			) AND status IN ('ready', 'retry_wait')`,
+			accountID)
+	}
 	if err != nil {
 		return 0, 0, fmt.Errorf("cancel pending publish jobs: %w", err)
 	}
 	cancelledJobs, err := resJobs.RowsAffected()
 	if err != nil {
 		return 0, 0, fmt.Errorf("rows affected cancel jobs: %w", err)
-	}
-
-	// 3. Revert scheduled posts to draft.
-	resPosts, err := tx.ExecContext(ctx, `
-		UPDATE social_posts
-		SET state = 'draft', updated_at = NOW()
-		WHERE owner_user_id = $2
-		  AND state = 'scheduled'
-		  AND id IN (
-			  SELECT DISTINCT post_id FROM social_post_renditions WHERE social_account_id = $1::uuid
-		  )`,
-		accountID, userID)
-	if err != nil {
-		return 0, 0, fmt.Errorf("revert scheduled posts: %w", err)
-	}
-	draftsReverted, err := resPosts.RowsAffected()
-	if err != nil {
-		return 0, 0, fmt.Errorf("rows affected revert posts: %w", err)
-	}
-
-	// Also revert renditions of this account to draft if scheduled.
-	_, err = tx.ExecContext(ctx, `
-		UPDATE social_post_renditions
-		SET state = 'draft', updated_at = NOW()
-		WHERE social_account_id = $1::uuid AND state = 'scheduled'`,
-		accountID)
-	if err != nil {
-		return 0, 0, fmt.Errorf("revert renditions to draft: %w", err)
 	}
 
 	if err := tx.Commit(); err != nil {

@@ -300,3 +300,136 @@ func TestValidationErrors(t *testing.T) {
 		t.Fatalf("expected NotFound for unknown account, got %v", err)
 	}
 }
+
+func TestDisconnectAccountMultiAccountPostReversion(t *testing.T) {
+	db := getTestDB(t)
+	defer db.Close()
+
+	userID, accountID := setupTestUser(t, db)
+	svc := New(&database.Store{DB: db})
+	ctx := context.Background()
+
+	reqCtx := &pb.RequestContext{AccountId: accountID}
+
+	// 1. Link Account A and Account B
+	accA, err := svc.LinkAccount(ctx, &pb.LinkAccountRequest{
+		Context:            reqCtx,
+		Platform:           "x",
+		Handle:             "@acc_a_svc",
+		DisplayName:        "Account A",
+		ExternalAccountRef: "mock:x:svc_a",
+		IsMock:             true,
+	})
+	if err != nil {
+		t.Fatalf("link accA: %v", err)
+	}
+	accB, err := svc.LinkAccount(ctx, &pb.LinkAccountRequest{
+		Context:            reqCtx,
+		Platform:           "linkedin",
+		Handle:             "@acc_b_svc",
+		DisplayName:        "Account B",
+		ExternalAccountRef: "mock:linkedin:svc_b",
+		IsMock:             true,
+	})
+	if err != nil {
+		t.Fatalf("link accB: %v", err)
+	}
+
+	// 2. Create a scheduled post
+	var postID string
+	var initialVersion int64
+	err = db.QueryRow(`
+		INSERT INTO social_posts (owner_user_id, base_text, state, version, scheduled_at, schedule_timezone)
+		VALUES ($1, 'Service multi-platform post', 'scheduled', 1, NOW() + interval '3 days', 'UTC')
+		RETURNING id::text, version`, userID).Scan(&postID, &initialVersion)
+	if err != nil {
+		t.Fatalf("create scheduled post: %v", err)
+	}
+
+	// 3. Create renditions for both accounts
+	var rendAID, rendBID string
+	err = db.QueryRow(`
+		INSERT INTO social_post_renditions (post_id, social_account_id, platform, state, version)
+		VALUES ($1::uuid, $2::uuid, 'x', 'scheduled', 1)
+		RETURNING id::text`, postID, accA.GetId()).Scan(&rendAID)
+	if err != nil {
+		t.Fatalf("create rendA: %v", err)
+	}
+	err = db.QueryRow(`
+		INSERT INTO social_post_renditions (post_id, social_account_id, platform, state, version)
+		VALUES ($1::uuid, $2::uuid, 'linkedin', 'scheduled', 1)
+		RETURNING id::text`, postID, accB.GetId()).Scan(&rendBID)
+	if err != nil {
+		t.Fatalf("create rendB: %v", err)
+	}
+
+	// 4. Create publish jobs for both renditions
+	var jobAID, jobBID string
+	err = db.QueryRow(`
+		INSERT INTO social_publish_jobs (post_id, rendition_id, rendition_version, dedupe_key, status, run_at, provider_idempotency_key)
+		VALUES ($1::uuid, $2::uuid, 1, $2::text || ':1', 'ready', NOW() + interval '3 days', 'svc_job_a')
+		RETURNING id::text`, postID, rendAID).Scan(&jobAID)
+	if err != nil {
+		t.Fatalf("create jobA: %v", err)
+	}
+	err = db.QueryRow(`
+		INSERT INTO social_publish_jobs (post_id, rendition_id, rendition_version, dedupe_key, status, run_at, provider_idempotency_key)
+		VALUES ($1::uuid, $2::uuid, 1, $2::text || ':1', 'ready', NOW() + interval '3 days', 'svc_job_b')
+		RETURNING id::text`, postID, rendBID).Scan(&jobBID)
+	if err != nil {
+		t.Fatalf("create jobB: %v", err)
+	}
+
+	// 5. Disconnect Account A via service
+	discResp, err := svc.DisconnectAccount(ctx, &pb.DisconnectAccountRequest{
+		Context:   reqCtx,
+		AccountId: accA.GetId(),
+	})
+	if err != nil {
+		t.Fatalf("DisconnectAccount failed: %v", err)
+	}
+	if !discResp.GetSuccess() {
+		t.Fatalf("expected success true, got false")
+	}
+	if discResp.GetDraftsRevertedCount() != 1 {
+		t.Fatalf("expected 1 draft reverted, got %d", discResp.GetDraftsRevertedCount())
+	}
+	if discResp.GetCancelledJobsCount() != 2 {
+		t.Fatalf("expected 2 cancelled jobs, got %d", discResp.GetCancelledJobsCount())
+	}
+
+	// 6. Verify post state = 'draft', version incremented, schedule cleared
+	var postState, schedAt, schedTz sql.NullString
+	var postVersion int64
+	err = db.QueryRow(`
+		SELECT state, version, scheduled_at::text, schedule_timezone
+		FROM social_posts WHERE id = $1::uuid`, postID).Scan(&postState, &postVersion, &schedAt, &schedTz)
+	if err != nil {
+		t.Fatalf("query post: %v", err)
+	}
+	if postState.String != "draft" {
+		t.Fatalf("expected post state 'draft', got %q", postState.String)
+	}
+	if postVersion != initialVersion+1 {
+		t.Fatalf("expected version %d, got %d", initialVersion+1, postVersion)
+	}
+	if schedAt.Valid || schedTz.Valid {
+		t.Fatalf("expected cleared schedule, got schedAt=%v, schedTz=%v", schedAt, schedTz)
+	}
+
+	// 7. Verify both renditions are in draft
+	var rendAState, rendBState string
+	_ = db.QueryRow("SELECT state FROM social_post_renditions WHERE id = $1::uuid", rendAID).Scan(&rendAState)
+	_ = db.QueryRow("SELECT state FROM social_post_renditions WHERE id = $1::uuid", rendBID).Scan(&rendBState)
+	if rendAState != "draft" || rendBState != "draft" {
+		t.Fatalf("expected both renditions in draft, got rendA=%s, rendB=%s", rendAState, rendBState)
+	}
+
+	// 8. Verify both jobs are cancelled
+	var jobAStatus, jobBStatus string
+	_ = db.QueryRow("SELECT status FROM social_publish_jobs WHERE id = $1::uuid", jobAID).Scan(&jobAStatus)
+	_ = db.QueryRow("SELECT status FROM social_publish_jobs WHERE id = $1::uuid", jobBID).Scan(&jobBStatus)
+	if jobAStatus != "cancelled" || jobBStatus != "cancelled" {
+		t.Fatalf("expected both jobs cancelled, got jobA=%s, jobB=%s", jobAStatus, jobBStatus)
+	}
+}
