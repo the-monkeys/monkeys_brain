@@ -4,9 +4,12 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"sync"
 	"time"
 
+	grouppb "github.com/the-monkeys/the_monkeys/apis/serviceconn/gateway_group/pb"
+	"github.com/the-monkeys/the_monkeys/common/audience"
 	"github.com/the-monkeys/the_monkeys/config"
 	"github.com/the-monkeys/the_monkeys/constants"
 	"github.com/the-monkeys/the_monkeys/microservices/rabbitmq"
@@ -14,6 +17,7 @@ import (
 	"github.com/the-monkeys/the_monkeys/microservices/the_monkeys_blog/internal/models"
 	"github.com/the-monkeys/the_monkeys/microservices/the_monkeys_blog/internal/seo"
 	"go.uber.org/zap"
+	"google.golang.org/grpc"
 )
 
 const (
@@ -29,6 +33,10 @@ const (
 	MaxFailedCycles = 5
 )
 
+type GroupAuthorizer interface {
+	Authorize(ctx context.Context, in *grouppb.AuthorizeGroupReq, opts ...grpc.CallOption) (*grouppb.AuthorizeGroupResp, error)
+}
+
 // Scheduler handles the automatic publishing of scheduled blogs
 type Scheduler struct {
 	db         database.ElasticsearchStorage
@@ -36,6 +44,7 @@ type Scheduler struct {
 	qConn      *rabbitmq.ConnManager
 	config     *config.Config
 	logger     *zap.SugaredLogger
+	groups     GroupAuthorizer
 	stopCh     chan struct{}
 	wg         sync.WaitGroup
 	mu         sync.Mutex
@@ -49,6 +58,7 @@ func NewScheduler(
 	qConn *rabbitmq.ConnManager,
 	cfg *config.Config,
 	logger *zap.SugaredLogger,
+	groups GroupAuthorizer,
 ) *Scheduler {
 	return &Scheduler{
 		db:         db,
@@ -56,6 +66,7 @@ func NewScheduler(
 		qConn:      qConn,
 		config:     cfg,
 		logger:     logger,
+		groups:     groups,
 		stopCh:     make(chan struct{}),
 	}
 }
@@ -205,12 +216,19 @@ func (s *Scheduler) publishBlogWithRetry(ctx context.Context, blogId, accountId 
 // publishBlog handles the actual publishing of a single blog.
 // Uses optimistic concurrency control to prevent duplicate publishes across instances.
 func (s *Scheduler) publishBlog(ctx context.Context, blogId, accountId string, dueBlog database.DueScheduledBlog) error {
-	// Use optimistic concurrency control to prevent duplicate publishes
 	seqNo := dueBlog.SeqNo
 	primaryTerm := dueBlog.PrimaryTerm
 
-	// Update blog status in Elasticsearch with version check
-	_, err := s.db.PublishScheduledBlog(ctx, blogId, &seqNo, &primaryTerm)
+	groupSlug := audience.DocGroupSlug(dueBlog.Source)
+	clearGroup, err := s.mustClearScheduledGroup(ctx, accountId, groupSlug)
+	if err != nil {
+		return err
+	}
+	if clearGroup {
+		groupSlug = ""
+	}
+
+	_, err = s.db.PublishScheduledBlog(ctx, blogId, &seqNo, &primaryTerm, clearGroup)
 	if err != nil {
 		return err
 	}
@@ -232,6 +250,8 @@ func (s *Scheduler) publishBlog(ctx context.Context, blogId, accountId string, d
 		Action:     constants.BLOG_PUBLISH,
 		BlogStatus: constants.BlogStatusPublished,
 		Tags:       tags,
+		GroupSlug:  groupSlug,
+		Audience:   audience.DocAudience(dueBlog.Source),
 	}
 
 	msgBytes, err := json.Marshal(msg)
@@ -247,6 +267,10 @@ func (s *Scheduler) publishBlog(ctx context.Context, blogId, accountId string, d
 
 	// Handle SEO (async, non-blocking)
 	go func() {
+		if audience.IsGroupOnly(audience.DocAudience(dueBlog.Source)) {
+			s.logger.Infof("Scheduler: skipping SEO for group-only blog %s", blogId)
+			return
+		}
 		slug := ""
 		if s, ok := dueBlog.Source["slug"].(string); ok {
 			slug = s
@@ -261,4 +285,23 @@ func (s *Scheduler) publishBlog(ctx context.Context, blogId, accountId string, d
 	}()
 
 	return nil
+}
+
+func (s *Scheduler) mustClearScheduledGroup(ctx context.Context, accountID, groupSlug string) (bool, error) {
+	if groupSlug == "" {
+		return false, nil
+	}
+	if s.groups == nil {
+		return false, fmt.Errorf("groups client not configured")
+	}
+	authz, err := s.groups.Authorize(ctx, &grouppb.AuthorizeGroupReq{
+		AccountId: accountID,
+		GroupSlug: groupSlug,
+	})
+	if err != nil {
+		return false, err
+	}
+	exists := authz != nil && authz.GetGroupExists()
+	member := authz != nil && authz.GetIsMember() && authz.GetMemberStatus() == "active"
+	return audience.ShouldDetachScheduledGroup(groupSlug, exists, member), nil
 }

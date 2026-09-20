@@ -16,6 +16,30 @@ import (
 )
 
 const storageRoutingKey = 0
+const usersRoutingKey = 1
+const blogRoutingKey = 3
+
+func groupDeleteRoutingKeyIndexes(n int) []int {
+	var keys []int
+	if n > storageRoutingKey {
+		keys = append(keys, storageRoutingKey)
+	}
+	if n > blogRoutingKey {
+		keys = append(keys, blogRoutingKey)
+	}
+	return keys
+}
+
+func groupAudienceCoerceRoutingKeyIndexes(n int) []int {
+	var keys []int
+	if n > usersRoutingKey {
+		keys = append(keys, usersRoutingKey)
+	}
+	if n > blogRoutingKey {
+		keys = append(keys, blogRoutingKey)
+	}
+	return keys
+}
 
 // GroupService is the gRPC surface for communities. It owns business
 // orchestration and response shaping; the database layer owns persistence and
@@ -51,6 +75,7 @@ func (s *GroupService) UpdateGroup(ctx context.Context, req *pb.UpdateGroupReq) 
 	if err != nil {
 		return nil, err
 	}
+	s.publishAudienceCoerce(group)
 	return &pb.GroupResp{Message: "group updated", Group: group}, nil
 }
 
@@ -109,7 +134,11 @@ func (s *GroupService) RemoveUserFromGroups(ctx context.Context, req *pb.Account
 }
 
 func (s *GroupService) publishStorageDelete(slug string) {
-	if s.qConn == nil || s.cfg == nil || len(s.cfg.RabbitMQ.RoutingKeys) <= storageRoutingKey {
+	if s.qConn == nil || s.cfg == nil {
+		return
+	}
+	indexes := groupDeleteRoutingKeyIndexes(len(s.cfg.RabbitMQ.RoutingKeys))
+	if len(indexes) == 0 {
 		return
 	}
 	body, err := json.Marshal(interservice.Message{
@@ -120,12 +149,48 @@ func (s *GroupService) publishStorageDelete(slug string) {
 		s.log.Errorw("failed to marshal group delete", "slug", slug, "err", err)
 		return
 	}
-	rk := s.cfg.RabbitMQ.RoutingKeys[storageRoutingKey]
-	go func() {
-		if err := s.qConn.PublishReliable(s.cfg.RabbitMQ.Exchange, rk, body, s.cfg.RabbitMQ.MaxRetries); err != nil {
-			s.log.Errorw("failed to publish group delete to storage", "slug", slug, "routing_key", rk, "err", err)
-		}
-	}()
+	for _, i := range indexes {
+		rk := s.cfg.RabbitMQ.RoutingKeys[i]
+		go func(rk string) {
+			if err := s.qConn.PublishReliable(s.cfg.RabbitMQ.Exchange, rk, body, s.cfg.RabbitMQ.MaxRetries); err != nil {
+				s.log.Errorw("failed to publish group delete", "slug", slug, "routing_key", rk, "err", err)
+			}
+		}(rk)
+	}
+}
+
+func (s *GroupService) publishAudienceCoerce(group *pb.Group) {
+	if group == nil {
+		return
+	}
+	vis := group.GetVisibility()
+	if vis != "private" && vis != "unlisted" {
+		return
+	}
+	slug := group.GetSlug()
+	if s.qConn == nil || s.cfg == nil || slug == "" {
+		return
+	}
+	indexes := groupAudienceCoerceRoutingKeyIndexes(len(s.cfg.RabbitMQ.RoutingKeys))
+	if len(indexes) == 0 {
+		return
+	}
+	body, err := json.Marshal(interservice.Message{
+		Action:    constants.GROUP_AUDIENCE_COERCE,
+		GroupSlug: slug,
+	})
+	if err != nil {
+		s.log.Errorw("failed to marshal group audience coerce", "slug", slug, "err", err)
+		return
+	}
+	for _, i := range indexes {
+		rk := s.cfg.RabbitMQ.RoutingKeys[i]
+		go func(rk string) {
+			if err := s.qConn.PublishReliable(s.cfg.RabbitMQ.Exchange, rk, body, s.cfg.RabbitMQ.MaxRetries); err != nil {
+				s.log.Errorw("failed to publish group audience coerce", "slug", slug, "routing_key", rk, "err", err)
+			}
+		}(rk)
+	}
 }
 
 func (s *GroupService) GetGroup(ctx context.Context, req *pb.GetGroupReq) (*pb.GroupResp, error) {

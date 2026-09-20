@@ -61,8 +61,9 @@ type UserDb interface {
 	GetUsersByAccountIds(accIds []string) ([]models.UserProfileRes, error)
 	// Update queries
 	UpdateUserProfile(username string, dbUserInfo *models.UserProfileRes) error
-	UpdateBlogStatusToPublish(blogId string, status string) error
+	UpdateBlogStatusToPublish(msg models.TheMonkeysMessage) error
 	UpdateBlogStatusToDraft(blogId string, status string) error
+	CoerceBlogAudienceByGroupSlug(groupSlug string) error
 
 	// Business card queries
 	CreateBusinessCard(card *models.BusinessCard) (*models.BusinessCard, error)
@@ -624,7 +625,7 @@ func (uh *uDBHandler) AddBlogWithId(msg models.TheMonkeysMessage) error {
 		return fmt.Errorf("cannot find user by account_id %s: %w", msg.AccountId, err)
 	}
 
-	stmt, err := tx.Prepare(`INSERT INTO blog (user_id, blog_id, status) VALUES ($1, $2, $3) RETURNING id;`)
+	stmt, err := tx.Prepare(`INSERT INTO blog (user_id, blog_id, status, group_id, audience) VALUES ($1, $2, $3, $4, $5) RETURNING id;`)
 	if err != nil {
 		uh.log.Errorf("cannot prepare statement to add blog into the blog: %v", err)
 		return err
@@ -636,7 +637,7 @@ func (uh *uDBHandler) AddBlogWithId(msg models.TheMonkeysMessage) error {
 	}()
 
 	var blogId int64
-	err = stmt.QueryRow(userId, msg.BlogId, msg.BlogStatus).Scan(&blogId)
+	err = stmt.QueryRow(userId, msg.BlogId, msg.BlogStatus, resolveBlogGroupID(tx, msg, uh.log), pointerAudience(msg.Audience)).Scan(&blogId)
 	if err != nil {
 		uh.log.Errorf("cannot execute query to add blog into the blog: %v", err)
 		return err
@@ -708,15 +709,59 @@ func (uh *uDBHandler) GetUserActivities(userId int64) (*pb.UserActivityResp, err
 	}, nil
 }
 
-func (uh *uDBHandler) UpdateBlogStatusToPublish(blogId string, status string) error {
-	uh.log.Debugf("the blog %v is being published", blogId)
-	row := uh.db.QueryRow("UPDATE blog SET status = $1 WHERE blog_id = $2", status, blogId)
-	if row.Err() != nil {
-		return row.Err()
+func (uh *uDBHandler) UpdateBlogStatusToPublish(msg models.TheMonkeysMessage) error {
+	uh.log.Debugf("the blog %v is being published", msg.BlogId)
+	_, err := uh.db.Exec(
+		`UPDATE blog SET status = $1, group_id = $2, audience = $3 WHERE blog_id = $4`,
+		msg.BlogStatus,
+		resolveBlogGroupID(uh.db, msg, uh.log),
+		pointerAudience(msg.Audience),
+		msg.BlogId,
+	)
+	if err != nil {
+		return err
 	}
 
-	uh.log.Debugf("the blog %v is successfully published", blogId)
+	uh.log.Debugf("the blog %v is successfully published", msg.BlogId)
 	return nil
+}
+
+const coerceBlogAudienceSQL = `UPDATE blog SET audience = 'group_only' WHERE group_id = (SELECT id FROM groups WHERE slug = $1) AND audience = 'public'`
+
+func (uh *uDBHandler) CoerceBlogAudienceByGroupSlug(groupSlug string) error {
+	if groupSlug == "" {
+		return fmt.Errorf("group slug cannot be empty")
+	}
+	_, err := uh.db.Exec(coerceBlogAudienceSQL, groupSlug)
+	return err
+}
+
+func pointerAudience(raw string) string {
+	if raw == "group_only" {
+		return "group_only"
+	}
+	return "public"
+}
+
+type groupLookup interface {
+	QueryRow(query string, args ...any) *sql.Row
+}
+
+func resolveBlogGroupID(q groupLookup, msg models.TheMonkeysMessage, log *zap.SugaredLogger) interface{} {
+	if msg.GroupId != 0 {
+		return msg.GroupId
+	}
+	if msg.GroupSlug == "" {
+		return nil
+	}
+	var id int64
+	if err := q.QueryRow(`SELECT id FROM groups WHERE slug = $1`, msg.GroupSlug).Scan(&id); err != nil {
+		if log != nil {
+			log.Warnf("cannot resolve group slug %s for blog %s: %v", msg.GroupSlug, msg.BlogId, err)
+		}
+		return nil
+	}
+	return id
 }
 
 func (uh *uDBHandler) CheckIfAccIdExist(accountId string) (*models.TheMonkeysUser, error) {

@@ -60,6 +60,7 @@ const (
 	// Storage fan-out after a successful unpaid hard delete (RoutingKeys[0]).
 	EVENT_DELETE = "event_delete"
 	GROUP_DELETE = "group_delete"
+	GROUP_AUDIENCE_COERCE = "group_audience_coerce"
 )
 
 // RestrictedUsernames contains usernames that are not allowed for user registration

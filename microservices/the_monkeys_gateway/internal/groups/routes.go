@@ -2,6 +2,7 @@ package groups
 
 import (
 	"github.com/gin-gonic/gin"
+	blogpb "github.com/the-monkeys/the_monkeys/apis/serviceconn/gateway_blog/pb"
 	eventpb "github.com/the-monkeys/the_monkeys/apis/serviceconn/gateway_event/pb"
 	"github.com/the-monkeys/the_monkeys/config"
 	"github.com/the-monkeys/the_monkeys/microservices/the_monkeys_gateway/internal/auth"
@@ -35,6 +36,7 @@ func RegisterGroupRouter(
 	cfg *config.Config,
 	authClient *auth.ServiceClient,
 	eventsClient eventpb.EventServiceClient,
+	blogClient blogpb.BlogServiceClient,
 	storageSvc *storage_v2.Service,
 	lg *zap.SugaredLogger,
 ) *GroupServiceClient {
@@ -42,6 +44,7 @@ func RegisterGroupRouter(
 
 	gsc := &GroupServiceClient{
 		Client: NewGroupServiceClient(cfg, lg),
+		Blogs:  blogClient,
 		log:    lg,
 	}
 	gec := &GroupEventClient{
@@ -57,6 +60,7 @@ func RegisterGroupRouter(
 
 	pub.GET("", mware.AuthOptional, gsc.ListGroups)
 	pub.GET("/user/:username", mware.AuthOptional, gsc.GetUserGroups)
+	pub.GET("/:slug/blogs", mware.AuthOptional, gsc.ListGroupBlogs)
 	pub.GET("/:slug", mware.AuthOptional, gsc.GetGroup)
 
 	// -------------------------------------------------------------------

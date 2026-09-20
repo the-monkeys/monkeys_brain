@@ -24,7 +24,7 @@ import (
 // Elasticsearch writes from the streaming auto-save loop.
 func computeContentFingerprint(req map[string]interface{}) [32]byte {
 	content := make(map[string]interface{}, 4)
-	for _, key := range []string{"blog", "tags", "slug", "owner_account_id"} {
+	for _, key := range []string{"blog", "tags", "slug", "owner_account_id", "group_slug", "audience"} {
 		if v, ok := req[key]; ok {
 			content[key] = v
 		}
@@ -184,6 +184,12 @@ func (blog *BlogService) DraftBlogV2(stream grpc.BidiStreamingServer[anypb.Any, 
 				IpAddress:  ip,
 				Client:     client,
 			}
+			if slug, ok := req["group_slug"].(string); ok {
+				msg.GroupSlug = slug
+			}
+			if aud, ok := req["audience"].(string); ok {
+				msg.Audience = aud
+			}
 			blog.logger.Debugw("DraftBlogV2: marshalling RabbitMQ message",
 				"blog_id", blogId,
 				"owner", ownerAccountId,
@@ -311,6 +317,34 @@ func (blog *BlogService) GetBlogs(req *pb.GetBlogsReq, stream pb.BlogService_Get
 	var blogs []map[string]interface{}
 	var err error
 
+	if req.GetGroupSlug() != "" {
+		blog.logger.Debug("Fetching published blogs by group slug")
+		blogs, err = blog.osClient.GetPublishedBlogsByGroupSlug(stream.Context(), req.GetGroupSlug(), req.GetIncludeGroupOnly(), req.Limit, req.Offset)
+		if err != nil {
+			blog.logger.Errorf("Error fetching blogs by group: %v", err)
+			return status.Errorf(codes.Internal, "Error fetching blogs by group: %v", err)
+		}
+
+		removeKeyFromBlogs(blogs, "action")
+		removeKeyFromBlogs(blogs, "Ip")
+		removeKeyFromBlogs(blogs, "Client")
+
+		blogBytes, err := json.Marshal(blogs)
+		if err != nil {
+			blog.logger.Errorf("Error marshalling blogs: %v", err)
+			return status.Errorf(codes.Internal, "Error marshalling blogs: %v", err)
+		}
+
+		if err := stream.Send(&anypb.Any{
+			TypeUrl: "the-monkeys/the-monkeys/apis/serviceconn/gateway_blog/pb.BlogResponse",
+			Value:   blogBytes,
+		}); err != nil {
+			return err
+		}
+
+		return nil
+	}
+
 	// Check if specific tags are requested
 	if len(req.Tags) > 0 {
 		if req.IsDraft {
@@ -349,14 +383,14 @@ func (blog *BlogService) GetBlogs(req *pb.GetBlogsReq, stream pb.BlogService_Get
 	// No tags provided, handle based on draft or published status
 	if req.IsDraft {
 		blog.logger.Debug("Fetching draft blogs by account ID")
-		blogs, err = blog.osClient.GetBlogsByAccountId(stream.Context(), req.AccountId, true, req.Limit, req.Offset)
+		blogs, err = blog.osClient.GetBlogsByAccountId(stream.Context(), req.AccountId, true, false, req.Limit, req.Offset)
 		if err != nil {
 			blog.logger.Errorf("Error fetching draft blogs by account ID: %v", err)
 			return status.Errorf(codes.Internal, "Error fetching draft blogs by account ID: %v", err)
 		}
 	} else {
 		blog.logger.Debug("Fetching published blogs by account ID")
-		blogs, err = blog.osClient.GetBlogsByAccountId(stream.Context(), req.AccountId, false, req.Limit, req.Offset)
+		blogs, err = blog.osClient.GetBlogsByAccountId(stream.Context(), req.AccountId, false, req.GetExcludeGroupOnly(), req.Limit, req.Offset)
 		if err != nil {
 			blog.logger.Errorf("Error fetching published blogs by account ID: %v", err)
 			return status.Errorf(codes.Internal, "Error fetching published blogs by account ID: %v", err)
@@ -695,13 +729,13 @@ func (blog *BlogService) MetaGetUsersBlogs(req *pb.BlogListReq, stream pb.BlogSe
 
 	if req.IsDraft {
 		blog.logger.Debug("Fetching draft blogs by account ID")
-		blogs, count, err = blog.osClient.GetBlogsMetaByAccountId(stream.Context(), req.AccountId, true, false, req.Limit, req.Offset)
+		blogs, count, err = blog.osClient.GetBlogsMetaByAccountId(stream.Context(), req.AccountId, true, false, false, req.Limit, req.Offset)
 	} else if req.IsScheduled {
 		blog.logger.Debug("Fetching schedule blogs by account ID")
-		blogs, count, err = blog.osClient.GetBlogsMetaByAccountId(stream.Context(), req.AccountId, true, true, req.Limit, req.Offset)
+		blogs, count, err = blog.osClient.GetBlogsMetaByAccountId(stream.Context(), req.AccountId, true, true, false, req.Limit, req.Offset)
 	} else {
 		blog.logger.Debug("Fetching published blogs by account ID")
-		blogs, count, err = blog.osClient.GetBlogsMetaByAccountId(stream.Context(), req.AccountId, false, false, req.Limit, req.Offset)
+		blogs, count, err = blog.osClient.GetBlogsMetaByAccountId(stream.Context(), req.AccountId, false, false, req.GetExcludeGroupOnly(), req.Limit, req.Offset)
 	}
 
 	if err != nil {

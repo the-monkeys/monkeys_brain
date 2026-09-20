@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -15,6 +16,8 @@ import (
 
 	activity_pb "github.com/the-monkeys/the_monkeys/apis/serviceconn/gateway_activity/pb"
 	"github.com/the-monkeys/the_monkeys/apis/serviceconn/gateway_blog/pb"
+	grouppb "github.com/the-monkeys/the_monkeys/apis/serviceconn/gateway_group/pb"
+	"github.com/the-monkeys/the_monkeys/common/audience"
 	"github.com/the-monkeys/the_monkeys/config"
 	"github.com/the-monkeys/the_monkeys/constants"
 	"github.com/the-monkeys/the_monkeys/microservices/the_monkeys_gateway/internal/activity"
@@ -43,6 +46,7 @@ type BlogServiceClient struct {
 	Client      pb.BlogServiceClient
 	UserCli     *user_service.UserServiceClient
 	ActivityCli activity_pb.ActivityServiceClient
+	Groups      grouppb.GroupServiceClient
 	config      *config.Config
 	log         *zap.SugaredLogger
 }
@@ -177,12 +181,12 @@ func RegisterBlogRouter(router *gin.Engine, cfg *config.Config, authClient *auth
 		routesV2.POST("/tags", rateLimiter, blogClient.GetBlogsByTags) // Get blogs by tags
 		// Get blogs by username, not auth required as it is public and can be visible at users profile
 		// routesV2.GET("/all/:username", rateLimiter, blogClient.UsersBlogs)          // Update of blogClient.AllPublishesByUserName
-		routesV2.GET("/user/:username", rateLimiter, blogClient.MetaUsersPublished) // Get metadata of user's published blogs
+		routesV2.GET("/user/:username", rateLimiter, mware.AuthOptional, blogClient.MetaUsersPublished) // Get metadata of user's published blogs
 		// Get published blog by blog_id
 
-		routesV2.GET("/:blog_id/stats", rateLimiter, blogClient.GetBlogStats)          // Get blog stats
-		routesV2.GET("/:blog_id", rateLimiter, blogClient.GetPublishedBlogByBlogId)    // Get published blog by blog_id
-		routesV2.POST("/:blog_id/activity", rateLimiter, blogClient.TrackBlogActivity) // Track blog interaction (read duration etc)
+		routesV2.GET("/:blog_id/stats", rateLimiter, mware.AuthOptional, blogClient.GetBlogStats)                           // Get blog stats
+		routesV2.GET("/:blog_id", rateLimiter, mware.AuthOptional, blogClient.GetPublishedBlogByBlogId) // Get published blog by blog_id
+		routesV2.POST("/:blog_id/activity", rateLimiter, mware.AuthOptional, blogClient.TrackBlogActivity)                  // Track blog interaction (read duration etc)
 
 		// User Tags API
 		routesV2.GET("/user-tags/:username", rateLimiter, blogClient.GetUserTags) // Get user tags
@@ -479,11 +483,25 @@ func (asc *BlogServiceClient) PublishBlogById(ctx *gin.Context) {
 
 	id := ctx.Param("blog_id")
 
+	groupSlug := strings.TrimSpace(publishBody.GroupSlug)
+	aud := audience.Normalize(publishBody.Audience)
+	if groupSlug != "" {
+		resolved, ok := asc.resolvePublishGroup(ctx, accId, groupSlug, publishBody.Audience)
+		if !ok {
+			return
+		}
+		aud = resolved
+	} else {
+		aud = audience.AudiencePublic
+	}
+
 	resp, err := asc.Client.PublishBlog(context.Background(), &pb.PublishBlogReq{
 		BlogId:     id,
 		AccountId:  accId,
 		Tags:       publishBody.Tags,
 		Slug:       publishBody.Slug,
+		GroupSlug:  groupSlug,
+		Audience:   aud,
 		ClientInfo: asc.createClientInfo(ctx),
 	})
 
@@ -525,6 +543,18 @@ func (asc *BlogServiceClient) ScheduleBlog(ctx *gin.Context) {
 
 	id := ctx.Param("blog_id")
 
+	groupSlug := strings.TrimSpace(scheduleBody.GroupSlug)
+	aud := audience.Normalize(scheduleBody.Audience)
+	if groupSlug != "" {
+		resolved, ok := asc.resolvePublishGroup(ctx, accId, groupSlug, scheduleBody.Audience)
+		if !ok {
+			return
+		}
+		aud = resolved
+	} else {
+		aud = audience.AudiencePublic
+	}
+
 	resp, err := asc.Client.ScheduleBlog(
 		context.Background(),
 		&pb.ScheduleBlogReq{
@@ -533,6 +563,8 @@ func (asc *BlogServiceClient) ScheduleBlog(ctx *gin.Context) {
 				AccountId:  accId,
 				Tags:       scheduleBody.Tags,
 				Slug:       scheduleBody.Slug,
+				GroupSlug:  groupSlug,
+				Audience:   aud,
 				ClientInfo: asc.createClientInfo(ctx),
 			},
 			ScheduleTime: timestamppb.New(scheduleBody.ScheduleTime),
@@ -1517,11 +1549,12 @@ func (asc *BlogServiceClient) UsersBlogs(ctx *gin.Context) {
 	}
 
 	stream, err := asc.Client.GetBlogs(context.Background(), &pb.GetBlogsReq{
-		AccountId:  userInfo.AccountId,
-		IsDraft:    false,
-		Limit:      int32(limitInt),
-		Offset:     int32(offsetInt),
-		ClientInfo: asc.createClientInfo(ctx),
+		AccountId:        userInfo.AccountId,
+		IsDraft:          false,
+		Limit:            int32(limitInt),
+		Offset:           int32(offsetInt),
+		ExcludeGroupOnly: ctx.GetString("accountId") != userInfo.AccountId,
+		ClientInfo:       asc.createClientInfo(ctx),
 	})
 
 	if err != nil {
@@ -1796,6 +1829,11 @@ func (asc *BlogServiceClient) GetPublishedBlogByBlogId(ctx *gin.Context) {
 	if blogMap == nil {
 		// blogMap = make(map[string]interface{})
 		ctx.AbortWithStatusJSON(http.StatusNotFound, gin.H{"message": "the blog does not exist"})
+		return
+	}
+
+	if !asc.acl().CanViewPublished(ctx, blogMap, userAccountId) {
+		ctx.AbortWithStatusJSON(http.StatusNotFound, gin.H{"error": "blog not found"})
 		return
 	}
 
@@ -2112,6 +2150,9 @@ func (asc *BlogServiceClient) TrackBlogActivity(ctx *gin.Context) {
 	blogID := ctx.Param("blog_id")
 	if blogID == "" {
 		ctx.JSON(http.StatusBadRequest, gin.H{"error": "blog_id is required"})
+		return
+	}
+	if !asc.acl().RequireCanViewPublished(ctx, blogID) {
 		return
 	}
 

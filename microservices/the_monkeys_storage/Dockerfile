@@ -23,7 +23,7 @@ COPY . .
 # by all service Dockerfiles.
 RUN --mount=type=cache,target=/go/pkg/mod \
     --mount=type=cache,target=/root/.cache/go-build \
-    CGO_ENABLED=0 GOOS=linux GOARCH=amd64 GOMAXPROCS=4 go build \
+    CGO_ENABLED=0 GOOS=linux GOARCH=amd64 GOMAXPROCS=1 go build \
     -ldflags='-w -s -extldflags "-static"' \
     -o storage-service ./microservices/the_monkeys_storage/main.go
 

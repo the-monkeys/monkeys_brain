@@ -13,6 +13,7 @@ import (
 
 	activitypb "github.com/the-monkeys/the_monkeys/apis/serviceconn/gateway_activity/pb"
 	"github.com/the-monkeys/the_monkeys/apis/serviceconn/gateway_blog/pb"
+	"github.com/the-monkeys/the_monkeys/common/audience"
 	"github.com/the-monkeys/the_monkeys/config"
 	"github.com/the-monkeys/the_monkeys/constants"
 	"github.com/the-monkeys/the_monkeys/microservices/rabbitmq"
@@ -922,7 +923,10 @@ func (blog *BlogService) PublishBlog(ctx context.Context, req *pb.PublishBlogReq
 		return nil, status.Errorf(codes.NotFound, "cannot find the blog for id: %s", req.BlogId)
 	}
 
-	_, err = blog.osClient.PublishBlogById(ctx, req.BlogId)
+	_, err = blog.osClient.PublishBlogById(ctx, req.BlogId, database.PublishBlogFields{
+		Audience:  req.GetAudience(),
+		GroupSlug: req.GetGroupSlug(),
+	})
 	if err != nil {
 		blog.logger.Errorf("Error Publishing the blog: %s, error: %v", req.BlogId, err)
 		return nil, status.Errorf(codes.Internal, "cannot find the blog for id: %s", req.BlogId)
@@ -938,6 +942,8 @@ func (blog *BlogService) PublishBlog(ctx context.Context, req *pb.PublishBlogReq
 		IpAddress:  req.Ip,
 		Client:     req.Client,
 		Tags:       req.Tags,
+		GroupSlug:  req.GetGroupSlug(),
+		Audience:   audience.Normalize(req.GetAudience()),
 	})
 
 	if err != nil {
@@ -997,6 +1003,10 @@ func (blog *BlogService) PublishBlog(ctx context.Context, req *pb.PublishBlogReq
 	}()
 
 	go func() {
+		if audience.IsGroupOnly(req.GetAudience()) {
+			blog.logger.Infof("skipping SEO for group-only blog: %s", req.BlogId)
+			return
+		}
 		// Get the blog slug and do the google search engine optimization
 		slug := req.Slug
 		if slug == "" {
@@ -1043,6 +1053,8 @@ func (blog *BlogService) ScheduleBlog(ctx context.Context, req *pb.ScheduleBlogR
 		BlogID:       req.Publish.BlogId,
 		ScheduleTime: req.ScheduleTime.AsTime(),
 		Timezone:     req.Timezone,
+		Audience:     req.Publish.GetAudience(),
+		GroupSlug:    req.Publish.GetGroupSlug(),
 	})
 	if err != nil {
 		blog.logger.Errorf("Error Publishing the blog: %s, error: %v", req.Publish.BlogId, err)
@@ -1059,6 +1071,8 @@ func (blog *BlogService) ScheduleBlog(ctx context.Context, req *pb.ScheduleBlogR
 		Tags:         req.Publish.Tags,
 		ScheduleTime: req.ScheduleTime.AsTime(),
 		Timezone:     req.Timezone,
+		GroupSlug:    req.Publish.GetGroupSlug(),
+		Audience:     audience.Normalize(req.Publish.GetAudience()),
 	})
 
 	if err != nil {
