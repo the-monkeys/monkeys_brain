@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"fmt"
 	"strings"
 	"time"
 
@@ -471,6 +472,22 @@ func toPBJobStatus(j *database.JobStatusRow) *pb.JobStatus {
 
 // --- accounts/validation metadata --------------------------------------------
 
+func toPBSocialAccount(a *database.Account) *pb.SocialAccount {
+	pbAccount := &pb.SocialAccount{
+		Id: a.ID, Platform: platformFromString[a.Platform], DisplayName: a.DisplayName,
+		Handle: a.Handle, Status: a.Status, IsMock: a.IsMock, AvatarUrl: a.AvatarURL,
+	}
+	if policy, ok := models.PlatformPolicies[a.Platform]; ok {
+		pbAccount.Validation = &pb.ValidationMetadata{
+			Platform: platformFromString[a.Platform], MaxTextCharacters: int32(policy.MaxTextCharacters),
+			AllowedMediaKinds: policy.AllowedMediaKinds, MaxMediaCount: int32(policy.MaxMediaCount),
+			MaxMediaBytes: policy.MaxMediaBytes, MaxVideoDurationMs: policy.MaxVideoDuration,
+			MediaRequired: policy.MediaRequired,
+		}
+	}
+	return pbAccount
+}
+
 func (s *Service) ListAccounts(ctx context.Context, req *pb.ListAccountsRequest) (*pb.ListAccountsResponse, error) {
 	userID, err := s.resolveOwner(ctx, req.GetContext())
 	if err != nil {
@@ -482,21 +499,66 @@ func (s *Service) ListAccounts(ctx context.Context, req *pb.ListAccountsRequest)
 	}
 	out := &pb.ListAccountsResponse{}
 	for _, a := range accounts {
-		pbAccount := &pb.SocialAccount{
-			Id: a.ID, Platform: platformFromString[a.Platform], DisplayName: a.DisplayName,
-			Handle: a.Handle, Status: a.Status,
-		}
-		if policy, ok := models.PlatformPolicies[a.Platform]; ok {
-			pbAccount.Validation = &pb.ValidationMetadata{
-				Platform: platformFromString[a.Platform], MaxTextCharacters: int32(policy.MaxTextCharacters),
-				AllowedMediaKinds: policy.AllowedMediaKinds, MaxMediaCount: int32(policy.MaxMediaCount),
-				MaxMediaBytes: policy.MaxMediaBytes, MaxVideoDurationMs: policy.MaxVideoDuration,
-				MediaRequired: policy.MediaRequired,
-			}
-		}
-		out.Accounts = append(out.Accounts, pbAccount)
+		out.Accounts = append(out.Accounts, toPBSocialAccount(a))
 	}
 	return out, nil
+}
+
+func (s *Service) LinkAccount(ctx context.Context, req *pb.LinkAccountRequest) (*pb.SocialAccount, error) {
+	userID, err := s.resolveOwner(ctx, req.GetContext())
+	if err != nil {
+		return nil, err
+	}
+	platform := strings.ToLower(strings.TrimSpace(req.GetPlatform()))
+	if _, ok := platformFromString[platform]; !ok {
+		return nil, status.Errorf(codes.InvalidArgument, "invalid platform %q", req.GetPlatform())
+	}
+	handle := strings.TrimSpace(req.GetHandle())
+	if handle == "" {
+		return nil, status.Error(codes.InvalidArgument, "handle is required")
+	}
+	displayName := strings.TrimSpace(req.GetDisplayName())
+	if displayName == "" {
+		displayName = handle
+	}
+	externalRef := strings.TrimSpace(req.GetExternalAccountRef())
+	if externalRef == "" {
+		if req.GetIsMock() {
+			externalRef = fmt.Sprintf("mock:%s:%s", platform, handle)
+		} else {
+			externalRef = fmt.Sprintf("%s:%s", platform, handle)
+		}
+	}
+
+	a, err := database.LinkAccount(
+		ctx, s.store.DB, userID, platform, handle, displayName,
+		externalRef, req.GetAvatarUrl(), req.GetIsMock(),
+		req.GetAccessToken(), req.GetRefreshToken(),
+	)
+	if err != nil {
+		return nil, status.Errorf(codes.Internal, "link social account: %v", err)
+	}
+	return toPBSocialAccount(a), nil
+}
+
+func (s *Service) DisconnectAccount(ctx context.Context, req *pb.DisconnectAccountRequest) (*pb.DisconnectAccountResponse, error) {
+	userID, err := s.resolveOwner(ctx, req.GetContext())
+	if err != nil {
+		return nil, err
+	}
+	accountID := strings.TrimSpace(req.GetAccountId())
+	if accountID == "" {
+		return nil, status.Error(codes.InvalidArgument, "account_id is required")
+	}
+	cancelledJobs, draftsReverted, err := database.DisconnectAccount(ctx, s.store.DB, userID, accountID)
+	if err != nil {
+		return nil, mapErr(err, "disconnect social account")
+	}
+	return &pb.DisconnectAccountResponse{
+		Success:             true,
+		CancelledJobsCount:  int32(cancelledJobs),
+		DraftsRevertedCount: int32(draftsReverted),
+	}, nil
 }
 
 func (s *Service) ListValidationMetadata(ctx context.Context, req *pb.ListValidationMetadataRequest) (*pb.ListValidationMetadataResponse, error) {
