@@ -144,10 +144,35 @@ message SocialAccount {
   string handle = 4;
   string status = 5;
   ValidationMetadata validation = 6;
+  bool is_mock = 7;
+  string avatar_url = 8;
 }
 message ListAccountsResponse { repeated SocialAccount accounts = 1; }
 message ListValidationMetadataRequest { RequestContext context = 1; }
 message ListValidationMetadataResponse { repeated ValidationMetadata platforms = 1; }
+
+message LinkAccountRequest {
+  RequestContext context = 1;
+  string platform = 2;
+  string handle = 3;
+  string display_name = 4;
+  string external_account_ref = 5;
+  string avatar_url = 6;
+  bool is_mock = 7;
+  bytes access_token = 8;
+  bytes refresh_token = 9;
+}
+
+message DisconnectAccountRequest {
+  RequestContext context = 1;
+  string account_id = 2;
+}
+
+message DisconnectAccountResponse {
+  bool success = 1;
+  int32 cancelled_jobs_count = 2;
+  int32 drafts_reverted_count = 3;
+}
 
 message ImportStudioAssetRequest {
   RequestContext context = 1;
@@ -188,6 +213,8 @@ service SocialPostService {
   rpc GetJobStatus(JobStatusRequest) returns (JobStatus);
   rpc ReplayJob(ReplayJobRequest) returns (JobStatus);
   rpc ListAccounts(ListAccountsRequest) returns (ListAccountsResponse);
+  rpc LinkAccount(LinkAccountRequest) returns (SocialAccount);
+  rpc DisconnectAccount(DisconnectAccountRequest) returns (DisconnectAccountResponse);
   rpc ListValidationMetadata(ListValidationMetadataRequest) returns (ListValidationMetadataResponse);
   rpc ImportStudioAsset(ImportStudioAssetRequest) returns (ImportStudioAssetResponse);
   rpc ListMediaAssets(ListMediaAssetsRequest) returns (ListMediaAssetsResponse);

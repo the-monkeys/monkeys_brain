@@ -1678,6 +1678,8 @@ type SocialAccount struct {
 	Handle        string                 `protobuf:"bytes,4,opt,name=handle,proto3" json:"handle,omitempty"`
 	Status        string                 `protobuf:"bytes,5,opt,name=status,proto3" json:"status,omitempty"`
 	Validation    *ValidationMetadata    `protobuf:"bytes,6,opt,name=validation,proto3" json:"validation,omitempty"`
+	IsMock        bool                   `protobuf:"varint,7,opt,name=is_mock,json=isMock,proto3" json:"is_mock,omitempty"`
+	AvatarUrl     string                 `protobuf:"bytes,8,opt,name=avatar_url,json=avatarUrl,proto3" json:"avatar_url,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1752,6 +1754,20 @@ func (x *SocialAccount) GetValidation() *ValidationMetadata {
 		return x.Validation
 	}
 	return nil
+}
+
+func (x *SocialAccount) GetIsMock() bool {
+	if x != nil {
+		return x.IsMock
+	}
+	return false
+}
+
+func (x *SocialAccount) GetAvatarUrl() string {
+	if x != nil {
+		return x.AvatarUrl
+	}
+	return ""
 }
 
 type ListAccountsResponse struct {
@@ -1886,6 +1902,226 @@ func (x *ListValidationMetadataResponse) GetPlatforms() []*ValidationMetadata {
 	return nil
 }
 
+type LinkAccountRequest struct {
+	state              protoimpl.MessageState `protogen:"open.v1"`
+	Context            *RequestContext        `protobuf:"bytes,1,opt,name=context,proto3" json:"context,omitempty"`
+	Platform           string                 `protobuf:"bytes,2,opt,name=platform,proto3" json:"platform,omitempty"`
+	Handle             string                 `protobuf:"bytes,3,opt,name=handle,proto3" json:"handle,omitempty"`
+	DisplayName        string                 `protobuf:"bytes,4,opt,name=display_name,json=displayName,proto3" json:"display_name,omitempty"`
+	ExternalAccountRef string                 `protobuf:"bytes,5,opt,name=external_account_ref,json=externalAccountRef,proto3" json:"external_account_ref,omitempty"`
+	AvatarUrl          string                 `protobuf:"bytes,6,opt,name=avatar_url,json=avatarUrl,proto3" json:"avatar_url,omitempty"`
+	IsMock             bool                   `protobuf:"varint,7,opt,name=is_mock,json=isMock,proto3" json:"is_mock,omitempty"`
+	AccessToken        []byte                 `protobuf:"bytes,8,opt,name=access_token,json=accessToken,proto3" json:"access_token,omitempty"`
+	RefreshToken       []byte                 `protobuf:"bytes,9,opt,name=refresh_token,json=refreshToken,proto3" json:"refresh_token,omitempty"`
+	unknownFields      protoimpl.UnknownFields
+	sizeCache          protoimpl.SizeCache
+}
+
+func (x *LinkAccountRequest) Reset() {
+	*x = LinkAccountRequest{}
+	mi := &file_apis_serviceconn_gateway_social_post_pb_gw_social_post_proto_msgTypes[25]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *LinkAccountRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*LinkAccountRequest) ProtoMessage() {}
+
+func (x *LinkAccountRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_apis_serviceconn_gateway_social_post_pb_gw_social_post_proto_msgTypes[25]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use LinkAccountRequest.ProtoReflect.Descriptor instead.
+func (*LinkAccountRequest) Descriptor() ([]byte, []int) {
+	return file_apis_serviceconn_gateway_social_post_pb_gw_social_post_proto_rawDescGZIP(), []int{25}
+}
+
+func (x *LinkAccountRequest) GetContext() *RequestContext {
+	if x != nil {
+		return x.Context
+	}
+	return nil
+}
+
+func (x *LinkAccountRequest) GetPlatform() string {
+	if x != nil {
+		return x.Platform
+	}
+	return ""
+}
+
+func (x *LinkAccountRequest) GetHandle() string {
+	if x != nil {
+		return x.Handle
+	}
+	return ""
+}
+
+func (x *LinkAccountRequest) GetDisplayName() string {
+	if x != nil {
+		return x.DisplayName
+	}
+	return ""
+}
+
+func (x *LinkAccountRequest) GetExternalAccountRef() string {
+	if x != nil {
+		return x.ExternalAccountRef
+	}
+	return ""
+}
+
+func (x *LinkAccountRequest) GetAvatarUrl() string {
+	if x != nil {
+		return x.AvatarUrl
+	}
+	return ""
+}
+
+func (x *LinkAccountRequest) GetIsMock() bool {
+	if x != nil {
+		return x.IsMock
+	}
+	return false
+}
+
+func (x *LinkAccountRequest) GetAccessToken() []byte {
+	if x != nil {
+		return x.AccessToken
+	}
+	return nil
+}
+
+func (x *LinkAccountRequest) GetRefreshToken() []byte {
+	if x != nil {
+		return x.RefreshToken
+	}
+	return nil
+}
+
+type DisconnectAccountRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Context       *RequestContext        `protobuf:"bytes,1,opt,name=context,proto3" json:"context,omitempty"`
+	AccountId     string                 `protobuf:"bytes,2,opt,name=account_id,json=accountId,proto3" json:"account_id,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *DisconnectAccountRequest) Reset() {
+	*x = DisconnectAccountRequest{}
+	mi := &file_apis_serviceconn_gateway_social_post_pb_gw_social_post_proto_msgTypes[26]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *DisconnectAccountRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*DisconnectAccountRequest) ProtoMessage() {}
+
+func (x *DisconnectAccountRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_apis_serviceconn_gateway_social_post_pb_gw_social_post_proto_msgTypes[26]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use DisconnectAccountRequest.ProtoReflect.Descriptor instead.
+func (*DisconnectAccountRequest) Descriptor() ([]byte, []int) {
+	return file_apis_serviceconn_gateway_social_post_pb_gw_social_post_proto_rawDescGZIP(), []int{26}
+}
+
+func (x *DisconnectAccountRequest) GetContext() *RequestContext {
+	if x != nil {
+		return x.Context
+	}
+	return nil
+}
+
+func (x *DisconnectAccountRequest) GetAccountId() string {
+	if x != nil {
+		return x.AccountId
+	}
+	return ""
+}
+
+type DisconnectAccountResponse struct {
+	state               protoimpl.MessageState `protogen:"open.v1"`
+	Success             bool                   `protobuf:"varint,1,opt,name=success,proto3" json:"success,omitempty"`
+	CancelledJobsCount  int32                  `protobuf:"varint,2,opt,name=cancelled_jobs_count,json=cancelledJobsCount,proto3" json:"cancelled_jobs_count,omitempty"`
+	DraftsRevertedCount int32                  `protobuf:"varint,3,opt,name=drafts_reverted_count,json=draftsRevertedCount,proto3" json:"drafts_reverted_count,omitempty"`
+	unknownFields       protoimpl.UnknownFields
+	sizeCache           protoimpl.SizeCache
+}
+
+func (x *DisconnectAccountResponse) Reset() {
+	*x = DisconnectAccountResponse{}
+	mi := &file_apis_serviceconn_gateway_social_post_pb_gw_social_post_proto_msgTypes[27]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *DisconnectAccountResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*DisconnectAccountResponse) ProtoMessage() {}
+
+func (x *DisconnectAccountResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_apis_serviceconn_gateway_social_post_pb_gw_social_post_proto_msgTypes[27]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use DisconnectAccountResponse.ProtoReflect.Descriptor instead.
+func (*DisconnectAccountResponse) Descriptor() ([]byte, []int) {
+	return file_apis_serviceconn_gateway_social_post_pb_gw_social_post_proto_rawDescGZIP(), []int{27}
+}
+
+func (x *DisconnectAccountResponse) GetSuccess() bool {
+	if x != nil {
+		return x.Success
+	}
+	return false
+}
+
+func (x *DisconnectAccountResponse) GetCancelledJobsCount() int32 {
+	if x != nil {
+		return x.CancelledJobsCount
+	}
+	return 0
+}
+
+func (x *DisconnectAccountResponse) GetDraftsRevertedCount() int32 {
+	if x != nil {
+		return x.DraftsRevertedCount
+	}
+	return 0
+}
+
 type ImportStudioAssetRequest struct {
 	state          protoimpl.MessageState `protogen:"open.v1"`
 	Context        *RequestContext        `protobuf:"bytes,1,opt,name=context,proto3" json:"context,omitempty"`
@@ -1897,7 +2133,7 @@ type ImportStudioAssetRequest struct {
 
 func (x *ImportStudioAssetRequest) Reset() {
 	*x = ImportStudioAssetRequest{}
-	mi := &file_apis_serviceconn_gateway_social_post_pb_gw_social_post_proto_msgTypes[25]
+	mi := &file_apis_serviceconn_gateway_social_post_pb_gw_social_post_proto_msgTypes[28]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1909,7 +2145,7 @@ func (x *ImportStudioAssetRequest) String() string {
 func (*ImportStudioAssetRequest) ProtoMessage() {}
 
 func (x *ImportStudioAssetRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_apis_serviceconn_gateway_social_post_pb_gw_social_post_proto_msgTypes[25]
+	mi := &file_apis_serviceconn_gateway_social_post_pb_gw_social_post_proto_msgTypes[28]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1922,7 +2158,7 @@ func (x *ImportStudioAssetRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ImportStudioAssetRequest.ProtoReflect.Descriptor instead.
 func (*ImportStudioAssetRequest) Descriptor() ([]byte, []int) {
-	return file_apis_serviceconn_gateway_social_post_pb_gw_social_post_proto_rawDescGZIP(), []int{25}
+	return file_apis_serviceconn_gateway_social_post_pb_gw_social_post_proto_rawDescGZIP(), []int{28}
 }
 
 func (x *ImportStudioAssetRequest) GetContext() *RequestContext {
@@ -1955,7 +2191,7 @@ type ImportStudioAssetResponse struct {
 
 func (x *ImportStudioAssetResponse) Reset() {
 	*x = ImportStudioAssetResponse{}
-	mi := &file_apis_serviceconn_gateway_social_post_pb_gw_social_post_proto_msgTypes[26]
+	mi := &file_apis_serviceconn_gateway_social_post_pb_gw_social_post_proto_msgTypes[29]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1967,7 +2203,7 @@ func (x *ImportStudioAssetResponse) String() string {
 func (*ImportStudioAssetResponse) ProtoMessage() {}
 
 func (x *ImportStudioAssetResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_apis_serviceconn_gateway_social_post_pb_gw_social_post_proto_msgTypes[26]
+	mi := &file_apis_serviceconn_gateway_social_post_pb_gw_social_post_proto_msgTypes[29]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1980,7 +2216,7 @@ func (x *ImportStudioAssetResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ImportStudioAssetResponse.ProtoReflect.Descriptor instead.
 func (*ImportStudioAssetResponse) Descriptor() ([]byte, []int) {
-	return file_apis_serviceconn_gateway_social_post_pb_gw_social_post_proto_rawDescGZIP(), []int{26}
+	return file_apis_serviceconn_gateway_social_post_pb_gw_social_post_proto_rawDescGZIP(), []int{29}
 }
 
 func (x *ImportStudioAssetResponse) GetAsset() *MediaAsset {
@@ -2001,7 +2237,7 @@ type ListMediaAssetsRequest struct {
 
 func (x *ListMediaAssetsRequest) Reset() {
 	*x = ListMediaAssetsRequest{}
-	mi := &file_apis_serviceconn_gateway_social_post_pb_gw_social_post_proto_msgTypes[27]
+	mi := &file_apis_serviceconn_gateway_social_post_pb_gw_social_post_proto_msgTypes[30]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2013,7 +2249,7 @@ func (x *ListMediaAssetsRequest) String() string {
 func (*ListMediaAssetsRequest) ProtoMessage() {}
 
 func (x *ListMediaAssetsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_apis_serviceconn_gateway_social_post_pb_gw_social_post_proto_msgTypes[27]
+	mi := &file_apis_serviceconn_gateway_social_post_pb_gw_social_post_proto_msgTypes[30]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2026,7 +2262,7 @@ func (x *ListMediaAssetsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListMediaAssetsRequest.ProtoReflect.Descriptor instead.
 func (*ListMediaAssetsRequest) Descriptor() ([]byte, []int) {
-	return file_apis_serviceconn_gateway_social_post_pb_gw_social_post_proto_rawDescGZIP(), []int{27}
+	return file_apis_serviceconn_gateway_social_post_pb_gw_social_post_proto_rawDescGZIP(), []int{30}
 }
 
 func (x *ListMediaAssetsRequest) GetContext() *RequestContext {
@@ -2060,7 +2296,7 @@ type ListMediaAssetsResponse struct {
 
 func (x *ListMediaAssetsResponse) Reset() {
 	*x = ListMediaAssetsResponse{}
-	mi := &file_apis_serviceconn_gateway_social_post_pb_gw_social_post_proto_msgTypes[28]
+	mi := &file_apis_serviceconn_gateway_social_post_pb_gw_social_post_proto_msgTypes[31]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2072,7 +2308,7 @@ func (x *ListMediaAssetsResponse) String() string {
 func (*ListMediaAssetsResponse) ProtoMessage() {}
 
 func (x *ListMediaAssetsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_apis_serviceconn_gateway_social_post_pb_gw_social_post_proto_msgTypes[28]
+	mi := &file_apis_serviceconn_gateway_social_post_pb_gw_social_post_proto_msgTypes[31]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2085,7 +2321,7 @@ func (x *ListMediaAssetsResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListMediaAssetsResponse.ProtoReflect.Descriptor instead.
 func (*ListMediaAssetsResponse) Descriptor() ([]byte, []int) {
-	return file_apis_serviceconn_gateway_social_post_pb_gw_social_post_proto_rawDescGZIP(), []int{28}
+	return file_apis_serviceconn_gateway_social_post_pb_gw_social_post_proto_rawDescGZIP(), []int{31}
 }
 
 func (x *ListMediaAssetsResponse) GetAssets() []*MediaAsset {
@@ -2112,7 +2348,7 @@ type DeleteMediaAssetRequest struct {
 
 func (x *DeleteMediaAssetRequest) Reset() {
 	*x = DeleteMediaAssetRequest{}
-	mi := &file_apis_serviceconn_gateway_social_post_pb_gw_social_post_proto_msgTypes[29]
+	mi := &file_apis_serviceconn_gateway_social_post_pb_gw_social_post_proto_msgTypes[32]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2124,7 +2360,7 @@ func (x *DeleteMediaAssetRequest) String() string {
 func (*DeleteMediaAssetRequest) ProtoMessage() {}
 
 func (x *DeleteMediaAssetRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_apis_serviceconn_gateway_social_post_pb_gw_social_post_proto_msgTypes[29]
+	mi := &file_apis_serviceconn_gateway_social_post_pb_gw_social_post_proto_msgTypes[32]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2137,7 +2373,7 @@ func (x *DeleteMediaAssetRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DeleteMediaAssetRequest.ProtoReflect.Descriptor instead.
 func (*DeleteMediaAssetRequest) Descriptor() ([]byte, []int) {
-	return file_apis_serviceconn_gateway_social_post_pb_gw_social_post_proto_rawDescGZIP(), []int{29}
+	return file_apis_serviceconn_gateway_social_post_pb_gw_social_post_proto_rawDescGZIP(), []int{32}
 }
 
 func (x *DeleteMediaAssetRequest) GetContext() *RequestContext {
@@ -2163,7 +2399,7 @@ type DeleteMediaAssetResponse struct {
 
 func (x *DeleteMediaAssetResponse) Reset() {
 	*x = DeleteMediaAssetResponse{}
-	mi := &file_apis_serviceconn_gateway_social_post_pb_gw_social_post_proto_msgTypes[30]
+	mi := &file_apis_serviceconn_gateway_social_post_pb_gw_social_post_proto_msgTypes[33]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2175,7 +2411,7 @@ func (x *DeleteMediaAssetResponse) String() string {
 func (*DeleteMediaAssetResponse) ProtoMessage() {}
 
 func (x *DeleteMediaAssetResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_apis_serviceconn_gateway_social_post_pb_gw_social_post_proto_msgTypes[30]
+	mi := &file_apis_serviceconn_gateway_social_post_pb_gw_social_post_proto_msgTypes[33]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2188,7 +2424,7 @@ func (x *DeleteMediaAssetResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DeleteMediaAssetResponse.ProtoReflect.Descriptor instead.
 func (*DeleteMediaAssetResponse) Descriptor() ([]byte, []int) {
-	return file_apis_serviceconn_gateway_social_post_pb_gw_social_post_proto_rawDescGZIP(), []int{30}
+	return file_apis_serviceconn_gateway_social_post_pb_gw_social_post_proto_rawDescGZIP(), []int{33}
 }
 
 func (x *DeleteMediaAssetResponse) GetDeleted() bool {
@@ -2208,7 +2444,7 @@ type ReorderQueueRequest struct {
 
 func (x *ReorderQueueRequest) Reset() {
 	*x = ReorderQueueRequest{}
-	mi := &file_apis_serviceconn_gateway_social_post_pb_gw_social_post_proto_msgTypes[31]
+	mi := &file_apis_serviceconn_gateway_social_post_pb_gw_social_post_proto_msgTypes[34]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2220,7 +2456,7 @@ func (x *ReorderQueueRequest) String() string {
 func (*ReorderQueueRequest) ProtoMessage() {}
 
 func (x *ReorderQueueRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_apis_serviceconn_gateway_social_post_pb_gw_social_post_proto_msgTypes[31]
+	mi := &file_apis_serviceconn_gateway_social_post_pb_gw_social_post_proto_msgTypes[34]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2233,7 +2469,7 @@ func (x *ReorderQueueRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ReorderQueueRequest.ProtoReflect.Descriptor instead.
 func (*ReorderQueueRequest) Descriptor() ([]byte, []int) {
-	return file_apis_serviceconn_gateway_social_post_pb_gw_social_post_proto_rawDescGZIP(), []int{31}
+	return file_apis_serviceconn_gateway_social_post_pb_gw_social_post_proto_rawDescGZIP(), []int{34}
 }
 
 func (x *ReorderQueueRequest) GetContext() *RequestContext {
@@ -2259,7 +2495,7 @@ type ReorderQueueResponse struct {
 
 func (x *ReorderQueueResponse) Reset() {
 	*x = ReorderQueueResponse{}
-	mi := &file_apis_serviceconn_gateway_social_post_pb_gw_social_post_proto_msgTypes[32]
+	mi := &file_apis_serviceconn_gateway_social_post_pb_gw_social_post_proto_msgTypes[35]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2271,7 +2507,7 @@ func (x *ReorderQueueResponse) String() string {
 func (*ReorderQueueResponse) ProtoMessage() {}
 
 func (x *ReorderQueueResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_apis_serviceconn_gateway_social_post_pb_gw_social_post_proto_msgTypes[32]
+	mi := &file_apis_serviceconn_gateway_social_post_pb_gw_social_post_proto_msgTypes[35]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2284,7 +2520,7 @@ func (x *ReorderQueueResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ReorderQueueResponse.ProtoReflect.Descriptor instead.
 func (*ReorderQueueResponse) Descriptor() ([]byte, []int) {
-	return file_apis_serviceconn_gateway_social_post_pb_gw_social_post_proto_rawDescGZIP(), []int{32}
+	return file_apis_serviceconn_gateway_social_post_pb_gw_social_post_proto_rawDescGZIP(), []int{35}
 }
 
 func (x *ReorderQueueResponse) GetPosts() []*SocialPost {
@@ -2306,7 +2542,7 @@ type HistoryRequest struct {
 
 func (x *HistoryRequest) Reset() {
 	*x = HistoryRequest{}
-	mi := &file_apis_serviceconn_gateway_social_post_pb_gw_social_post_proto_msgTypes[33]
+	mi := &file_apis_serviceconn_gateway_social_post_pb_gw_social_post_proto_msgTypes[36]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2318,7 +2554,7 @@ func (x *HistoryRequest) String() string {
 func (*HistoryRequest) ProtoMessage() {}
 
 func (x *HistoryRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_apis_serviceconn_gateway_social_post_pb_gw_social_post_proto_msgTypes[33]
+	mi := &file_apis_serviceconn_gateway_social_post_pb_gw_social_post_proto_msgTypes[36]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2331,7 +2567,7 @@ func (x *HistoryRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use HistoryRequest.ProtoReflect.Descriptor instead.
 func (*HistoryRequest) Descriptor() ([]byte, []int) {
-	return file_apis_serviceconn_gateway_social_post_pb_gw_social_post_proto_rawDescGZIP(), []int{33}
+	return file_apis_serviceconn_gateway_social_post_pb_gw_social_post_proto_rawDescGZIP(), []int{36}
 }
 
 func (x *HistoryRequest) GetContext() *RequestContext {
@@ -2375,7 +2611,7 @@ type HistoryEvent struct {
 
 func (x *HistoryEvent) Reset() {
 	*x = HistoryEvent{}
-	mi := &file_apis_serviceconn_gateway_social_post_pb_gw_social_post_proto_msgTypes[34]
+	mi := &file_apis_serviceconn_gateway_social_post_pb_gw_social_post_proto_msgTypes[37]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2387,7 +2623,7 @@ func (x *HistoryEvent) String() string {
 func (*HistoryEvent) ProtoMessage() {}
 
 func (x *HistoryEvent) ProtoReflect() protoreflect.Message {
-	mi := &file_apis_serviceconn_gateway_social_post_pb_gw_social_post_proto_msgTypes[34]
+	mi := &file_apis_serviceconn_gateway_social_post_pb_gw_social_post_proto_msgTypes[37]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2400,7 +2636,7 @@ func (x *HistoryEvent) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use HistoryEvent.ProtoReflect.Descriptor instead.
 func (*HistoryEvent) Descriptor() ([]byte, []int) {
-	return file_apis_serviceconn_gateway_social_post_pb_gw_social_post_proto_rawDescGZIP(), []int{34}
+	return file_apis_serviceconn_gateway_social_post_pb_gw_social_post_proto_rawDescGZIP(), []int{37}
 }
 
 func (x *HistoryEvent) GetId() string {
@@ -2448,7 +2684,7 @@ type HistoryResponse struct {
 
 func (x *HistoryResponse) Reset() {
 	*x = HistoryResponse{}
-	mi := &file_apis_serviceconn_gateway_social_post_pb_gw_social_post_proto_msgTypes[35]
+	mi := &file_apis_serviceconn_gateway_social_post_pb_gw_social_post_proto_msgTypes[38]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2460,7 +2696,7 @@ func (x *HistoryResponse) String() string {
 func (*HistoryResponse) ProtoMessage() {}
 
 func (x *HistoryResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_apis_serviceconn_gateway_social_post_pb_gw_social_post_proto_msgTypes[35]
+	mi := &file_apis_serviceconn_gateway_social_post_pb_gw_social_post_proto_msgTypes[38]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2473,7 +2709,7 @@ func (x *HistoryResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use HistoryResponse.ProtoReflect.Descriptor instead.
 func (*HistoryResponse) Descriptor() ([]byte, []int) {
-	return file_apis_serviceconn_gateway_social_post_pb_gw_social_post_proto_rawDescGZIP(), []int{35}
+	return file_apis_serviceconn_gateway_social_post_pb_gw_social_post_proto_rawDescGZIP(), []int{38}
 }
 
 func (x *HistoryResponse) GetEvents() []*HistoryEvent {
@@ -2637,7 +2873,7 @@ const file_apis_serviceconn_gateway_social_post_pb_gw_social_post_proto_rawDesc 
 	"\x0flast_error_code\x18\a \x01(\tR\rlastErrorCode\x12,\n" +
 	"\x12last_error_message\x18\b \x01(\tR\x10lastErrorMessage\"P\n" +
 	"\x13ListAccountsRequest\x129\n" +
-	"\acontext\x18\x01 \x01(\v2\x1f.social_post_svc.RequestContextR\acontext\"\xee\x01\n" +
+	"\acontext\x18\x01 \x01(\v2\x1f.social_post_svc.RequestContextR\acontext\"\xa6\x02\n" +
 	"\rSocialAccount\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x125\n" +
 	"\bplatform\x18\x02 \x01(\x0e2\x19.social_post_svc.PlatformR\bplatform\x12!\n" +
@@ -2646,13 +2882,35 @@ const file_apis_serviceconn_gateway_social_post_pb_gw_social_post_proto_rawDesc 
 	"\x06status\x18\x05 \x01(\tR\x06status\x12C\n" +
 	"\n" +
 	"validation\x18\x06 \x01(\v2#.social_post_svc.ValidationMetadataR\n" +
-	"validation\"R\n" +
+	"validation\x12\x17\n" +
+	"\ais_mock\x18\a \x01(\bR\x06isMock\x12\x1d\n" +
+	"\n" +
+	"avatar_url\x18\b \x01(\tR\tavatarUrl\"R\n" +
 	"\x14ListAccountsResponse\x12:\n" +
 	"\baccounts\x18\x01 \x03(\v2\x1e.social_post_svc.SocialAccountR\baccounts\"Z\n" +
 	"\x1dListValidationMetadataRequest\x129\n" +
 	"\acontext\x18\x01 \x01(\v2\x1f.social_post_svc.RequestContextR\acontext\"c\n" +
 	"\x1eListValidationMetadataResponse\x12A\n" +
-	"\tplatforms\x18\x01 \x03(\v2#.social_post_svc.ValidationMetadataR\tplatforms\"\xa0\x01\n" +
+	"\tplatforms\x18\x01 \x03(\v2#.social_post_svc.ValidationMetadataR\tplatforms\"\xd8\x02\n" +
+	"\x12LinkAccountRequest\x129\n" +
+	"\acontext\x18\x01 \x01(\v2\x1f.social_post_svc.RequestContextR\acontext\x12\x1a\n" +
+	"\bplatform\x18\x02 \x01(\tR\bplatform\x12\x16\n" +
+	"\x06handle\x18\x03 \x01(\tR\x06handle\x12!\n" +
+	"\fdisplay_name\x18\x04 \x01(\tR\vdisplayName\x120\n" +
+	"\x14external_account_ref\x18\x05 \x01(\tR\x12externalAccountRef\x12\x1d\n" +
+	"\n" +
+	"avatar_url\x18\x06 \x01(\tR\tavatarUrl\x12\x17\n" +
+	"\ais_mock\x18\a \x01(\bR\x06isMock\x12!\n" +
+	"\faccess_token\x18\b \x01(\fR\vaccessToken\x12#\n" +
+	"\rrefresh_token\x18\t \x01(\fR\frefreshToken\"t\n" +
+	"\x18DisconnectAccountRequest\x129\n" +
+	"\acontext\x18\x01 \x01(\v2\x1f.social_post_svc.RequestContextR\acontext\x12\x1d\n" +
+	"\n" +
+	"account_id\x18\x02 \x01(\tR\taccountId\"\x9b\x01\n" +
+	"\x19DisconnectAccountResponse\x12\x18\n" +
+	"\asuccess\x18\x01 \x01(\bR\asuccess\x120\n" +
+	"\x14cancelled_jobs_count\x18\x02 \x01(\x05R\x12cancelledJobsCount\x122\n" +
+	"\x15drafts_reverted_count\x18\x03 \x01(\x05R\x13draftsRevertedCount\"\xa0\x01\n" +
 	"\x18ImportStudioAssetRequest\x129\n" +
 	"\acontext\x18\x01 \x01(\v2\x1f.social_post_svc.RequestContextR\acontext\x12(\n" +
 	"\x10source_asset_ref\x18\x02 \x01(\tR\x0esourceAssetRef\x12\x1f\n" +
@@ -2705,7 +2963,7 @@ const file_apis_serviceconn_gateway_social_post_pb_gw_social_post_proto_rawDesc 
 	"\x12PLATFORM_INSTAGRAM\x10\x03\x12\x15\n" +
 	"\x11PLATFORM_FACEBOOK\x10\x04\x12\x14\n" +
 	"\x10PLATFORM_YOUTUBE\x10\x05\x12\x13\n" +
-	"\x0fPLATFORM_TIKTOK\x10\x062\xbf\x0f\n" +
+	"\x0fPLATFORM_TIKTOK\x10\x062\xff\x10\n" +
 	"\x11SocialPostService\x12O\n" +
 	"\n" +
 	"CreatePost\x12\".social_post_svc.CreatePostRequest\x1a\x1d.social_post_svc.PostResponse\x12I\n" +
@@ -2725,7 +2983,9 @@ const file_apis_serviceconn_gateway_social_post_pb_gw_social_post_proto_rawDesc 
 	"\tListQueue\x12!.social_post_svc.ListPostsRequest\x1a\".social_post_svc.ListPostsResponse\x12M\n" +
 	"\fGetJobStatus\x12!.social_post_svc.JobStatusRequest\x1a\x1a.social_post_svc.JobStatus\x12J\n" +
 	"\tReplayJob\x12!.social_post_svc.ReplayJobRequest\x1a\x1a.social_post_svc.JobStatus\x12[\n" +
-	"\fListAccounts\x12$.social_post_svc.ListAccountsRequest\x1a%.social_post_svc.ListAccountsResponse\x12y\n" +
+	"\fListAccounts\x12$.social_post_svc.ListAccountsRequest\x1a%.social_post_svc.ListAccountsResponse\x12R\n" +
+	"\vLinkAccount\x12#.social_post_svc.LinkAccountRequest\x1a\x1e.social_post_svc.SocialAccount\x12j\n" +
+	"\x11DisconnectAccount\x12).social_post_svc.DisconnectAccountRequest\x1a*.social_post_svc.DisconnectAccountResponse\x12y\n" +
 	"\x16ListValidationMetadata\x12..social_post_svc.ListValidationMetadataRequest\x1a/.social_post_svc.ListValidationMetadataResponse\x12j\n" +
 	"\x11ImportStudioAsset\x12).social_post_svc.ImportStudioAssetRequest\x1a*.social_post_svc.ImportStudioAssetResponse\x12d\n" +
 	"\x0fListMediaAssets\x12'.social_post_svc.ListMediaAssetsRequest\x1a(.social_post_svc.ListMediaAssetsResponse\x12g\n" +
@@ -2746,7 +3006,7 @@ func file_apis_serviceconn_gateway_social_post_pb_gw_social_post_proto_rawDescGZ
 }
 
 var file_apis_serviceconn_gateway_social_post_pb_gw_social_post_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
-var file_apis_serviceconn_gateway_social_post_pb_gw_social_post_proto_msgTypes = make([]protoimpl.MessageInfo, 36)
+var file_apis_serviceconn_gateway_social_post_pb_gw_social_post_proto_msgTypes = make([]protoimpl.MessageInfo, 39)
 var file_apis_serviceconn_gateway_social_post_pb_gw_social_post_proto_goTypes = []any{
 	(Platform)(0),                          // 0: social_post_svc.Platform
 	(*RequestContext)(nil),                 // 1: social_post_svc.RequestContext
@@ -2774,17 +3034,20 @@ var file_apis_serviceconn_gateway_social_post_pb_gw_social_post_proto_goTypes = 
 	(*ListAccountsResponse)(nil),           // 23: social_post_svc.ListAccountsResponse
 	(*ListValidationMetadataRequest)(nil),  // 24: social_post_svc.ListValidationMetadataRequest
 	(*ListValidationMetadataResponse)(nil), // 25: social_post_svc.ListValidationMetadataResponse
-	(*ImportStudioAssetRequest)(nil),       // 26: social_post_svc.ImportStudioAssetRequest
-	(*ImportStudioAssetResponse)(nil),      // 27: social_post_svc.ImportStudioAssetResponse
-	(*ListMediaAssetsRequest)(nil),         // 28: social_post_svc.ListMediaAssetsRequest
-	(*ListMediaAssetsResponse)(nil),        // 29: social_post_svc.ListMediaAssetsResponse
-	(*DeleteMediaAssetRequest)(nil),        // 30: social_post_svc.DeleteMediaAssetRequest
-	(*DeleteMediaAssetResponse)(nil),       // 31: social_post_svc.DeleteMediaAssetResponse
-	(*ReorderQueueRequest)(nil),            // 32: social_post_svc.ReorderQueueRequest
-	(*ReorderQueueResponse)(nil),           // 33: social_post_svc.ReorderQueueResponse
-	(*HistoryRequest)(nil),                 // 34: social_post_svc.HistoryRequest
-	(*HistoryEvent)(nil),                   // 35: social_post_svc.HistoryEvent
-	(*HistoryResponse)(nil),                // 36: social_post_svc.HistoryResponse
+	(*LinkAccountRequest)(nil),             // 26: social_post_svc.LinkAccountRequest
+	(*DisconnectAccountRequest)(nil),       // 27: social_post_svc.DisconnectAccountRequest
+	(*DisconnectAccountResponse)(nil),      // 28: social_post_svc.DisconnectAccountResponse
+	(*ImportStudioAssetRequest)(nil),       // 29: social_post_svc.ImportStudioAssetRequest
+	(*ImportStudioAssetResponse)(nil),      // 30: social_post_svc.ImportStudioAssetResponse
+	(*ListMediaAssetsRequest)(nil),         // 31: social_post_svc.ListMediaAssetsRequest
+	(*ListMediaAssetsResponse)(nil),        // 32: social_post_svc.ListMediaAssetsResponse
+	(*DeleteMediaAssetRequest)(nil),        // 33: social_post_svc.DeleteMediaAssetRequest
+	(*DeleteMediaAssetResponse)(nil),       // 34: social_post_svc.DeleteMediaAssetResponse
+	(*ReorderQueueRequest)(nil),            // 35: social_post_svc.ReorderQueueRequest
+	(*ReorderQueueResponse)(nil),           // 36: social_post_svc.ReorderQueueResponse
+	(*HistoryRequest)(nil),                 // 37: social_post_svc.HistoryRequest
+	(*HistoryEvent)(nil),                   // 38: social_post_svc.HistoryEvent
+	(*HistoryResponse)(nil),                // 39: social_post_svc.HistoryResponse
 }
 var file_apis_serviceconn_gateway_social_post_pb_gw_social_post_proto_depIdxs = []int32{
 	0,  // 0: social_post_svc.ValidationMetadata.platform:type_name -> social_post_svc.Platform
@@ -2812,64 +3075,70 @@ var file_apis_serviceconn_gateway_social_post_pb_gw_social_post_proto_depIdxs = 
 	22, // 22: social_post_svc.ListAccountsResponse.accounts:type_name -> social_post_svc.SocialAccount
 	1,  // 23: social_post_svc.ListValidationMetadataRequest.context:type_name -> social_post_svc.RequestContext
 	3,  // 24: social_post_svc.ListValidationMetadataResponse.platforms:type_name -> social_post_svc.ValidationMetadata
-	1,  // 25: social_post_svc.ImportStudioAssetRequest.context:type_name -> social_post_svc.RequestContext
-	4,  // 26: social_post_svc.ImportStudioAssetResponse.asset:type_name -> social_post_svc.MediaAsset
-	1,  // 27: social_post_svc.ListMediaAssetsRequest.context:type_name -> social_post_svc.RequestContext
-	4,  // 28: social_post_svc.ListMediaAssetsResponse.assets:type_name -> social_post_svc.MediaAsset
-	1,  // 29: social_post_svc.DeleteMediaAssetRequest.context:type_name -> social_post_svc.RequestContext
-	1,  // 30: social_post_svc.ReorderQueueRequest.context:type_name -> social_post_svc.RequestContext
-	6,  // 31: social_post_svc.ReorderQueueResponse.posts:type_name -> social_post_svc.SocialPost
-	1,  // 32: social_post_svc.HistoryRequest.context:type_name -> social_post_svc.RequestContext
-	35, // 33: social_post_svc.HistoryResponse.events:type_name -> social_post_svc.HistoryEvent
-	7,  // 34: social_post_svc.SocialPostService.CreatePost:input_type -> social_post_svc.CreatePostRequest
-	8,  // 35: social_post_svc.SocialPostService.GetPost:input_type -> social_post_svc.GetPostRequest
-	9,  // 36: social_post_svc.SocialPostService.UpdatePost:input_type -> social_post_svc.UpdatePostRequest
-	10, // 37: social_post_svc.SocialPostService.DeleteDraft:input_type -> social_post_svc.DeleteDraftRequest
-	12, // 38: social_post_svc.SocialPostService.ListPosts:input_type -> social_post_svc.ListPostsRequest
-	14, // 39: social_post_svc.SocialPostService.UpsertRendition:input_type -> social_post_svc.UpsertRenditionRequest
-	15, // 40: social_post_svc.SocialPostService.SetRenditionMedia:input_type -> social_post_svc.SetRenditionMediaRequest
-	16, // 41: social_post_svc.SocialPostService.SchedulePost:input_type -> social_post_svc.SchedulePostRequest
-	17, // 42: social_post_svc.SocialPostService.CancelSchedule:input_type -> social_post_svc.PostActionRequest
-	16, // 43: social_post_svc.SocialPostService.ReschedulePost:input_type -> social_post_svc.SchedulePostRequest
-	17, // 44: social_post_svc.SocialPostService.PublishNow:input_type -> social_post_svc.PostActionRequest
-	12, // 45: social_post_svc.SocialPostService.ListCalendar:input_type -> social_post_svc.ListPostsRequest
-	12, // 46: social_post_svc.SocialPostService.ListQueue:input_type -> social_post_svc.ListPostsRequest
-	18, // 47: social_post_svc.SocialPostService.GetJobStatus:input_type -> social_post_svc.JobStatusRequest
-	19, // 48: social_post_svc.SocialPostService.ReplayJob:input_type -> social_post_svc.ReplayJobRequest
-	21, // 49: social_post_svc.SocialPostService.ListAccounts:input_type -> social_post_svc.ListAccountsRequest
-	24, // 50: social_post_svc.SocialPostService.ListValidationMetadata:input_type -> social_post_svc.ListValidationMetadataRequest
-	26, // 51: social_post_svc.SocialPostService.ImportStudioAsset:input_type -> social_post_svc.ImportStudioAssetRequest
-	28, // 52: social_post_svc.SocialPostService.ListMediaAssets:input_type -> social_post_svc.ListMediaAssetsRequest
-	30, // 53: social_post_svc.SocialPostService.DeleteMediaAsset:input_type -> social_post_svc.DeleteMediaAssetRequest
-	32, // 54: social_post_svc.SocialPostService.ReorderQueue:input_type -> social_post_svc.ReorderQueueRequest
-	34, // 55: social_post_svc.SocialPostService.ListPostHistory:input_type -> social_post_svc.HistoryRequest
-	11, // 56: social_post_svc.SocialPostService.CreatePost:output_type -> social_post_svc.PostResponse
-	11, // 57: social_post_svc.SocialPostService.GetPost:output_type -> social_post_svc.PostResponse
-	11, // 58: social_post_svc.SocialPostService.UpdatePost:output_type -> social_post_svc.PostResponse
-	11, // 59: social_post_svc.SocialPostService.DeleteDraft:output_type -> social_post_svc.PostResponse
-	13, // 60: social_post_svc.SocialPostService.ListPosts:output_type -> social_post_svc.ListPostsResponse
-	11, // 61: social_post_svc.SocialPostService.UpsertRendition:output_type -> social_post_svc.PostResponse
-	11, // 62: social_post_svc.SocialPostService.SetRenditionMedia:output_type -> social_post_svc.PostResponse
-	11, // 63: social_post_svc.SocialPostService.SchedulePost:output_type -> social_post_svc.PostResponse
-	11, // 64: social_post_svc.SocialPostService.CancelSchedule:output_type -> social_post_svc.PostResponse
-	11, // 65: social_post_svc.SocialPostService.ReschedulePost:output_type -> social_post_svc.PostResponse
-	11, // 66: social_post_svc.SocialPostService.PublishNow:output_type -> social_post_svc.PostResponse
-	13, // 67: social_post_svc.SocialPostService.ListCalendar:output_type -> social_post_svc.ListPostsResponse
-	13, // 68: social_post_svc.SocialPostService.ListQueue:output_type -> social_post_svc.ListPostsResponse
-	20, // 69: social_post_svc.SocialPostService.GetJobStatus:output_type -> social_post_svc.JobStatus
-	20, // 70: social_post_svc.SocialPostService.ReplayJob:output_type -> social_post_svc.JobStatus
-	23, // 71: social_post_svc.SocialPostService.ListAccounts:output_type -> social_post_svc.ListAccountsResponse
-	25, // 72: social_post_svc.SocialPostService.ListValidationMetadata:output_type -> social_post_svc.ListValidationMetadataResponse
-	27, // 73: social_post_svc.SocialPostService.ImportStudioAsset:output_type -> social_post_svc.ImportStudioAssetResponse
-	29, // 74: social_post_svc.SocialPostService.ListMediaAssets:output_type -> social_post_svc.ListMediaAssetsResponse
-	31, // 75: social_post_svc.SocialPostService.DeleteMediaAsset:output_type -> social_post_svc.DeleteMediaAssetResponse
-	33, // 76: social_post_svc.SocialPostService.ReorderQueue:output_type -> social_post_svc.ReorderQueueResponse
-	36, // 77: social_post_svc.SocialPostService.ListPostHistory:output_type -> social_post_svc.HistoryResponse
-	56, // [56:78] is the sub-list for method output_type
-	34, // [34:56] is the sub-list for method input_type
-	34, // [34:34] is the sub-list for extension type_name
-	34, // [34:34] is the sub-list for extension extendee
-	0,  // [0:34] is the sub-list for field type_name
+	1,  // 25: social_post_svc.LinkAccountRequest.context:type_name -> social_post_svc.RequestContext
+	1,  // 26: social_post_svc.DisconnectAccountRequest.context:type_name -> social_post_svc.RequestContext
+	1,  // 27: social_post_svc.ImportStudioAssetRequest.context:type_name -> social_post_svc.RequestContext
+	4,  // 28: social_post_svc.ImportStudioAssetResponse.asset:type_name -> social_post_svc.MediaAsset
+	1,  // 29: social_post_svc.ListMediaAssetsRequest.context:type_name -> social_post_svc.RequestContext
+	4,  // 30: social_post_svc.ListMediaAssetsResponse.assets:type_name -> social_post_svc.MediaAsset
+	1,  // 31: social_post_svc.DeleteMediaAssetRequest.context:type_name -> social_post_svc.RequestContext
+	1,  // 32: social_post_svc.ReorderQueueRequest.context:type_name -> social_post_svc.RequestContext
+	6,  // 33: social_post_svc.ReorderQueueResponse.posts:type_name -> social_post_svc.SocialPost
+	1,  // 34: social_post_svc.HistoryRequest.context:type_name -> social_post_svc.RequestContext
+	38, // 35: social_post_svc.HistoryResponse.events:type_name -> social_post_svc.HistoryEvent
+	7,  // 36: social_post_svc.SocialPostService.CreatePost:input_type -> social_post_svc.CreatePostRequest
+	8,  // 37: social_post_svc.SocialPostService.GetPost:input_type -> social_post_svc.GetPostRequest
+	9,  // 38: social_post_svc.SocialPostService.UpdatePost:input_type -> social_post_svc.UpdatePostRequest
+	10, // 39: social_post_svc.SocialPostService.DeleteDraft:input_type -> social_post_svc.DeleteDraftRequest
+	12, // 40: social_post_svc.SocialPostService.ListPosts:input_type -> social_post_svc.ListPostsRequest
+	14, // 41: social_post_svc.SocialPostService.UpsertRendition:input_type -> social_post_svc.UpsertRenditionRequest
+	15, // 42: social_post_svc.SocialPostService.SetRenditionMedia:input_type -> social_post_svc.SetRenditionMediaRequest
+	16, // 43: social_post_svc.SocialPostService.SchedulePost:input_type -> social_post_svc.SchedulePostRequest
+	17, // 44: social_post_svc.SocialPostService.CancelSchedule:input_type -> social_post_svc.PostActionRequest
+	16, // 45: social_post_svc.SocialPostService.ReschedulePost:input_type -> social_post_svc.SchedulePostRequest
+	17, // 46: social_post_svc.SocialPostService.PublishNow:input_type -> social_post_svc.PostActionRequest
+	12, // 47: social_post_svc.SocialPostService.ListCalendar:input_type -> social_post_svc.ListPostsRequest
+	12, // 48: social_post_svc.SocialPostService.ListQueue:input_type -> social_post_svc.ListPostsRequest
+	18, // 49: social_post_svc.SocialPostService.GetJobStatus:input_type -> social_post_svc.JobStatusRequest
+	19, // 50: social_post_svc.SocialPostService.ReplayJob:input_type -> social_post_svc.ReplayJobRequest
+	21, // 51: social_post_svc.SocialPostService.ListAccounts:input_type -> social_post_svc.ListAccountsRequest
+	26, // 52: social_post_svc.SocialPostService.LinkAccount:input_type -> social_post_svc.LinkAccountRequest
+	27, // 53: social_post_svc.SocialPostService.DisconnectAccount:input_type -> social_post_svc.DisconnectAccountRequest
+	24, // 54: social_post_svc.SocialPostService.ListValidationMetadata:input_type -> social_post_svc.ListValidationMetadataRequest
+	29, // 55: social_post_svc.SocialPostService.ImportStudioAsset:input_type -> social_post_svc.ImportStudioAssetRequest
+	31, // 56: social_post_svc.SocialPostService.ListMediaAssets:input_type -> social_post_svc.ListMediaAssetsRequest
+	33, // 57: social_post_svc.SocialPostService.DeleteMediaAsset:input_type -> social_post_svc.DeleteMediaAssetRequest
+	35, // 58: social_post_svc.SocialPostService.ReorderQueue:input_type -> social_post_svc.ReorderQueueRequest
+	37, // 59: social_post_svc.SocialPostService.ListPostHistory:input_type -> social_post_svc.HistoryRequest
+	11, // 60: social_post_svc.SocialPostService.CreatePost:output_type -> social_post_svc.PostResponse
+	11, // 61: social_post_svc.SocialPostService.GetPost:output_type -> social_post_svc.PostResponse
+	11, // 62: social_post_svc.SocialPostService.UpdatePost:output_type -> social_post_svc.PostResponse
+	11, // 63: social_post_svc.SocialPostService.DeleteDraft:output_type -> social_post_svc.PostResponse
+	13, // 64: social_post_svc.SocialPostService.ListPosts:output_type -> social_post_svc.ListPostsResponse
+	11, // 65: social_post_svc.SocialPostService.UpsertRendition:output_type -> social_post_svc.PostResponse
+	11, // 66: social_post_svc.SocialPostService.SetRenditionMedia:output_type -> social_post_svc.PostResponse
+	11, // 67: social_post_svc.SocialPostService.SchedulePost:output_type -> social_post_svc.PostResponse
+	11, // 68: social_post_svc.SocialPostService.CancelSchedule:output_type -> social_post_svc.PostResponse
+	11, // 69: social_post_svc.SocialPostService.ReschedulePost:output_type -> social_post_svc.PostResponse
+	11, // 70: social_post_svc.SocialPostService.PublishNow:output_type -> social_post_svc.PostResponse
+	13, // 71: social_post_svc.SocialPostService.ListCalendar:output_type -> social_post_svc.ListPostsResponse
+	13, // 72: social_post_svc.SocialPostService.ListQueue:output_type -> social_post_svc.ListPostsResponse
+	20, // 73: social_post_svc.SocialPostService.GetJobStatus:output_type -> social_post_svc.JobStatus
+	20, // 74: social_post_svc.SocialPostService.ReplayJob:output_type -> social_post_svc.JobStatus
+	23, // 75: social_post_svc.SocialPostService.ListAccounts:output_type -> social_post_svc.ListAccountsResponse
+	22, // 76: social_post_svc.SocialPostService.LinkAccount:output_type -> social_post_svc.SocialAccount
+	28, // 77: social_post_svc.SocialPostService.DisconnectAccount:output_type -> social_post_svc.DisconnectAccountResponse
+	25, // 78: social_post_svc.SocialPostService.ListValidationMetadata:output_type -> social_post_svc.ListValidationMetadataResponse
+	30, // 79: social_post_svc.SocialPostService.ImportStudioAsset:output_type -> social_post_svc.ImportStudioAssetResponse
+	32, // 80: social_post_svc.SocialPostService.ListMediaAssets:output_type -> social_post_svc.ListMediaAssetsResponse
+	34, // 81: social_post_svc.SocialPostService.DeleteMediaAsset:output_type -> social_post_svc.DeleteMediaAssetResponse
+	36, // 82: social_post_svc.SocialPostService.ReorderQueue:output_type -> social_post_svc.ReorderQueueResponse
+	39, // 83: social_post_svc.SocialPostService.ListPostHistory:output_type -> social_post_svc.HistoryResponse
+	60, // [60:84] is the sub-list for method output_type
+	36, // [36:60] is the sub-list for method input_type
+	36, // [36:36] is the sub-list for extension type_name
+	36, // [36:36] is the sub-list for extension extendee
+	0,  // [0:36] is the sub-list for field type_name
 }
 
 func init() { file_apis_serviceconn_gateway_social_post_pb_gw_social_post_proto_init() }
@@ -2883,7 +3152,7 @@ func file_apis_serviceconn_gateway_social_post_pb_gw_social_post_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_apis_serviceconn_gateway_social_post_pb_gw_social_post_proto_rawDesc), len(file_apis_serviceconn_gateway_social_post_pb_gw_social_post_proto_rawDesc)),
 			NumEnums:      1,
-			NumMessages:   36,
+			NumMessages:   39,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

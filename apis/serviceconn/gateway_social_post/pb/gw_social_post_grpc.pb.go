@@ -35,6 +35,8 @@ const (
 	SocialPostService_GetJobStatus_FullMethodName           = "/social_post_svc.SocialPostService/GetJobStatus"
 	SocialPostService_ReplayJob_FullMethodName              = "/social_post_svc.SocialPostService/ReplayJob"
 	SocialPostService_ListAccounts_FullMethodName           = "/social_post_svc.SocialPostService/ListAccounts"
+	SocialPostService_LinkAccount_FullMethodName            = "/social_post_svc.SocialPostService/LinkAccount"
+	SocialPostService_DisconnectAccount_FullMethodName      = "/social_post_svc.SocialPostService/DisconnectAccount"
 	SocialPostService_ListValidationMetadata_FullMethodName = "/social_post_svc.SocialPostService/ListValidationMetadata"
 	SocialPostService_ImportStudioAsset_FullMethodName      = "/social_post_svc.SocialPostService/ImportStudioAsset"
 	SocialPostService_ListMediaAssets_FullMethodName        = "/social_post_svc.SocialPostService/ListMediaAssets"
@@ -63,6 +65,8 @@ type SocialPostServiceClient interface {
 	GetJobStatus(ctx context.Context, in *JobStatusRequest, opts ...grpc.CallOption) (*JobStatus, error)
 	ReplayJob(ctx context.Context, in *ReplayJobRequest, opts ...grpc.CallOption) (*JobStatus, error)
 	ListAccounts(ctx context.Context, in *ListAccountsRequest, opts ...grpc.CallOption) (*ListAccountsResponse, error)
+	LinkAccount(ctx context.Context, in *LinkAccountRequest, opts ...grpc.CallOption) (*SocialAccount, error)
+	DisconnectAccount(ctx context.Context, in *DisconnectAccountRequest, opts ...grpc.CallOption) (*DisconnectAccountResponse, error)
 	ListValidationMetadata(ctx context.Context, in *ListValidationMetadataRequest, opts ...grpc.CallOption) (*ListValidationMetadataResponse, error)
 	ImportStudioAsset(ctx context.Context, in *ImportStudioAssetRequest, opts ...grpc.CallOption) (*ImportStudioAssetResponse, error)
 	ListMediaAssets(ctx context.Context, in *ListMediaAssetsRequest, opts ...grpc.CallOption) (*ListMediaAssetsResponse, error)
@@ -239,6 +243,26 @@ func (c *socialPostServiceClient) ListAccounts(ctx context.Context, in *ListAcco
 	return out, nil
 }
 
+func (c *socialPostServiceClient) LinkAccount(ctx context.Context, in *LinkAccountRequest, opts ...grpc.CallOption) (*SocialAccount, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(SocialAccount)
+	err := c.cc.Invoke(ctx, SocialPostService_LinkAccount_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *socialPostServiceClient) DisconnectAccount(ctx context.Context, in *DisconnectAccountRequest, opts ...grpc.CallOption) (*DisconnectAccountResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(DisconnectAccountResponse)
+	err := c.cc.Invoke(ctx, SocialPostService_DisconnectAccount_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (c *socialPostServiceClient) ListValidationMetadata(ctx context.Context, in *ListValidationMetadataRequest, opts ...grpc.CallOption) (*ListValidationMetadataResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(ListValidationMetadataResponse)
@@ -319,6 +343,8 @@ type SocialPostServiceServer interface {
 	GetJobStatus(context.Context, *JobStatusRequest) (*JobStatus, error)
 	ReplayJob(context.Context, *ReplayJobRequest) (*JobStatus, error)
 	ListAccounts(context.Context, *ListAccountsRequest) (*ListAccountsResponse, error)
+	LinkAccount(context.Context, *LinkAccountRequest) (*SocialAccount, error)
+	DisconnectAccount(context.Context, *DisconnectAccountRequest) (*DisconnectAccountResponse, error)
 	ListValidationMetadata(context.Context, *ListValidationMetadataRequest) (*ListValidationMetadataResponse, error)
 	ImportStudioAsset(context.Context, *ImportStudioAssetRequest) (*ImportStudioAssetResponse, error)
 	ListMediaAssets(context.Context, *ListMediaAssetsRequest) (*ListMediaAssetsResponse, error)
@@ -382,6 +408,12 @@ func (UnimplementedSocialPostServiceServer) ReplayJob(context.Context, *ReplayJo
 }
 func (UnimplementedSocialPostServiceServer) ListAccounts(context.Context, *ListAccountsRequest) (*ListAccountsResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method ListAccounts not implemented")
+}
+func (UnimplementedSocialPostServiceServer) LinkAccount(context.Context, *LinkAccountRequest) (*SocialAccount, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method LinkAccount not implemented")
+}
+func (UnimplementedSocialPostServiceServer) DisconnectAccount(context.Context, *DisconnectAccountRequest) (*DisconnectAccountResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method DisconnectAccount not implemented")
 }
 func (UnimplementedSocialPostServiceServer) ListValidationMetadata(context.Context, *ListValidationMetadataRequest) (*ListValidationMetadataResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method ListValidationMetadata not implemented")
@@ -710,6 +742,42 @@ func _SocialPostService_ListAccounts_Handler(srv interface{}, ctx context.Contex
 	return interceptor(ctx, in, info, handler)
 }
 
+func _SocialPostService_LinkAccount_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(LinkAccountRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(SocialPostServiceServer).LinkAccount(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: SocialPostService_LinkAccount_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(SocialPostServiceServer).LinkAccount(ctx, req.(*LinkAccountRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _SocialPostService_DisconnectAccount_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(DisconnectAccountRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(SocialPostServiceServer).DisconnectAccount(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: SocialPostService_DisconnectAccount_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(SocialPostServiceServer).DisconnectAccount(ctx, req.(*DisconnectAccountRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 func _SocialPostService_ListValidationMetadata_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(ListValidationMetadataRequest)
 	if err := dec(in); err != nil {
@@ -888,6 +956,14 @@ var SocialPostService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "ListAccounts",
 			Handler:    _SocialPostService_ListAccounts_Handler,
+		},
+		{
+			MethodName: "LinkAccount",
+			Handler:    _SocialPostService_LinkAccount_Handler,
+		},
+		{
+			MethodName: "DisconnectAccount",
+			Handler:    _SocialPostService_DisconnectAccount_Handler,
 		},
 		{
 			MethodName: "ListValidationMetadata",
