@@ -279,5 +279,61 @@ func TestToRenditionDTOIncludesScheduledOverrides(t *testing.T) {
 	}
 }
 
+func TestToSocialAccountDTOIncludesMockAndAvatar(t *testing.T) {
+	acc := &pb.SocialAccount{
+		Id:          "acc-test-1",
+		Platform:    pb.Platform_PLATFORM_X,
+		DisplayName: "Test X",
+		Handle:      "test_x",
+		Status:      "active",
+		IsMock:      true,
+		AvatarUrl:   "https://example.com/avatar.png",
+	}
+	dto := toSocialAccountDTO(acc)
+	if dto == nil {
+		t.Fatal("expected non-nil SocialAccountDTO")
+	}
+	if !dto.IsMock {
+		t.Fatal("expected IsMock to be true")
+	}
+	if dto.AvatarURL != "https://example.com/avatar.png" {
+		t.Fatalf("expected AvatarURL %q, got %q", "https://example.com/avatar.png", dto.AvatarURL)
+	}
+	if dto.Platform != "x" {
+		t.Fatalf("expected Platform 'x', got %q", dto.Platform)
+	}
+}
 
-
+func TestToListAccountsResponseDTOIncludesMockAccounts(t *testing.T) {
+	resp := &pb.ListAccountsResponse{
+		Accounts: []*pb.SocialAccount{
+			{
+				Id:          "acc-1",
+				Platform:    pb.Platform_PLATFORM_X,
+				DisplayName: "X Mock",
+				Handle:      "x_mock",
+				Status:      "active",
+				IsMock:      true,
+			},
+			{
+				Id:          "acc-2",
+				Platform:    pb.Platform_PLATFORM_INSTAGRAM,
+				DisplayName: "Insta Real",
+				Handle:      "insta_real",
+				Status:      "active",
+				IsMock:      false,
+			},
+		},
+	}
+	dto := toListAccountsResponseDTO(resp)
+	accounts, ok := dto["accounts"].([]SocialAccountDTO)
+	if !ok || len(accounts) != 2 {
+		t.Fatalf("expected 2 accounts, got %v", dto["accounts"])
+	}
+	if !accounts[0].IsMock {
+		t.Fatal("expected account 0 to be mock")
+	}
+	if accounts[1].IsMock {
+		t.Fatal("expected account 1 not to be mock")
+	}
+}

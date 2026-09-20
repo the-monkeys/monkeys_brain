@@ -18,6 +18,13 @@ import (
 	"google.golang.org/grpc/status"
 )
 
+type createMockAccountRequest struct {
+	Platform    string `json:"platform" binding:"required"`
+	Handle      string `json:"handle" binding:"required"`
+	DisplayName string `json:"display_name"`
+	AvatarURL   string `json:"avatar_url"`
+}
+
 type createPostRequest struct {
 	BaseText string `json:"base_text" binding:"max=63206"`
 }
@@ -105,6 +112,8 @@ type SocialAccountDTO struct {
 	DisplayName string                 `json:"display_name"`
 	Handle      string                 `json:"handle"`
 	Status      string                 `json:"status"`
+	IsMock      bool                   `json:"is_mock"`
+	AvatarURL   string                 `json:"avatar_url,omitempty"`
 	Validation  *ValidationMetadataDTO `json:"validation,omitempty"`
 }
 
@@ -197,6 +206,8 @@ func toSocialAccountDTO(a *pb.SocialAccount) *SocialAccountDTO {
 		DisplayName: a.GetDisplayName(),
 		Handle:      a.GetHandle(),
 		Status:      a.GetStatus(),
+		IsMock:      a.GetIsMock(),
+		AvatarURL:   a.GetAvatarUrl(),
 		Validation:  toValidationMetadataDTO(a.GetValidation()),
 	}
 }
@@ -415,6 +426,14 @@ func RegisterRoutes(router *gin.Engine, cfg *config.Config, authClient *auth.Ser
 				assetDTO = toMediaAssetDTO(v.GetAsset())
 			}
 			c.JSON(http.StatusOK, gin.H{"asset": assetDTO})
+		case *pb.SocialAccount:
+			c.JSON(http.StatusOK, gin.H{"account": toSocialAccountDTO(v)})
+		case *pb.DisconnectAccountResponse:
+			c.JSON(http.StatusOK, gin.H{
+				"success":               v.GetSuccess(),
+				"cancelled_jobs_count":  v.GetCancelledJobsCount(),
+				"drafts_reverted_count": v.GetDraftsRevertedCount(),
+			})
 		case *pb.ReorderQueueResponse:
 			posts := make([]SocialPostDTO, 0, len(v.GetPosts()))
 			for _, p := range v.GetPosts() {
@@ -491,6 +510,54 @@ func RegisterRoutes(router *gin.Engine, cfg *config.Config, authClient *auth.Ser
 		call(c, func(ctx context.Context, reqCtx *pb.RequestContext) (interface{}, error) {
 			return client.ListAccounts(ctx, &pb.ListAccountsRequest{Context: reqCtx})
 		})
+	})
+	routes.POST("/accounts/mock", func(c *gin.Context) {
+		var body struct {
+			Platform    string `json:"platform" binding:"required"`
+			Handle      string `json:"handle" binding:"required"`
+			DisplayName string `json:"display_name"`
+			AvatarURL   string `json:"avatar_url"`
+		}
+		if err := c.ShouldBindJSON(&body); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid mock account payload: platform and handle are required"})
+			return
+		}
+		if body.DisplayName == "" {
+			body.DisplayName = body.Handle
+		}
+		call(c, func(ctx context.Context, reqCtx *pb.RequestContext) (interface{}, error) {
+			return client.LinkAccount(ctx, &pb.LinkAccountRequest{
+				Context:            reqCtx,
+				Platform:           body.Platform,
+				Handle:             body.Handle,
+				DisplayName:        body.DisplayName,
+				ExternalAccountRef: fmt.Sprintf("mock:%s:%s:%d", body.Platform, body.Handle, time.Now().UnixNano()),
+				AvatarUrl:          body.AvatarURL,
+				IsMock:             true,
+			})
+		})
+	})
+	routes.DELETE("/accounts/:accountID", func(c *gin.Context) {
+		accountID := c.Param("accountID")
+		if accountID == "" {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "accountID is required"})
+			return
+		}
+		call(c, func(ctx context.Context, reqCtx *pb.RequestContext) (interface{}, error) {
+			return client.DisconnectAccount(ctx, &pb.DisconnectAccountRequest{
+				Context:   reqCtx,
+				AccountId: accountID,
+			})
+		})
+	})
+	routes.GET("/oauth/:platform/authorize", func(c *gin.Context) {
+		platform := c.Param("platform")
+		redirectURL := fmt.Sprintf("/studio/accounts?mock_prompt=true&platform=%s", platform)
+		c.Redirect(http.StatusTemporaryRedirect, redirectURL)
+	})
+	routes.GET("/oauth/:platform/callback", func(c *gin.Context) {
+		platform := c.Param("platform")
+		c.Redirect(http.StatusTemporaryRedirect, fmt.Sprintf("/studio/accounts?connected=true&platform=%s", platform))
 	})
 	routes.GET("/validation-metadata", func(c *gin.Context) {
 		call(c, func(ctx context.Context, reqCtx *pb.RequestContext) (interface{}, error) {
