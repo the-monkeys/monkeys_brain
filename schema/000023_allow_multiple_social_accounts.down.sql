@@ -1,13 +1,4 @@
-CREATE OR REPLACE FUNCTION provision_social_mock_accounts()
-RETURNS TRIGGER AS $$
-BEGIN
-    INSERT INTO social_accounts (owner_user_id, platform, display_name, handle, external_account_ref)
-    SELECT NEW.id, platform, initcap(platform) || ' Mock', '@' || NEW.username, 'mock:' || platform || ':' || NEW.id
-    FROM unnest(ARRAY['x', 'linkedin', 'instagram', 'facebook', 'youtube', 'tiktok']) AS platform
-    ON CONFLICT (owner_user_id, platform) DO NOTHING;
-    RETURN NEW;
-END;
-$$ LANGUAGE plpgsql;
+-- 000023_allow_multiple_social_accounts.down.sql
 
 ALTER TABLE social_accounts DROP COLUMN IF EXISTS avatar_url;
 ALTER TABLE social_accounts DROP COLUMN IF EXISTS is_mock;

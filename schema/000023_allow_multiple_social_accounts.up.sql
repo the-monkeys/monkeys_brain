@@ -1,16 +1,18 @@
+-- 000023_allow_multiple_social_accounts.up.sql
+
+-- 1. Drop single-account constraint to allow multiple accounts per platform per user
 ALTER TABLE social_accounts DROP CONSTRAINT IF EXISTS uq_social_accounts_owner_platform;
 
+-- 2. Update status constraint to include 'disconnected'
 ALTER TABLE social_accounts DROP CONSTRAINT IF EXISTS chk_social_accounts_status;
 ALTER TABLE social_accounts ADD CONSTRAINT chk_social_accounts_status
     CHECK (status IN ('active', 'disabled', 'disconnected'));
 
+-- 3. Add is_mock and avatar_url columns
 ALTER TABLE social_accounts ADD COLUMN IF NOT EXISTS is_mock BOOLEAN NOT NULL DEFAULT FALSE;
 ALTER TABLE social_accounts ADD COLUMN IF NOT EXISTS avatar_url TEXT;
 
-UPDATE social_accounts
-SET is_mock = TRUE
-WHERE external_account_ref LIKE 'mock:%';
-
+-- 4. Update the provisioning trigger to set is_mock = TRUE and conflict on (owner_user_id, platform, external_account_ref)
 CREATE OR REPLACE FUNCTION provision_social_mock_accounts()
 RETURNS TRIGGER AS $$
 BEGIN
