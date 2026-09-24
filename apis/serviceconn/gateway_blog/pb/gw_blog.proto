@@ -192,6 +192,8 @@ message PublishBlogReq {
     
     // Comprehensive client information
     ClientInfo client_info = 11;
+    string group_slug = 12; // empty = no group
+    string audience = 13;   // 'public' | 'group_only'; empty = public
 }
 
 message ScheduleBlogReq {
@@ -354,6 +356,9 @@ message GetBlogsReq {
     
     // Comprehensive client information
     ClientInfo client_info = 15;
+    string group_slug = 16;        // list blogs for this group
+    bool include_group_only = 17;  // members may see group_only posts
+    bool exclude_group_only = 18;  // public profile: hide group_only
 }
 
 message GetBlogsBySliceReq {
@@ -410,6 +415,9 @@ message BlogListReq {
     Platform platform = 12;
     ClientInfo client_info = 13;
     bool is_scheduled = 14;
+    string group_slug = 15;
+    bool include_group_only = 16;
+    bool exclude_group_only = 17;
 }
 
 message SearchReq {

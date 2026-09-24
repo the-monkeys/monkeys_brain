@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
@@ -111,6 +112,31 @@ func handleUserAction(user models.InterServiceMessage, log *zap.SugaredLogger, d
 				"status_code", resp.StatusCode,
 			)
 		}
+
+	case constants.GROUP_DELETE:
+		slug := strings.TrimSpace(user.GroupSlug)
+		if slug == "" {
+			log.Warn("GROUP_DELETE missing group slug")
+			return
+		}
+		log.Debugw("=== BLOG: GROUP_DELETE received ===", "group_slug", slug)
+		if err := db.DetachBlogsFromGroup(context.Background(), slug); err != nil {
+			log.Errorw("Blog ES detach from group failed", "group_slug", slug, "err", err)
+			return
+		}
+		log.Debugw("=== BLOG: GROUP_DELETE complete — blogs detached in ES ===", "group_slug", slug)
+
+	case constants.GROUP_AUDIENCE_COERCE:
+		slug := strings.TrimSpace(user.GroupSlug)
+		if slug == "" {
+			log.Warn("GROUP_AUDIENCE_COERCE missing group slug")
+			return
+		}
+		if err := db.CoerceBlogsToGroupOnly(context.Background(), slug); err != nil {
+			log.Errorw("Blog ES audience coerce failed", "group_slug", slug, "err", err)
+			return
+		}
+		log.Debugw("=== BLOG: GROUP_AUDIENCE_COERCE complete ===", "group_slug", slug)
 
 	default:
 		log.Warnf("Received unsupported action type: %s", user.Action)

@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/elastic/go-elasticsearch/v8/esapi"
+	"github.com/the-monkeys/the_monkeys/common/audience"
 	"github.com/the-monkeys/the_monkeys/microservices/the_monkeys_blog/internal/constants"
 	"github.com/the-monkeys/the_monkeys/searchdoc"
 )
@@ -91,6 +92,7 @@ func (es *elasticsearchStorage) GetBlogsOfUsersByAccountIds(ctx context.Context,
 							"is_archived": true,
 						},
 					},
+					audience.PublicListMustNot(),
 				},
 			},
 		},
@@ -309,11 +311,22 @@ func (es *elasticsearchStorage) GetBlogsByTagsAccId(ctx context.Context, account
 	return blogs, nil
 }
 
-func (es *elasticsearchStorage) GetBlogsByAccountId(ctx context.Context, accountId string, isDraft bool, limit, offset int32) ([]map[string]interface{}, error) {
+func (es *elasticsearchStorage) GetBlogsByAccountId(ctx context.Context, accountId string, isDraft bool, excludeGroupOnly bool, limit, offset int32) ([]map[string]interface{}, error) {
 	// Ensure accountId is not empty
 	if accountId == "" {
 		es.log.Error("GetBlogsByAccountId: accountId is empty")
 		return nil, fmt.Errorf("accountId cannot be empty")
+	}
+
+	mustNot := []map[string]interface{}{
+		{
+			"term": map[string]interface{}{
+				"is_archived": true,
+			},
+		},
+	}
+	if !isDraft && excludeGroupOnly {
+		mustNot = audience.AppendPublicListMustNot(mustNot)
 	}
 
 	// Build the query to get blogs by accountId, filtered by isDraft, with sorting by latest first
@@ -342,13 +355,7 @@ func (es *elasticsearchStorage) GetBlogsByAccountId(ctx context.Context, account
 						},
 					},
 				},
-				"must_not": []map[string]interface{}{
-					{
-						"term": map[string]interface{}{
-							"is_archived": true,
-						},
-					},
-				},
+				"must_not": mustNot,
 			},
 		},
 	}
@@ -694,6 +701,11 @@ func (es *elasticsearchStorage) GetBlogsByTags(ctx context.Context, tags []strin
 			},
 		},
 	}
+	if !isDraft {
+		boolQuery := query["query"].(map[string]interface{})["bool"].(map[string]interface{})
+		mustNot := boolQuery["must_not"].([]map[string]interface{})
+		boolQuery["must_not"] = audience.AppendPublicListMustNot(mustNot)
+	}
 
 	// Marshal the query to JSON
 	bs, err := json.Marshal(query)
@@ -908,6 +920,7 @@ func (es *elasticsearchStorage) GetAllPublishedBlogsLatestFirst(ctx context.Cont
 							"is_scheduled": true,
 						},
 					},
+					audience.PublicListMustNot(),
 				},
 			},
 		},
@@ -1006,6 +1019,7 @@ func (es *elasticsearchStorage) GetAllTagsFromUserPublishedBlogs(ctx context.Con
 							"is_archived": true,
 						},
 					},
+					audience.PublicListMustNot(),
 				},
 			},
 		},

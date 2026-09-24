@@ -5,6 +5,7 @@ import (
 	"net/http"
 
 	"github.com/gin-gonic/gin"
+	blogpb "github.com/the-monkeys/the_monkeys/apis/serviceconn/gateway_blog/pb"
 	"github.com/the-monkeys/the_monkeys/apis/serviceconn/gateway_group/pb"
 	"github.com/the-monkeys/the_monkeys/config"
 	"github.com/the-monkeys/the_monkeys/microservices/the_monkeys_gateway/utils"
@@ -18,6 +19,7 @@ import (
 // GroupServiceClient adapts the groups gRPC service to REST.
 type GroupServiceClient struct {
 	Client pb.GroupServiceClient
+	Blogs  blogpb.BlogServiceClient
 	log    *zap.SugaredLogger
 }
 

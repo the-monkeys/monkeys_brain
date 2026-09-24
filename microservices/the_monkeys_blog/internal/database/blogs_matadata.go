@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/elastic/go-elasticsearch/v8/esapi"
+	"github.com/the-monkeys/the_monkeys/common/audience"
 	"github.com/the-monkeys/the_monkeys/microservices/the_monkeys_blog/internal/constants"
 )
 
@@ -145,6 +146,11 @@ func (es *elasticsearchStorage) GetBlogsMetadataByTags(ctx context.Context, tags
 				},
 			},
 		},
+	}
+	if !isDraft {
+		boolQuery := query["query"].(map[string]interface{})["bool"].(map[string]interface{})
+		mustNot := boolQuery["must_not"].([]map[string]interface{})
+		boolQuery["must_not"] = audience.AppendPublicListMustNot(mustNot)
 	}
 
 	// Marshal the query to JSON
@@ -305,6 +311,7 @@ func (es *elasticsearchStorage) GetAllPublishedBlogsMetadata(ctx context.Context
 							"is_scheduled": true,
 						},
 					},
+					audience.PublicListMustNot(),
 				},
 			},
 		},
@@ -500,6 +507,11 @@ func (es *elasticsearchStorage) GetBlogsMetadataByQuery(ctx context.Context, que
 			},
 		},
 	}
+	if !isDraft {
+		boolQuery := query["query"].(map[string]interface{})["bool"].(map[string]interface{})
+		mustNot := boolQuery["must_not"].([]map[string]interface{})
+		boolQuery["must_not"] = audience.AppendPublicListMustNot(mustNot)
+	}
 
 	bs, err := json.Marshal(query)
 	if err != nil {
@@ -615,7 +627,7 @@ func (es *elasticsearchStorage) GetBlogsMetadataByQuery(ctx context.Context, que
 	return blogsMetadata, totalCount, nil
 }
 
-func (es *elasticsearchStorage) GetBlogsMetaByAccountId(ctx context.Context, accountId string, isDraft bool, isSchedule bool, limit, offset int32) ([]map[string]interface{}, int, error) {
+func (es *elasticsearchStorage) GetBlogsMetaByAccountId(ctx context.Context, accountId string, isDraft bool, isSchedule bool, excludeGroupOnly bool, limit, offset int32) ([]map[string]interface{}, int, error) {
 	// Validate input
 	if accountId == "" {
 		es.log.Error("GetBlogsMetaByAccountId: accountId cannot be empty")
@@ -689,6 +701,9 @@ func (es *elasticsearchStorage) GetBlogsMetaByAccountId(ctx context.Context, acc
 				},
 			},
 		)
+		if excludeGroupOnly {
+			mustNot = audience.AppendPublicListMustNot(mustNot)
+		}
 	}
 
 	// -----------------------------

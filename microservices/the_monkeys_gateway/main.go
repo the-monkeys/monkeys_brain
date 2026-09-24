@@ -16,6 +16,7 @@ import (
 	"github.com/the-monkeys/the_monkeys/microservices/the_monkeys_gateway/internal/admin"
 	"github.com/the-monkeys/the_monkeys/microservices/the_monkeys_gateway/internal/auth"
 	"github.com/the-monkeys/the_monkeys/microservices/the_monkeys_gateway/internal/blog"
+	"github.com/the-monkeys/the_monkeys/microservices/the_monkeys_gateway/internal/blogacl"
 	"github.com/the-monkeys/the_monkeys/microservices/the_monkeys_gateway/internal/blogsearch"
 	"github.com/the-monkeys/the_monkeys/microservices/the_monkeys_gateway/internal/cache/searchcache"
 	"github.com/the-monkeys/the_monkeys/microservices/the_monkeys_gateway/internal/events"
@@ -114,7 +115,9 @@ func main() {
 	storageV2Svc := storage_v2.RegisterRoutes(server.router, cfg, storageClient.Client, authClient, log)
 	notification.RegisterNotificationRoute(server.router, cfg, authClient, log)
 	eventClient := events.RegisterEventRouter(server.router, cfg, authClient, storageV2Svc, log)
-	groupClient := groups.RegisterGroupRouter(server.router, cfg, authClient, eventClient.Client, storageV2Svc, log)
+	groupClient := groups.RegisterGroupRouter(server.router, cfg, authClient, eventClient.Client, blogClient.Client, storageV2Svc, log)
+	blogClient.Groups = groupClient.Client
+	userClient.ACL = &blogacl.Checker{Blogs: blogClient.Client, Groups: groupClient.Client, Log: log}
 	admin.RegisterAdminRouter(server.router, cfg, authClient, eventClient.Client, blogClient.Client, groupClient.Client, log)
 	systems.RegisterSystemRouter(server.router, cfg, log)
 	snapshot.RegisterRoutes(server.router, cfg, log)

@@ -237,6 +237,34 @@ func TestZeroScheduleTimeOmitted(t *testing.T) {
 	}
 }
 
+func TestAudienceAndGroupRoundTrip(t *testing.T) {
+	in := Message{
+		AccountId: "acc-1",
+		BlogId:    "b1",
+		Action:    "blog_publish",
+		GroupSlug: "tea-club",
+		GroupId:   42,
+		Audience:  "group_only",
+	}
+	raw, err := json.Marshal(in)
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	if !strings.Contains(string(raw), `"audience":"group_only"`) {
+		t.Fatalf("audience missing: %s", raw)
+	}
+	if !strings.Contains(string(raw), `"group_slug":"tea-club"`) {
+		t.Fatalf("group_slug missing: %s", raw)
+	}
+	var out Message
+	if err := json.Unmarshal(raw, &out); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if out.Audience != "group_only" || out.GroupSlug != "tea-club" || out.GroupId != 42 {
+		t.Fatalf("got %+v", out)
+	}
+}
+
 func TestCanonicalWinsWhenAliasesDiffer(t *testing.T) {
 	raw := []byte(`{"ip_address":"canonical","ip":"alias","blog_status":"published","status":"draft"}`)
 	var m Message

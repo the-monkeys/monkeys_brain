@@ -7,8 +7,10 @@ type Tags struct {
 }
 
 type PublishBlogReq struct {
-	Tags []string `json:"tags"`
-	Slug string   `json:"slug"`
+	Tags      []string `json:"tags"`
+	Slug      string   `json:"slug"`
+	GroupSlug string   `json:"group_slug"`
+	Audience  string   `json:"audience"`
 }
 
 type ScheduleBlogReq struct {

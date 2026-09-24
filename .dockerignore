@@ -6,12 +6,22 @@
 # IDE Settings
 .vscode
 .idea
+.cursor
+.superpowers
+
+# Package manager / local Python (never needed in Go/Python image builds)
+.pnpm-store/
+node_modules/
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.coverage
 
 # Large Data Directories (Must be excluded from build context)
 blogs/
 profile/
 local/
-node_modules/
 local_blogs/
 local_profiles/
 backup/
@@ -23,6 +33,7 @@ logs/
 test_data/
 documents/
 docs/
+temp_blog_fetch/
 
 # Build Artifacts & Binaries
 bin/

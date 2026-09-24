@@ -13,6 +13,7 @@ import (
 	"github.com/elastic/go-elasticsearch/v8"
 	"github.com/elastic/go-elasticsearch/v8/esapi"
 	"github.com/the-monkeys/the_monkeys/apis/serviceconn/gateway_blog/pb"
+	"github.com/the-monkeys/the_monkeys/common/audience"
 	"github.com/the-monkeys/the_monkeys/microservices/the_monkeys_blog/internal/constants"
 	"go.uber.org/zap"
 )
@@ -22,6 +23,14 @@ type ScheduleBlogOptions struct {
 	BlogID       string    // Required: Blog ID to schedule
 	ScheduleTime time.Time // Required: When to publish the blog (in UTC)
 	Timezone     string    // Optional: User's timezone for display purposes
+	Audience     string    // Optional: public | group_only
+	GroupSlug    string    // Optional: attach this group on schedule
+}
+
+// PublishBlogFields is written onto the ES document when a draft is published.
+type PublishBlogFields struct {
+	Audience  string
+	GroupSlug string
 }
 
 // Validate checks if the required fields are present
@@ -52,7 +61,7 @@ type ElasticsearchStorage interface {
 	GetDraftBlogsByOwnerAccountID(ctx context.Context, ownerAccountID string) (*pb.GetDraftBlogsRes, error)
 	GetDraftBlogByBlogId(ctx context.Context, blogId string) (*pb.BlogByIdRes, error)
 	DoesBlogExist(ctx context.Context, blogID string) (bool, map[string]interface{}, error)
-	PublishBlogById(ctx context.Context, blogId string) (*esapi.Response, error)
+	PublishBlogById(ctx context.Context, blogId string, fields PublishBlogFields) (*esapi.Response, error)
 	ScheduleBlogById(ctx context.Context, opts ScheduleBlogOptions) (*esapi.Response, error)
 	MoveBlogToDraft(ctx context.Context, blogId string) (*esapi.Response, error)
 	GetPublishedBlogByTagsName(ctx context.Context, tags ...string) (*pb.GetBlogsByTagsNameRes, error)
@@ -67,26 +76,29 @@ type ElasticsearchStorage interface {
 	DeleteBlogsByOwnerAccountID(ctx context.Context, ownerAccountId string) (*esapi.Response, error)
 	GetScheduledBlogsByOwnerAccountID(ctx context.Context, ownerAccountId string) (*pb.GetPublishedBlogsRes, error)
 	GetDueScheduledBlogs(ctx context.Context, currentTime time.Time, maxFailedAttempts int) ([]DueScheduledBlog, error)
-	PublishScheduledBlog(ctx context.Context, blogId string, seqNo *int, primaryTerm *int) (*esapi.Response, error)
+	PublishScheduledBlog(ctx context.Context, blogId string, seqNo *int, primaryTerm *int, clearGroup bool) (*esapi.Response, error)
 	IncrementScheduleFailedAttempts(ctx context.Context, blogId string, reason string) error
 
 	// -------------------------------------------------------------------------------- V2 --------------------------------------------------------------------------------
 	SaveBlog(ctx context.Context, blog map[string]interface{}) (*esapi.Response, error)
 	GetBlogsOfUsersByAccountIds(ctx context.Context, accountIds []string, limit, offset int32) ([]map[string]interface{}, error)
 	GetBlogsByTagsAccId(ctx context.Context, accountId string, tags []string, isDraft bool, limit, offset int32) ([]map[string]interface{}, error)
-	GetBlogsByAccountId(ctx context.Context, accountId string, isDraft bool, limit, offset int32) ([]map[string]interface{}, error)
+	GetBlogsByAccountId(ctx context.Context, accountId string, isDraft bool, excludeGroupOnly bool, limit, offset int32) ([]map[string]interface{}, error)
 	GetBlogByBlogId(ctx context.Context, blogId string, isDraft bool) (map[string]interface{}, error)
 	GetABlogByBlogIdAccId(ctx context.Context, blogId, accountId string, isDraft bool) (map[string]interface{}, error)
 	GetBlogsByTags(ctx context.Context, tags []string, isDraft bool, limit, offset int32) ([]map[string]interface{}, error)
 	GetBlogsByBlogIdsV2(ctx context.Context, blogIds []string, limit, offset int32) ([]map[string]interface{}, error)
 	GetAllPublishedBlogsLatestFirst(ctx context.Context, limit, offset int) ([]map[string]interface{}, error)
 	GetAllTagsFromUserPublishedBlogs(ctx context.Context, accountID string) ([]string, error)
+	GetPublishedBlogsByGroupSlug(ctx context.Context, slug string, includeGroupOnly bool, limit, offset int32) ([]map[string]interface{}, error)
+	DetachBlogsFromGroup(ctx context.Context, groupSlug string) error
+	CoerceBlogsToGroupOnly(ctx context.Context, groupSlug string) error
 
 	// -------------------------------------------------------------------------------- Metadata --------------------------------------------------------------------------------
 	GetBlogsMetadataByTags(ctx context.Context, tags []string, isDraft bool, limit, offset int32) ([]map[string]interface{}, int, error)
 	GetAllPublishedBlogsMetadata(ctx context.Context, limit, offset int) ([]map[string]interface{}, int, error)
 	GetBlogsMetadataByQuery(ctx context.Context, queryTexts []string, isDraft bool, limit, offset int32) ([]map[string]interface{}, int, error)
-	GetBlogsMetaByAccountId(ctx context.Context, accountId string, isDraft bool, isSchedule bool, limit, offset int32) ([]map[string]interface{}, int, error)
+	GetBlogsMetaByAccountId(ctx context.Context, accountId string, isDraft bool, isSchedule bool, excludeGroupOnly bool, limit, offset int32) ([]map[string]interface{}, int, error)
 	GetBlogsMetaByBlogIdsV2(ctx context.Context, blogIds []string, isDraft bool, limit, offset int32) ([]map[string]interface{}, int, error)
 	ListBlogIDs(ctx context.Context, limit, offset int32) ([]string, int, error)
 }
@@ -590,20 +602,34 @@ func (es *elasticsearchStorage) DoesBlogExist(ctx context.Context, blogID string
 	return false, nil, err
 }
 
-func (es *elasticsearchStorage) PublishBlogById(ctx context.Context, blogId string) (*esapi.Response, error) {
+func (es *elasticsearchStorage) PublishBlogById(ctx context.Context, blogId string, fields PublishBlogFields) (*esapi.Response, error) {
 	// Ensure blogId is not empty
 	if blogId == "" {
 		es.log.Error("PublishBlogById: blogId is empty")
 		return nil, fmt.Errorf("blogId cannot be empty")
 	}
 
+	aud := audience.Normalize(fields.Audience)
+	groupSlug := strings.TrimSpace(fields.GroupSlug)
+
 	// Build the update query to set is_draft to false, is_scheduled to false, and add published_time.
 	// Always set is_scheduled=false so future queries work correctly for old docs that lacked is_scheduled.
 	updateScript := map[string]interface{}{
 		"script": map[string]interface{}{
-			"source": "ctx._source.is_draft = false; ctx._source.is_scheduled = false; ctx._source.published_time = params.published_time;",
+			"source": `ctx._source.is_draft = false;
+			            ctx._source.is_scheduled = false;
+			            ctx._source.published_time = params.published_time;
+			            ctx._source.audience = params.audience;
+			            if (params.group_slug != '') {
+			              ctx._source.group_slug = params.group_slug;
+			            } else {
+			              ctx._source.remove('group_slug');
+			              ctx._source.remove('group_id');
+			            }`,
 			"params": map[string]interface{}{
 				"published_time": time.Now().Format(time.RFC3339),
+				"audience":       aud,
+				"group_slug":     groupSlug,
 			},
 		},
 	}
@@ -659,13 +685,22 @@ func (es *elasticsearchStorage) ScheduleBlogById(ctx context.Context, opts Sched
 	// Build the update script - sets is_scheduled=true, is_draft=true, and stores schedule_time + timezone
 	updateScript := map[string]interface{}{
 		"script": map[string]interface{}{
-			"source": `ctx._source.is_scheduled = true; 
-			            ctx._source.is_draft = true; 
-			            ctx._source.schedule_time = params.schedule_time; 
-			            ctx._source.timezone = params.timezone;`,
+			"source": `ctx._source.is_scheduled = true;
+			            ctx._source.is_draft = true;
+			            ctx._source.schedule_time = params.schedule_time;
+			            ctx._source.timezone = params.timezone;
+			            ctx._source.audience = params.audience;
+			            if (params.group_slug != '') {
+			              ctx._source.group_slug = params.group_slug;
+			            } else {
+			              ctx._source.remove('group_slug');
+			              ctx._source.remove('group_id');
+			            }`,
 			"params": map[string]interface{}{
 				"schedule_time": opts.ScheduleTime.UTC().Format(time.RFC3339), // Store in UTC
 				"timezone":      opts.Timezone,
+				"audience":      audience.Normalize(opts.Audience),
+				"group_slug":    strings.TrimSpace(opts.GroupSlug),
 			},
 		},
 	}
@@ -911,28 +946,36 @@ func (es *elasticsearchStorage) GetDueScheduledBlogs(ctx context.Context, curren
 // PublishScheduledBlog publishes a scheduled blog by setting is_draft=false, is_scheduled=false, and published_time.
 // Uses optimistic concurrency control (seqNo/primaryTerm) to prevent duplicate publishes across multiple instances.
 // Returns ErrVersionConflict if the document was already modified by another instance.
-func (es *elasticsearchStorage) PublishScheduledBlog(ctx context.Context, blogId string, seqNo *int, primaryTerm *int) (*esapi.Response, error) {
-	if blogId == "" {
-		es.log.Error("PublishScheduledBlog: blogId is empty")
-		return nil, fmt.Errorf("blogId cannot be empty")
-	}
-
-	// Build the update query to publish the scheduled blog.
-	// Also cleans up scheduling metadata (schedule_time, failed_attempts, etc.)
-	updateScript := map[string]interface{}{
-		"script": map[string]interface{}{
-			"source": `ctx._source.is_draft = false;
+func scheduledPublishScript(clearGroup bool) map[string]interface{} {
+	source := `ctx._source.is_draft = false;
 			            ctx._source.is_scheduled = false;
 			            ctx._source.published_time = params.published_time;
 			            ctx._source.schedule_time = null;
 			            ctx._source.failed_attempts = null;
 			            ctx._source.last_failure_reason = null;
-			            ctx._source.last_failure_time = null;`,
+			            ctx._source.last_failure_time = null;`
+	if clearGroup {
+		source += `
+			            ctx._source.remove('group_slug');
+			            ctx._source.remove('group_id');`
+	}
+	return map[string]interface{}{
+		"script": map[string]interface{}{
+			"source": source,
 			"params": map[string]interface{}{
 				"published_time": time.Now().Format(time.RFC3339),
 			},
 		},
 	}
+}
+
+func (es *elasticsearchStorage) PublishScheduledBlog(ctx context.Context, blogId string, seqNo *int, primaryTerm *int, clearGroup bool) (*esapi.Response, error) {
+	if blogId == "" {
+		es.log.Error("PublishScheduledBlog: blogId is empty")
+		return nil, fmt.Errorf("blogId cannot be empty")
+	}
+
+	updateScript := scheduledPublishScript(clearGroup)
 
 	bs, err := json.Marshal(updateScript)
 	if err != nil {
@@ -1092,24 +1135,8 @@ func (es *elasticsearchStorage) GetPublishedBlogByTagsName(ctx context.Context, 
 							"is_archived": true,
 						},
 					},
+					audience.PublicListMustNot(),
 				},
-				"should": []map[string]interface{}{
-					{
-						"term": map[string]interface{}{
-							"is_archived": false,
-						},
-					},
-					{
-						"bool": map[string]interface{}{
-							"must_not": map[string]interface{}{
-								"exists": map[string]interface{}{
-									"field": "is_archived",
-								},
-							},
-						},
-					},
-				},
-				"minimum_should_match": 1,
 			},
 		},
 	}
@@ -1419,6 +1446,7 @@ func (es *elasticsearchStorage) GetLast100BlogsLatestFirst(ctx context.Context) 
 							"is_archived": true,
 						},
 					},
+					audience.PublicListMustNot(),
 				},
 				"should": []map[string]interface{}{
 					{

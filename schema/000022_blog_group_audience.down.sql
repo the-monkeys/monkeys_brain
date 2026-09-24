@@ -1,0 +1,4 @@
+DROP INDEX IF EXISTS idx_blog_group_id;
+ALTER TABLE blog DROP CONSTRAINT IF EXISTS chk_blog_audience;
+ALTER TABLE blog DROP COLUMN IF EXISTS audience;
+ALTER TABLE blog DROP COLUMN IF EXISTS group_id;

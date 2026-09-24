@@ -18,7 +18,9 @@ import (
 	"github.com/the-monkeys/the_monkeys/microservices/the_monkeys_blog/internal/seo"
 	"github.com/the-monkeys/the_monkeys/microservices/the_monkeys_blog/internal/services"
 
+	grouppb "github.com/the-monkeys/the_monkeys/apis/serviceconn/gateway_group/pb"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/health"
 	"google.golang.org/grpc/health/grpc_health_v1"
 )
@@ -68,8 +70,17 @@ func main() {
 	seoManager := seo.NewSEOManager(logg, cfg)
 	blogService := services.NewBlogService(osClient, seoManager, logg, cfg, qConn)
 
-	// Start the blog scheduler for automatic publishing
-	blogScheduler := scheduler.NewScheduler(osClient, seoManager, qConn, cfg, logg)
+	groupsAddr := fmt.Sprintf("%s:%d", cfg.Microservices.TheMonkeysGroups, cfg.Microservices.GroupsPort)
+	groupsConn, err := grpc.NewClient(groupsAddr, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	if err != nil {
+		logg.Errorw("failed to dial groups service", "addr", groupsAddr, "err", err)
+	}
+	var groupsClient grouppb.GroupServiceClient
+	if groupsConn != nil {
+		groupsClient = grouppb.NewGroupServiceClient(groupsConn)
+	}
+
+	blogScheduler := scheduler.NewScheduler(osClient, seoManager, qConn, cfg, logg, groupsClient)
 	blogScheduler.Start()
 
 	// Handle graceful shutdown

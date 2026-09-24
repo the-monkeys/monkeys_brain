@@ -1,3 +1,10 @@
+# Docker Desktop Bake builds every service at once and OOMs the engine
+# (rpc Unavailable EOF while unpacking). Disable attestations here; on
+# Windows use scripts/compose-up.ps1 instead of `up --build`.
+x-build-safe: &build-safe
+  provenance: false
+  sbom: false
+
 services:
   the_monkeys_db:
     container_name: "the-monkeys-psql"
@@ -211,6 +218,7 @@ services:
     container_name: "the-monkeys-gateway"
     mem_limit: 1536m
     build:
+      <<: *build-safe
       context: .
       dockerfile: microservices/the_monkeys_gateway/Dockerfile
       args:
@@ -257,6 +265,7 @@ services:
   the_monkeys_authz:
     container_name: "the-monkeys-auth"
     build:
+      <<: *build-safe
       context: .
       dockerfile: microservices/the_monkeys_authz/Dockerfile
       args:
@@ -297,6 +306,7 @@ services:
   the_monkeys_storage:
     container_name: "the_monkeys_storage"
     build:
+      <<: *build-safe
       context: .
       dockerfile: microservices/the_monkeys_storage/Dockerfile
       args:
@@ -339,6 +349,7 @@ services:
   the_monkeys_user:
     container_name: "the-monkeys-user"
     build:
+      <<: *build-safe
       context: .
       dockerfile: microservices/the_monkeys_users/Dockerfile
       args:
@@ -378,6 +389,7 @@ services:
   the_monkeys_blog:
     container_name: "the-monkeys-blog"
     build:
+      <<: *build-safe
       context: .
       dockerfile: microservices/the_monkeys_blog/Dockerfile
       args:
@@ -418,6 +430,7 @@ services:
   the_monkeys_notification:
     container_name: "the_monkeys_notification"
     build:
+      <<: *build-safe
       context: .
       dockerfile: microservices/the_monkeys_notification/Dockerfile
       args:
@@ -460,6 +473,7 @@ services:
   the_monkeys_ai_engine:
     container_name: "the_monkeys_ai_engine"
     build:
+      <<: *build-safe
       context: .
       dockerfile: microservices/the_monkeys_ai/Dockerfile
       args:
@@ -501,6 +515,7 @@ services:
   the_monkeys_activity:
     container_name: "the_monkeys_activity"
     build:
+      <<: *build-safe
       context: .
       dockerfile: microservices/the_monkeys_activity/Dockerfile
       args:
@@ -539,6 +554,7 @@ services:
   the_monkeys_events:
     container_name: "the_monkeys_events"
     build:
+      <<: *build-safe
       context: .
       dockerfile: microservices/the_monkeys_events/Dockerfile
       args:
@@ -575,6 +591,7 @@ services:
   the_monkeys_groups:
     container_name: "the_monkeys_groups"
     build:
+      <<: *build-safe
       context: .
       dockerfile: microservices/the_monkeys_groups/Dockerfile
       args:

@@ -16,6 +16,7 @@ import (
 	"github.com/the-monkeys/the_monkeys/constants"
 
 	"github.com/the-monkeys/the_monkeys/microservices/the_monkeys_gateway/internal/auth"
+	"github.com/the-monkeys/the_monkeys/microservices/the_monkeys_gateway/internal/blogacl"
 	"github.com/the-monkeys/the_monkeys/microservices/the_monkeys_gateway/middleware"
 	"github.com/the-monkeys/the_monkeys/microservices/the_monkeys_gateway/utils"
 	"go.uber.org/zap"
@@ -32,6 +33,7 @@ import (
 type UserServiceClient struct {
 	Client      pb.UserServiceClient
 	ActivityCli activity_pb.ActivityServiceClient
+	ACL         *blogacl.Checker
 	log         *zap.SugaredLogger
 	cache       *searchcache.Cache
 }
@@ -620,7 +622,18 @@ func (asc *UserServiceClient) CreateNewTopics(ctx *gin.Context) {
 	ctx.JSON(http.StatusOK, res)
 }
 
+func (asc *UserServiceClient) requireBlogReadable(ctx *gin.Context) bool {
+	if asc.ACL == nil {
+		ctx.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"error": "something went wrong"})
+		return false
+	}
+	return asc.ACL.RequireCanViewPublished(ctx, ctx.Param("blog_id"))
+}
+
 func (asc *UserServiceClient) BookMarkABlog(ctx *gin.Context) {
+	if !asc.requireBlogReadable(ctx) {
+		return
+	}
 	userName := ctx.GetString("userName")
 	blogId := ctx.Param("blog_id")
 
@@ -777,6 +790,9 @@ func (asc *UserServiceClient) GetFollowing(ctx *gin.Context) {
 }
 
 func (asc *UserServiceClient) LikeABlog(ctx *gin.Context) {
+	if !asc.requireBlogReadable(ctx) {
+		return
+	}
 	userName := ctx.GetString("userName")
 	blogId := ctx.Param("blog_id")
 
@@ -837,6 +853,9 @@ func (asc *UserServiceClient) UnlikeABlog(ctx *gin.Context) {
 }
 
 func (asc *UserServiceClient) IsBlogLiked(ctx *gin.Context) {
+	if !asc.requireBlogReadable(ctx) {
+		return
+	}
 	userName := ctx.GetString("userName")
 	blogId := ctx.Param("blog_id")
 
@@ -893,6 +912,9 @@ func (asc *UserServiceClient) IsUserFollowed(ctx *gin.Context) {
 }
 
 func (asc *UserServiceClient) CountBookMarks(ctx *gin.Context) {
+	if !asc.requireBlogReadable(ctx) {
+		return
+	}
 	blogId := ctx.Param("blog_id")
 
 	res, err := asc.Client.GetBookMarkCounts(context.Background(), &pb.BookMarkReq{
@@ -915,6 +937,9 @@ func (asc *UserServiceClient) CountBookMarks(ctx *gin.Context) {
 }
 
 func (asc *UserServiceClient) IsBlogBookMarked(ctx *gin.Context) {
+	if !asc.requireBlogReadable(ctx) {
+		return
+	}
 	userName := ctx.GetString("userName")
 	blogId := ctx.Param("blog_id")
 
@@ -945,6 +970,9 @@ func (asc *UserServiceClient) IsBlogBookMarked(ctx *gin.Context) {
 }
 
 func (asc *UserServiceClient) CountLikes(ctx *gin.Context) {
+	if !asc.requireBlogReadable(ctx) {
+		return
+	}
 	blogId := ctx.Param("blog_id")
 
 	res, err := asc.Client.GetLikeCounts(context.Background(), &pb.BookMarkReq{

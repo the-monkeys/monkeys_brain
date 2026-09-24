@@ -9,6 +9,8 @@ import (
 	"io"
 	"strings"
 	"time"
+
+	"github.com/the-monkeys/the_monkeys/common/audience"
 )
 
 // SearchOpts captures the validated, server-side-bounded inputs the
@@ -228,6 +230,7 @@ func buildSearchBody(opts SearchOpts) ([]byte, error) {
 			},
 		},
 	}
+	mustNot = audience.AppendPublicListMustNot(mustNot)
 
 	body := map[string]interface{}{
 		"size":             opts.Limit,
@@ -293,6 +296,7 @@ func buildSuggestBody(opts SuggestOpts) ([]byte, error) {
 				"must_not": []map[string]interface{}{
 					{"term": map[string]interface{}{"is_draft": true}},
 					{"term": map[string]interface{}{"is_archived": true}},
+					audience.PublicListMustNot(),
 				},
 			},
 		},

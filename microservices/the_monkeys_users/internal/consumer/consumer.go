@@ -139,7 +139,7 @@ func processMessage(userCon *UserDbConn, log *zap.SugaredLogger, body []byte) er
 
 	case constants.BLOG_PUBLISH:
 		log.Infof("User published a blog: blogId=%s, accountId=%s", user.BlogId, user.AccountId)
-		if err := userCon.dbConn.UpdateBlogStatusToPublish(user.BlogId, user.BlogStatus); err != nil {
+		if err := userCon.dbConn.UpdateBlogStatusToPublish(user); err != nil {
 			log.Errorf("Can't update blog status to publish: %v", err)
 			return fmt.Errorf("UpdateBlogStatusToPublish failed for %s: %w", user.BlogId, err)
 		}
@@ -158,7 +158,7 @@ func processMessage(userCon *UserDbConn, log *zap.SugaredLogger, body []byte) er
 
 	case constants.BLOG_SCHEDULE:
 		log.Infof("User scheduled a blog: blogId=%s, accountId=%s", user.BlogId, user.AccountId)
-		if err := userCon.dbConn.UpdateBlogStatusToPublish(user.BlogId, user.BlogStatus); err != nil {
+		if err := userCon.dbConn.UpdateBlogStatusToPublish(user); err != nil {
 			log.Errorf("Can't update blog status to schedule: %v", err)
 			return fmt.Errorf("UpdateBlogStatusToPublish (schedule) failed for %s: %w", user.BlogId, err)
 		}
@@ -166,6 +166,16 @@ func processMessage(userCon *UserDbConn, log *zap.SugaredLogger, body []byte) er
 			if err := userCon.dbConn.InsertTopicWithCategory(context.Background(), tag, "General"); err != nil {
 				log.Errorf("Can't insert topic for schedule: %v", err)
 			}
+		}
+
+	case constants.GROUP_AUDIENCE_COERCE:
+		if user.GroupSlug == "" {
+			log.Warn("GROUP_AUDIENCE_COERCE missing group slug")
+			return nil
+		}
+		if err := userCon.dbConn.CoerceBlogAudienceByGroupSlug(user.GroupSlug); err != nil {
+			log.Errorf("Can't coerce blog audience for group %s: %v", user.GroupSlug, err)
+			return fmt.Errorf("CoerceBlogAudienceByGroupSlug failed for %s: %w", user.GroupSlug, err)
 		}
 
 	default:

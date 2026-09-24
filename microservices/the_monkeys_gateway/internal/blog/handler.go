@@ -13,6 +13,7 @@ import (
 	activity_pb "github.com/the-monkeys/the_monkeys/apis/serviceconn/gateway_activity/pb"
 	"github.com/the-monkeys/the_monkeys/apis/serviceconn/gateway_blog/pb"
 	"github.com/the-monkeys/the_monkeys/constants"
+	"github.com/the-monkeys/the_monkeys/microservices/the_monkeys_gateway/internal/blogacl"
 	"github.com/the-monkeys/the_monkeys/microservices/the_monkeys_gateway/utils"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -568,17 +569,18 @@ func (asc *BlogServiceClient) MetaUsersPublished(ctx *gin.Context) {
 
 	// Call gRPC to get blog metadata with client tracking
 	stream, err := asc.Client.MetaGetUsersBlogs(context.Background(), &pb.BlogListReq{
-		AccountId:  userInfo.AccountId,
-		IsDraft:    false, // Only published blogs
-		Limit:      int32(limitInt),
-		Offset:     int32(offsetInt),
-		Ip:         clientInfo.IPAddress,
-		Client:     clientInfo.ClientType,
-		SessionId:  clientInfo.SessionID,
-		UserAgent:  clientInfo.UserAgent,
-		Referrer:   clientInfo.Referrer,
-		Platform:   utils.GetBlogPlatform(ctx),
-		ClientInfo: createClientInfo(clientInfo),
+		AccountId:        userInfo.AccountId,
+		IsDraft:          false, // Only published blogs
+		Limit:            int32(limitInt),
+		Offset:           int32(offsetInt),
+		ExcludeGroupOnly: ctx.GetString("accountId") != userInfo.AccountId,
+		Ip:               clientInfo.IPAddress,
+		Client:           clientInfo.ClientType,
+		SessionId:        clientInfo.SessionID,
+		UserAgent:        clientInfo.UserAgent,
+		Referrer:         clientInfo.Referrer,
+		Platform:         utils.GetBlogPlatform(ctx),
+		ClientInfo:       createClientInfo(clientInfo),
 	})
 
 	if err != nil {
@@ -1118,6 +1120,11 @@ func (asc *BlogServiceClient) MetaMyBookmarks(ctx *gin.Context) {
 		}
 	}
 
+	viewer := ctx.GetString("accountId")
+	allBlogs = blogacl.FilterReadableBlogs(allBlogs, viewer, func(doc map[string]interface{}, viewer string) bool {
+		return asc.acl().CanViewPublished(ctx, doc, viewer)
+	})
+
 	// Add additional metadata (like & bookmark count) for each blog
 	for _, blog := range allBlogs {
 		blogID, ok := blog["blog_id"].(string)
@@ -1248,6 +1255,9 @@ func (asc *BlogServiceClient) GetBlogStats(ctx *gin.Context) {
 	blogID := ctx.Param("blog_id")
 	if blogID == "" {
 		ctx.JSON(http.StatusBadRequest, gin.H{"error": "blog_id is required"})
+		return
+	}
+	if !asc.acl().RequireCanViewPublished(ctx, blogID) {
 		return
 	}
 
