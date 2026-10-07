@@ -1,7 +1,7 @@
 # Group Posts mixed feed + shared create menus — design
 
 Date: 2026-10-07  
-Status: **spec for review. Do not implement until this file is accepted.**  
+Status: **accepted.** Implementation plan: `docs/superpowers/plans/2026-10-07-group-posts-mixed-feed.md`.  
 Approach: **A** (client-side merge; no new feed API)  
 Depends on: discussion audience (`public` | `group_only`) already shipped in engine + UI.
 
