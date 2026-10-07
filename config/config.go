@@ -46,6 +46,9 @@ type Microservices struct {
 	TheMonkeysGroups           string `mapstructure:"the_monkeys_groups"`
 	GroupsPort                 int    `mapstructure:"groups_port"`
 	GroupsInternalPort         int    `mapstructure:"groups_internal_port"`
+	TheMonkeysDiscussions      string `mapstructure:"the_monkeys_discussions"`
+	DiscussionsPort            int    `mapstructure:"discussions_port"`
+	DiscussionsInternalPort    int    `mapstructure:"discussions_internal_port"`
 }
 
 type Database struct {
@@ -296,6 +299,9 @@ func bindEnvVars() {
 	viper.BindEnv("microservices.the_monkeys_groups", "MICROSERVICES_THE_MONKEYS_GROUPS")
 	viper.BindEnv("microservices.groups_port", "MICROSERVICES_GROUPS_PORT")
 	viper.BindEnv("microservices.groups_internal_port", "MICROSERVICES_GROUPS_INTERNAL_PORT")
+	viper.BindEnv("microservices.the_monkeys_discussions", "MICROSERVICES_THE_MONKEYS_DISCUSSIONS")
+	viper.BindEnv("microservices.discussions_port", "MICROSERVICES_DISCUSSIONS_PORT")
+	viper.BindEnv("microservices.discussions_internal_port", "MICROSERVICES_DISCUSSIONS_INTERNAL_PORT")
 
 	// PostgreSQL
 	viper.BindEnv("postgresql.primary_db.db_username", "POSTGRESQL_PRIMARY_DB_DB_USERNAME")

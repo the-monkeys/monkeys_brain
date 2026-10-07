@@ -19,6 +19,7 @@ import (
 	"github.com/the-monkeys/the_monkeys/microservices/the_monkeys_gateway/internal/blogacl"
 	"github.com/the-monkeys/the_monkeys/microservices/the_monkeys_gateway/internal/blogsearch"
 	"github.com/the-monkeys/the_monkeys/microservices/the_monkeys_gateway/internal/cache/searchcache"
+	"github.com/the-monkeys/the_monkeys/microservices/the_monkeys_gateway/internal/discussions"
 	"github.com/the-monkeys/the_monkeys/microservices/the_monkeys_gateway/internal/events"
 	"github.com/the-monkeys/the_monkeys/microservices/the_monkeys_gateway/internal/groups"
 	"github.com/the-monkeys/the_monkeys/microservices/the_monkeys_gateway/internal/notification"
@@ -116,6 +117,7 @@ func main() {
 	notification.RegisterNotificationRoute(server.router, cfg, authClient, log)
 	eventClient := events.RegisterEventRouter(server.router, cfg, authClient, storageV2Svc, log)
 	groupClient := groups.RegisterGroupRouter(server.router, cfg, authClient, eventClient.Client, blogClient.Client, storageV2Svc, log)
+	discussions.RegisterDiscussionRouter(server.router, cfg, authClient, log)
 	blogClient.Groups = groupClient.Client
 	userClient.ACL = &blogacl.Checker{Blogs: blogClient.Client, Groups: groupClient.Client, Log: log}
 	admin.RegisterAdminRouter(server.router, cfg, authClient, eventClient.Client, blogClient.Client, groupClient.Client, log)
