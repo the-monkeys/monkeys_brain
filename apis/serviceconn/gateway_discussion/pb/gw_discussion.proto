@@ -1,0 +1,100 @@
+syntax = "proto3";
+
+package discussion_svc;
+
+import "google/protobuf/timestamp.proto";
+
+option go_package = "./apis/serviceconn/gateway_discussion/pb";
+
+// Discussions are a separate service from groups. The body lives in Postgres.
+// account_id is the caller. An empty group_slug is a site-wide post.
+
+message DiscussionFile {
+    string storage_key = 1;
+    string content_type = 2;
+}
+
+message DiscussionReply {
+    string public_id = 1;
+    string parent_public_id = 2;
+    string body = 3;
+    string status = 4;
+    string author_username = 5;
+    bool author_gone = 6;
+    google.protobuf.Timestamp created_at = 7;
+}
+
+message Discussion {
+    string public_id = 1;
+    string body = 2;
+    string status = 3;
+    string author_username = 4;
+    bool author_gone = 5;
+    string group_slug = 6;
+    int32 reply_count = 7;
+    int32 like_count = 8;
+    bool liked = 9;
+    google.protobuf.Timestamp created_at = 10;
+    google.protobuf.Timestamp edited_until = 11;
+    repeated DiscussionFile files = 12;
+    repeated DiscussionReply replies = 13;
+    string audience = 14;
+}
+
+message CreateDiscussionReq {
+    string account_id = 1;
+    string group_slug = 2;
+    string body = 3;
+    repeated DiscussionFile files = 4;
+    string audience = 5;
+}
+
+message DiscussionResp {
+    Discussion discussion = 1;
+}
+
+message ListDiscussionsReq {
+    string account_id = 1;
+    string group_slug = 2;
+    string before_public_id = 3;
+}
+
+message ListDiscussionsResp {
+    repeated Discussion discussions = 1;
+}
+
+message DiscussionActionReq {
+    string account_id = 1;
+    string public_id = 2;
+}
+
+message ReplyDiscussionReq {
+    string account_id = 1;
+    string public_id = 2;
+    string parent_public_id = 3;
+    string body = 4;
+}
+
+message ReplyDiscussionResp {
+    DiscussionReply reply = 1;
+}
+
+message LikeDiscussionResp {
+    bool liked = 1;
+}
+
+message EditDiscussionReq {
+    string account_id = 1;
+    string public_id = 2;
+    string body = 3;
+}
+
+service DiscussionService {
+    rpc CreateDiscussion(CreateDiscussionReq) returns (DiscussionResp);
+    rpc ListDiscussions(ListDiscussionsReq) returns (ListDiscussionsResp);
+    rpc GetDiscussion(DiscussionActionReq) returns (DiscussionResp);
+    rpc ReplyToDiscussion(ReplyDiscussionReq) returns (ReplyDiscussionResp);
+    rpc LikeDiscussion(DiscussionActionReq) returns (LikeDiscussionResp);
+    rpc EditDiscussion(EditDiscussionReq) returns (DiscussionResp);
+    rpc DeleteDiscussion(DiscussionActionReq) returns (DiscussionResp);
+}

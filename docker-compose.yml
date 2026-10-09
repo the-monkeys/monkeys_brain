@@ -120,7 +120,8 @@ services:
     restart: always
 
   minio:
-    image: quay.io/minio/minio:latest
+    image: minio/minio:latest
+    pull_policy: never
     container_name: the-monkeys-minio
     ports:
       - "${MINIO_API_PORT}:${MINIO_API_INTERNAL_PORT}"
@@ -235,6 +236,7 @@ services:
       - minio
       - the_monkeys_events
       - the_monkeys_groups
+      - the_monkeys_discussions
     ports:
       - "${THE_MONKEYS_GATEWAY_HTTP_PORT}:${THE_MONKEYS_GATEWAY_INTERNAL_PORT}"
     restart: unless-stopped
@@ -620,6 +622,41 @@ services:
           cpus: '0.1'
     healthcheck:
       test: [ "CMD", "/usr/local/bin/grpc_health_probe", "-addr=localhost:${MICROSERVICES_GROUPS_INTERNAL_PORT}" ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+
+  the_monkeys_discussions:
+    container_name: "the_monkeys_discussions"
+    build:
+      <<: *build-safe
+      context: .
+      dockerfile: microservices/the_monkeys_discussions/Dockerfile
+      args:
+        DISCUSSIONS_SERVICE_PORT: ${MICROSERVICES_DISCUSSIONS_PORT}
+    networks:
+      - monkeys-network
+    depends_on:
+      - rabbitmq
+      - db-migrations
+      - the_monkeys_db
+    ports:
+      - "${MICROSERVICES_DISCUSSIONS_PORT}:${MICROSERVICES_DISCUSSIONS_INTERNAL_PORT}"
+    restart: unless-stopped
+    env_file:
+      - .env
+    user: "1001:1001"
+    deploy:
+      resources:
+        limits:
+          memory: 192M
+          cpus: '0.5'
+        reservations:
+          memory: 64M
+          cpus: '0.1'
+    healthcheck:
+      test: [ "CMD", "/usr/local/bin/grpc_health_probe", "-addr=localhost:${MICROSERVICES_DISCUSSIONS_INTERNAL_PORT}" ]
       interval: 30s
       timeout: 10s
       retries: 3
