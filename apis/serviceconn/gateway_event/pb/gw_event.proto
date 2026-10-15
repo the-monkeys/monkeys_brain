@@ -723,6 +723,12 @@ message AdminEventPaymentSummary {
     MoneyINR refunded_gross = 10;
     MoneyINR settled = 11;
     MoneyINR open_payable = 12;
+    // Additive finance detail. Legacy settled includes both pending and paid.
+    MoneyINR pending_settlements = 13;
+    MoneyINR paid_settlements = 14;
+    // Captured-status host share minus paid settlements, before pending reservations.
+    // Unlike legacy open_payable, this is signed so refund-after-payout debt is visible.
+    MoneyINR host_balance = 15;
 }
 
 message AdminListEventPaymentsReq {
@@ -748,6 +754,12 @@ message AdminPaymentLine {
     MoneyINR platform_fee = 6;
     MoneyINR gst = 7;
     MoneyINR host_payable = 8;
+    int64 id = 9;
+    google.protobuf.Timestamp captured_at = 10;
+    MoneyINR refund_gross = 11;
+    string razorpay_refund_id = 12;
+    google.protobuf.Timestamp refunded_at = 13;
+    string currency = 14;
 }
 
 message AdminSettlementLine {
@@ -755,6 +767,10 @@ message AdminSettlementLine {
     MoneyINR payable = 2;
     string status = 3;
     string note = 4;
+    google.protobuf.Timestamp created_at = 5;
+    google.protobuf.Timestamp marked_paid_at = 6;
+    string marked_paid_by = 7;
+    string currency = 8;
 }
 
 message AdminGetEventPaymentsResp {

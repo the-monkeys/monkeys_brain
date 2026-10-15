@@ -4,11 +4,13 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/the-monkeys/the_monkeys/apis/serviceconn/gateway_event/pb"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
 func inrJSON(m *pb.MoneyINR) gin.H {
@@ -16,6 +18,15 @@ func inrJSON(m *pb.MoneyINR) gin.H {
 		return gin.H{"paise": int64(0), "inr": "0.00"}
 	}
 	return gin.H{"paise": m.Paise, "inr": m.Inr}
+}
+
+// New finance fields are optional during a rolling service upgrade. An absent
+// message must not be presented as a verified zero balance.
+func optionalINRJSON(m *pb.MoneyINR) any {
+	if m == nil {
+		return nil
+	}
+	return inrJSON(m)
 }
 
 func (asc *AdminServiceClient) staffActor(ctx *gin.Context) *pb.AdminActor {
@@ -60,19 +71,29 @@ func summaryJSON(s *pb.AdminEventPaymentSummary) gin.H {
 		return gin.H{}
 	}
 	return gin.H{
-		"event_id":               s.EventId,
-		"slug":                   s.Slug,
-		"title":                  s.Title,
-		"organizer_username":     s.OrganizerUsername,
-		"start_time":             s.StartTime,
-		"gross_captured":         inrJSON(s.GrossCaptured),
-		"platform_fee":           inrJSON(s.PlatformFee),
-		"gst":                    inrJSON(s.Gst),
-		"host_payable_captured":  inrJSON(s.HostPayableCaptured),
-		"refunded_gross":         inrJSON(s.RefundedGross),
-		"settled":                inrJSON(s.Settled),
-		"open_payable":           inrJSON(s.OpenPayable),
+		"event_id":              s.EventId,
+		"slug":                  s.Slug,
+		"title":                 s.Title,
+		"organizer_username":    s.OrganizerUsername,
+		"start_time":            s.StartTime,
+		"gross_captured":        inrJSON(s.GrossCaptured),
+		"platform_fee":          inrJSON(s.PlatformFee),
+		"gst":                   inrJSON(s.Gst),
+		"host_payable_captured": inrJSON(s.HostPayableCaptured),
+		"refunded_gross":        inrJSON(s.RefundedGross),
+		"settled":               inrJSON(s.Settled),
+		"open_payable":          inrJSON(s.OpenPayable),
+		"pending_settlements":   optionalINRJSON(s.PendingSettlements),
+		"paid_settlements":      optionalINRJSON(s.PaidSettlements),
+		"host_balance":          optionalINRJSON(s.HostBalance),
 	}
+}
+
+func paymentTimeJSON(t *timestamppb.Timestamp) any {
+	if t == nil || t.CheckValid() != nil {
+		return nil
+	}
+	return t.AsTime().UTC().Format(time.RFC3339Nano)
 }
 
 func queryLimitOffset(ctx *gin.Context) (int32, int32) {
@@ -115,23 +136,33 @@ func (asc *AdminServiceClient) GetEventPayments(ctx *gin.Context) {
 	payments := make([]gin.H, 0, len(res.Payments))
 	for _, p := range res.Payments {
 		payments = append(payments, gin.H{
-			"attendee_username":  p.AttendeeUsername,
-			"razorpay_order_id":  p.RazorpayOrderId,
+			"id":                  p.Id,
+			"attendee_username":   p.AttendeeUsername,
+			"razorpay_order_id":   p.RazorpayOrderId,
 			"razorpay_payment_id": p.RazorpayPaymentId,
-			"status":             p.Status,
-			"gross":              inrJSON(p.Gross),
-			"platform_fee":       inrJSON(p.PlatformFee),
-			"gst":                inrJSON(p.Gst),
-			"host_payable":       inrJSON(p.HostPayable),
+			"status":              p.Status,
+			"gross":               inrJSON(p.Gross),
+			"platform_fee":        inrJSON(p.PlatformFee),
+			"gst":                 inrJSON(p.Gst),
+			"host_payable":        inrJSON(p.HostPayable),
+			"captured_at":         paymentTimeJSON(p.CapturedAt),
+			"refund_gross":        optionalINRJSON(p.RefundGross),
+			"razorpay_refund_id":  p.RazorpayRefundId,
+			"refunded_at":         paymentTimeJSON(p.RefundedAt),
+			"currency":            p.Currency,
 		})
 	}
 	settlements := make([]gin.H, 0, len(res.Settlements))
 	for _, s := range res.Settlements {
 		settlements = append(settlements, gin.H{
-			"id":      s.Id,
-			"payable": inrJSON(s.Payable),
-			"status":  s.Status,
-			"note":    s.Note,
+			"id":             s.Id,
+			"payable":        inrJSON(s.Payable),
+			"status":         s.Status,
+			"note":           s.Note,
+			"created_at":     paymentTimeJSON(s.CreatedAt),
+			"marked_paid_at": paymentTimeJSON(s.MarkedPaidAt),
+			"marked_paid_by": s.MarkedPaidBy,
+			"currency":       s.Currency,
 		})
 	}
 	ctx.JSON(http.StatusOK, gin.H{

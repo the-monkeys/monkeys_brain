@@ -518,6 +518,9 @@ func (as *AuthzSvc) Validate(ctx context.Context, req *pb.ValidateRequest) (*pb.
 		return nil, status.Errorf(codes.NotFound, "email does not exist")
 	}
 
+	if err := utils.EnsureAccountEnabled(user); err != nil {
+		return nil, err
+	}
 	if claims.TokenType != "" && claims.TokenType != "access" && claims.TokenType != "password_reset" {
 		as.logger.Errorf("invalid token type: expected access or password_reset, got %s", claims.TokenType)
 		return nil, status.Errorf(codes.Unauthenticated, "invalid token type")
@@ -548,6 +551,9 @@ func (as *AuthzSvc) DecodeSignedJWT(ctx context.Context, req *pb.DecodeSignedJWT
 		return nil, status.Errorf(codes.NotFound, "email does not exist")
 	}
 
+	if err := utils.EnsureAccountEnabled(user); err != nil {
+		return nil, err
+	}
 	if claims.TokenType != "" && claims.TokenType != "access" {
 		as.logger.Errorf("invalid token type: expected access, got %s", claims.TokenType)
 		return nil, status.Errorf(codes.Unauthenticated, "invalid token type")
@@ -605,6 +611,9 @@ func (as *AuthzSvc) Login(ctx context.Context, req *pb.LoginUserRequest) (*pb.Lo
 	}
 
 	// Check if the password match with the password hash
+	if err := utils.EnsureAccountEnabled(user); err != nil {
+		return nil, err
+	}
 	if !utils.CheckPasswordHash(req.Password, user.Password) {
 		as.logger.Errorf("password incorrect for email %s, error: %v", req.Email, err)
 		return nil, status.Errorf(codes.Unauthenticated, "email/password incorrect")
@@ -672,6 +681,9 @@ func (as *AuthzSvc) RefreshToken(ctx context.Context, req *pb.RefreshTokenReq) (
 	if err != nil {
 		as.logger.Errorf("cannot refresh token as the account %s doesn't exist, error: %+v", claims.AccountId, err)
 		return nil, status.Errorf(codes.NotFound, "user does not exist")
+	}
+	if err := utils.EnsureAccountEnabled(user); err != nil {
+		return nil, err
 	}
 
 	token, refreshToken, err := as.jwt.GenerateToken(user)
@@ -1302,6 +1314,9 @@ func (as *AuthzSvc) GoogleLogin(ctx context.Context, req *pb.RegisterUserRequest
 			as.logger.Debugf("google login: creating a new user with email: %v", req.Email)
 		} else {
 			as.logger.Debugf("google login: user with email %s already exists", req.Email)
+			if err := utils.EnsureAccountEnabled(existingUser); err != nil {
+				return nil, err
+			}
 			// Generate and return token
 			token, refreshToken, err := as.jwt.GenerateToken(existingUser)
 			if err != nil {

@@ -30,6 +30,9 @@ type jwtClaims struct {
 
 // TODO: Add Username, profile_name and client_id
 func (w *JwtWrapper) GenerateToken(user *models.TheMonkeysUser) (signedToken string, refreshToken string, err error) {
+	if err := EnsureAccountEnabled(user); err != nil {
+		return "", "", err
+	}
 	claims := &jwtClaims{
 		AccountId:               user.AccountId,
 		Email:                   user.Email,
@@ -63,6 +66,9 @@ func (w *JwtWrapper) GenerateToken(user *models.TheMonkeysUser) (signedToken str
 }
 
 func (w *JwtWrapper) GenerateRefreshToken(user *models.TheMonkeysUser) (refreshToken string, err error) {
+	if err := EnsureAccountEnabled(user); err != nil {
+		return "", err
+	}
 	claims := &jwtClaims{
 		AccountId: user.AccountId,
 		TokenType: "refresh",

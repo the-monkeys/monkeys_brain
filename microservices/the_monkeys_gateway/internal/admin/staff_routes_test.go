@@ -19,7 +19,7 @@ func TestStaffRoleMatrix(t *testing.T) {
 		c.Set("user_role", c.GetHeader("X-Test-Role"))
 		c.Next()
 	})
-	pay := staff.Group("/payments", RequireRole(log, constants.RoleAdmin, constants.RoleCommunity))
+	pay := staff.Group("/payments", RequireRole(log, constants.RoleAdmin))
 	pay.GET("/events", func(c *gin.Context) { c.Status(http.StatusOK) })
 	ver := staff.Group("", RequireRole(log, constants.RoleAdmin, constants.RoleSupport, constants.RoleCommunity))
 	ver.GET("/verifications", func(c *gin.Context) { c.Status(http.StatusOK) })
@@ -62,7 +62,7 @@ func TestStaffRoleMatrix(t *testing.T) {
 		{constants.RoleSupport, http.MethodPost, "/api/v1/admin/events/x/nsfw", http.StatusForbidden},
 		{constants.RoleCommunity, http.MethodPost, "/api/v1/admin/events/x/nsfw", http.StatusOK},
 		{constants.RoleCommunity, http.MethodGet, "/api/v1/admin/stats", http.StatusOK},
-		{constants.RoleCommunity, http.MethodGet, "/api/v1/admin/payments/events", http.StatusOK},
+		{constants.RoleCommunity, http.MethodGet, "/api/v1/admin/payments/events", http.StatusForbidden},
 		{constants.RoleSupport, http.MethodGet, "/api/v1/admin/payments/events", http.StatusForbidden},
 		{constants.RoleCommunity, http.MethodGet, "/api/v1/admin/verifications", http.StatusOK},
 		{constants.RoleCommunity, http.MethodPost, "/api/v1/admin/verifications/x/review", http.StatusOK},

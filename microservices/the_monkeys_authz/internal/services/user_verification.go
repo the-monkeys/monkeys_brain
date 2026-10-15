@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/the-monkeys/the_monkeys/apis/serviceconn/gateway_authz/pb"
+	"github.com/the-monkeys/the_monkeys/common/staffaccess"
 	"github.com/the-monkeys/the_monkeys/microservices/the_monkeys_authz/internal/models"
 	"github.com/the-monkeys/the_monkeys/microservices/the_monkeys_authz/internal/utils"
 	"google.golang.org/grpc/codes"
@@ -131,6 +132,10 @@ func (as *AuthzSvc) ReviewUserVerification(ctx context.Context, req *pb.ReviewUs
 
 	if req.RequestId == "" || req.ReviewerUsername == "" {
 		return nil, status.Errorf(codes.InvalidArgument, "request_id and reviewer_username are required")
+	}
+	reviewer, err := as.dbConn.CheckIfUsernameExist(req.ReviewerUsername)
+	if err != nil || reviewer == nil || utils.EnsureAccountEnabled(reviewer) != nil || !staffaccess.Has(reviewer.Role, staffaccess.VerificationReview) {
+		return nil, status.Error(codes.PermissionDenied, "verification review requires staff access")
 	}
 
 	// Get the verification request

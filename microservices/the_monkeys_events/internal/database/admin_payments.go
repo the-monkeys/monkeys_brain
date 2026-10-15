@@ -55,12 +55,14 @@ func (db *eventDB) AdminListEventPayments(ctx context.Context, req *pb.AdminList
 			GROUP BY event_id
 		) pay ON pay.event_id = e.id
 		LEFT JOIN (
-			SELECT event_id, COALESCE(SUM(payable_paise), 0) AS settled
+			SELECT event_id, COALESCE(SUM(payable_paise), 0) AS settled,
+				COALESCE(SUM(payable_paise) FILTER (WHERE status = 'pending'), 0) AS pending,
+				COALESCE(SUM(payable_paise) FILTER (WHERE status = 'paid'), 0) AS paid
 			FROM event_host_settlements
 			WHERE status IN ('pending', 'paid')
 			GROUP BY event_id
 		) setl ON setl.event_id = e.id
-		WHERE ($1 = '' OR e.title ILIKE '%' || $1 || '%' OR e.slug ILIKE '%' || $1 || '%')
+		WHERE ($1 = '' OR e.title ILIKE '%' || $1 || '%' OR e.slug ILIKE '%' || $1 || '%' OR u.username ILIKE '%' || $1 || '%')
 		  AND ($2 = '' OR e.status = $2)`
 
 	var total int32
@@ -71,7 +73,8 @@ func (db *eventDB) AdminListEventPayments(ctx context.Context, req *pb.AdminList
 	args = append(args, limit, offset)
 	rows, err := db.db.QueryContext(ctx, `
 		SELECT e.id, e.slug, e.title, u.username, e.start_time,
-			pay.gross, pay.fee, pay.gst, pay.host, pay.refunded, COALESCE(setl.settled, 0)
+			pay.gross, pay.fee, pay.gst, pay.host, pay.refunded, COALESCE(setl.settled, 0),
+			COALESCE(setl.pending, 0), COALESCE(setl.paid, 0)
 		`+where+`
 		ORDER BY e.start_time DESC
 		LIMIT $3 OFFSET $4`, args...)
@@ -93,10 +96,10 @@ func (db *eventDB) AdminListEventPayments(ctx context.Context, req *pb.AdminList
 
 func scanPaymentSummary(row rowScanner) (*pb.AdminEventPaymentSummary, error) {
 	var start sql.NullTime
-	var gross, fee, gst, host, refunded, settled int64
+	var gross, fee, gst, host, refunded, settled, pending, paid int64
 	s := &pb.AdminEventPaymentSummary{}
 	if err := row.Scan(&s.EventId, &s.Slug, &s.Title, &s.OrganizerUsername, &start,
-		&gross, &fee, &gst, &host, &refunded, &settled); err != nil {
+		&gross, &fee, &gst, &host, &refunded, &settled, &pending, &paid); err != nil {
 		return nil, err
 	}
 	if start.Valid {
@@ -108,6 +111,11 @@ func scanPaymentSummary(row rowScanner) (*pb.AdminEventPaymentSummary, error) {
 	s.HostPayableCaptured = moneyINR(host)
 	s.RefundedGross = moneyINR(refunded)
 	s.Settled = moneyINR(settled)
+	s.PendingSettlements = moneyINR(pending)
+	s.PaidSettlements = moneyINR(paid)
+	// Pending reservations are not payments. Keep this signed so refunds
+	// after a paid transfer expose a recovery balance instead of hiding it.
+	s.HostBalance = moneyINR(host - paid)
 	s.OpenPayable = moneyINR(money.OpenPayable(host, settled))
 	return s, nil
 }
@@ -121,7 +129,8 @@ func (db *eventDB) AdminGetEventPayments(ctx context.Context, req *pb.AdminGetEv
 	sumRow := db.db.QueryRowContext(ctx, `
 		SELECT e.id, e.slug, e.title, u.username, e.start_time,
 			COALESCE(pay.gross, 0), COALESCE(pay.fee, 0), COALESCE(pay.gst, 0),
-			COALESCE(pay.host, 0), COALESCE(pay.refunded, 0), COALESCE(setl.settled, 0)
+			COALESCE(pay.host, 0), COALESCE(pay.refunded, 0), COALESCE(setl.settled, 0),
+			COALESCE(setl.pending, 0), COALESCE(setl.paid, 0)
 		FROM events e
 		JOIN user_account u ON u.id = e.organizer_id
 		LEFT JOIN (
@@ -135,7 +144,9 @@ func (db *eventDB) AdminGetEventPayments(ctx context.Context, req *pb.AdminGetEv
 			GROUP BY event_id
 		) pay ON pay.event_id = e.id
 		LEFT JOIN (
-			SELECT event_id, COALESCE(SUM(payable_paise), 0) AS settled
+			SELECT event_id, COALESCE(SUM(payable_paise), 0) AS settled,
+				COALESCE(SUM(payable_paise) FILTER (WHERE status = 'pending'), 0) AS pending,
+				COALESCE(SUM(payable_paise) FILTER (WHERE status = 'paid'), 0) AS paid
 			FROM event_host_settlements
 			WHERE status IN ('pending', 'paid')
 			GROUP BY event_id
@@ -151,12 +162,13 @@ func (db *eventDB) AdminGetEventPayments(ctx context.Context, req *pb.AdminGetEv
 
 	payRows, err := db.db.QueryContext(ctx, `
 		SELECT COALESCE(u.username, ''), p.razorpay_order_id, p.razorpay_payment_id, p.status,
-			p.gross_paise, p.platform_fee_paise, p.gst_paise, p.host_payable_paise
+			p.gross_paise, p.platform_fee_paise, p.gst_paise, p.host_payable_paise,
+			p.id, p.captured_at, p.refund_paise, COALESCE(p.razorpay_refund_id, ''), p.refunded_at, p.currency
 		FROM event_payments p
 		JOIN event_attendees a ON a.id = p.attendee_id
 		JOIN user_account u ON u.id = a.user_id
 		WHERE p.event_id = $1
-		ORDER BY p.captured_at DESC`, sum.EventId)
+		ORDER BY p.captured_at DESC, p.id DESC`, sum.EventId)
 	if err != nil {
 		return nil, status.Error(codes.Internal, "failed to list payments")
 	}
@@ -165,15 +177,23 @@ func (db *eventDB) AdminGetEventPayments(ctx context.Context, req *pb.AdminGetEv
 	resp := &pb.AdminGetEventPaymentsResp{Event: sum}
 	for payRows.Next() {
 		line := &pb.AdminPaymentLine{}
-		var gross, fee, gst, host int64
+		var gross, fee, gst, host, refund int64
+		var capturedAt, refundedAt sql.NullTime
 		if err := payRows.Scan(&line.AttendeeUsername, &line.RazorpayOrderId, &line.RazorpayPaymentId, &line.Status,
-			&gross, &fee, &gst, &host); err != nil {
+			&gross, &fee, &gst, &host, &line.Id, &capturedAt, &refund, &line.RazorpayRefundId, &refundedAt, &line.Currency); err != nil {
 			return nil, status.Error(codes.Internal, "failed to scan payment")
 		}
 		line.Gross = moneyINR(gross)
 		line.PlatformFee = moneyINR(fee)
 		line.Gst = moneyINR(gst)
 		line.HostPayable = moneyINR(host)
+		line.RefundGross = moneyINR(refund)
+		if capturedAt.Valid {
+			line.CapturedAt = timestamppb.New(capturedAt.Time)
+		}
+		if refundedAt.Valid {
+			line.RefundedAt = timestamppb.New(refundedAt.Time)
+		}
 		resp.Payments = append(resp.Payments, line)
 	}
 	if err := payRows.Err(); err != nil {
@@ -181,10 +201,11 @@ func (db *eventDB) AdminGetEventPayments(ctx context.Context, req *pb.AdminGetEv
 	}
 
 	setRows, err := db.db.QueryContext(ctx, `
-		SELECT id, payable_paise, status, COALESCE(note, '')
+		SELECT id, payable_paise, status, COALESCE(note, ''), created_at,
+			marked_paid_at, COALESCE(marked_paid_by, ''), currency
 		FROM event_host_settlements
 		WHERE event_id = $1
-		ORDER BY created_at DESC`, sum.EventId)
+		ORDER BY created_at DESC, id DESC`, sum.EventId)
 	if err != nil {
 		return nil, status.Error(codes.Internal, "failed to list settlements")
 	}
@@ -192,10 +213,17 @@ func (db *eventDB) AdminGetEventPayments(ctx context.Context, req *pb.AdminGetEv
 	for setRows.Next() {
 		line := &pb.AdminSettlementLine{}
 		var payable int64
-		if err := setRows.Scan(&line.Id, &payable, &line.Status, &line.Note); err != nil {
+		var createdAt, paidAt sql.NullTime
+		if err := setRows.Scan(&line.Id, &payable, &line.Status, &line.Note, &createdAt, &paidAt, &line.MarkedPaidBy, &line.Currency); err != nil {
 			return nil, status.Error(codes.Internal, "failed to scan settlement")
 		}
 		line.Payable = moneyINR(payable)
+		if createdAt.Valid {
+			line.CreatedAt = timestamppb.New(createdAt.Time)
+		}
+		if paidAt.Valid {
+			line.MarkedPaidAt = timestamppb.New(paidAt.Time)
+		}
 		resp.Settlements = append(resp.Settlements, line)
 	}
 	return resp, setRows.Err()
