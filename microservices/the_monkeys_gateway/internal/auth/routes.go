@@ -12,6 +12,7 @@ import (
 	"golang.org/x/oauth2"
 	"golang.org/x/oauth2/google"
 
+	"github.com/the-monkeys/the_monkeys/common/staffaccess"
 	"github.com/the-monkeys/the_monkeys/config"
 	"github.com/the-monkeys/the_monkeys/microservices/the_monkeys_gateway/utils"
 
@@ -1098,6 +1099,10 @@ func (asc *ServiceClient) ReviewUserVerification(ctx *gin.Context) {
 		ctx.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
 		return
 	}
+	if !staffaccess.Has(ctx.GetString("user_role"), staffaccess.VerificationReview) {
+		ctx.AbortWithStatusJSON(http.StatusForbidden, gin.H{"error": "forbidden"})
+		return
+	}
 
 	var body ReviewUserVerificationBody
 	if err := ctx.ShouldBindJSON(&body); err != nil {
@@ -1105,7 +1110,7 @@ func (asc *ServiceClient) ReviewUserVerification(ctx *gin.Context) {
 		return
 	}
 
-	res, err := asc.Client.ReviewUserVerification(context.Background(), &pb.ReviewUserVerificationReq{
+	res, err := asc.Client.ReviewUserVerification(ctx.Request.Context(), &pb.ReviewUserVerificationReq{
 		RequestId:        body.RequestID,
 		ReviewerUsername: reviewerUsername,
 		Approved:         body.Approved,

@@ -5,27 +5,42 @@ Base URL: `http://localhost:8081/api/v1/admin`
 
 Daily staff APIs use the same login as the public site: cookie `mat` or `Authorization: Bearer <access-jwt>`. Platform role comes from `user_role.role_desc` on Validate. Do **not** send `X-Admin-Key` on these routes. Signup stays Viewer (`role_id = 4`).
 
-Money fields are `{ "paise": number, "inr": "941.00" }`. Lists take `limit` (default 20, max 100) and `offset`. Search uses `q` where noted.
+Money fields are `{ "paise": number, "inr": "941.00" }`. Lists take `limit` (default 20, max 100) and `offset`. Search uses `q` where noted. Staff routes also retain the existing private-network gate; authentication alone does not make the dashboard public.
 
 ## Role matrix
 
-| Route group | Admin | Support | Community | Viewer |
-| --- | --- | --- | --- | --- |
-| `/payments/*` | yes | no | no | no |
-| `/stats` | yes (with `payments_inr`) | yes (no payments) | no | no |
-| `/users`, `/blogs`, `/events`, `/groups` lists and Admin actions | yes | no | no | no |
-| `/verifications*` | yes | yes | no | no |
-| NSFW + hide event comment/question | yes | no | yes | no |
+- Admin: all current staff permissions, including payments and role/account administration.
+- Support: overview without financial totals, verification queue/review/document access.
+- Community: overview without financial totals, user list/delete, post/event/group catalog and moderation actions, and verification queue/review/document access. Existing broad nonfinancial access is retained for compatibility. No payment, role-change, flag/unflag or account-suspend permission.
+- Viewer, unknown roles, and missing identities: no staff access.
+
+These permissions are an initial server-owned mapping of existing roles, not the future configurable multi-role finance model. The authoritative policy is `common/staffaccess/permissions.go`.
+
+### Staff session
+
+`GET /session`
+
+Returns only the current username, account ID, role and explicit permissions. It uses `Cache-Control: no-store` and varies by Cookie/Authorization. A nonstaff account receives 403. Invalid or missing authentication is rejected by the existing authentication middleware. Example:
+
+```json
+{"username":"staff","account_id":"account-id","role":"Support","permissions":["staff.access","overview.read","verification.read","verification.review","verification.documents.read"]}
+```
+
+The admin app must use this endpoint, not infer staff roles from successful catalog or statistics requests. A failed or malformed session response is not permission. Direct URLs to unauthorized sections must not mount or fetch their page data. On access failures the app clears the staff view and offers retry or logout.
+
+Current permission names include `staff.access`, `overview.read`, `users.read`, `users.manage`, `users.delete`, `posts.read`, `posts.manage`, `posts.orphans.read`, `events.read`, `events.manage`, `groups.read`, `groups.manage`, `verification.read`, `verification.review`, `verification.documents.read`, `moderation.manage`, `payments.read`, and `payments.manage`.
+
+Deploy authz, event service and gateway changes before the new admin bundle. The admin deliberately has no role-guessing fallback if `/session` is unavailable. Public login routes and response shapes remain unchanged. Suspended accounts are rejected during login, token issuance, validation, identity decoding and refresh; other existing account states retain their earlier behavior. The legacy auth verification-review handler and authz service both enforce staff review permission, with a current database check in authz.
 
 ## Staff JWT routes
 
-### Stats (Admin or Support)
+### Stats (Admin, Support or Community)
 
 `GET /stats`
 
-User/blog/event/group counts. Admin also gets `payments_inr`. Support omits that block. `blogs.orphan_es` is `-1` when Elasticsearch has more than 100 docs (page the orphans list instead).
+User/blog/event/group counts. Admin also gets `payments_inr`. Support and Community omit that block. `blogs.orphan_es` is `-1` when Elasticsearch has more than 100 docs (page the orphans list instead).
 
-### Users (Admin)
+### Users (Admin or Community for list/delete; Admin for other changes)
 
 `GET /users?q=&limit=&offset=` — username, email, status, role, verified, flags.
 
@@ -39,7 +54,7 @@ User/blog/event/group counts. Admin also gets `payments_inr`. Support omits that
 
 `DELETE /users/:id` — same delete pipeline as self-service account delete; actor is the logged-in staff user. Returns **409** if the account organizes a captured/pending paid event, created a group that still has such an event, or still has a payment-linked RSVP (`event_payments` is never mutated). Cancel or settle first.
 
-### Blogs (Admin)
+### Posts (Admin or Community; orphan listing is Admin-only)
 
 `GET /blogs?status=&q=&limit=&offset=` — Postgres `blog` rows.
 
@@ -49,7 +64,7 @@ User/blog/event/group counts. Admin also gets `payments_inr`. Support omits that
 
 `DELETE /blogs/:blog_id` — hard delete: Elasticsearch document, Postgres blog refs (`blog`, permissions, co-authors, bookmarks), and files (MinIO `posts/{blogId}/` plus CAS refs). Uses the same `BLOG_DELETE` Rabbit fan-out as author delete. Unpublish stays the soft action.
 
-### Events (Admin)
+### Events (Admin or Community)
 
 `GET /events?status=&q=&group_slug=&limit=&offset=` — includes drafts.
 
@@ -59,7 +74,7 @@ User/blog/event/group counts. Admin also gets `payments_inr`. Support omits that
 
 `DELETE /events/:slug` — hard delete: event row (RSVPs/co-hosts/comments unlink via FKs), MinIO `events/{slug}/`. **409** if captured or pending payments exist. Does not touch `event_payments`. Cancel/unpublish stay the soft actions.
 
-### Groups (Admin)
+### Groups (Admin or Community)
 
 `GET /groups?status=&q=&limit=&offset=`
 
@@ -71,11 +86,23 @@ User/blog/event/group counts. Admin also gets `payments_inr`. Support omits that
 
 `GET /payments/events?status=&q=&limit=&offset=`
 
-Per event with captured payments: slug, title, host, start time, gross / fee / GST / host payable / refunded / settled / open payable.
+Per event with payment history, including fully refunded events: slug, title, host, start time, gross / fee / GST / host payable / refunded / settled / open payable. Search matches event title, slug and host username.
+
+Additive finance fields (old fields remain):
+
+- `pending_settlements`: pending reservations, not completed payments.
+- `paid_settlements`: settlements staff have recorded paid.
+- `host_balance`: current captured-status host share minus paid settlements, before pending reservations. This is signed: a negative value flags a recovery/reconciliation obligation after a refund.
+- Legacy `settled` continues to mean pending plus paid; do not label it money already transferred.
+- `open_payable` remains the nonnegative amount available to reserve: host share minus pending and paid settlements, floored at zero.
+
+Captured aggregates exclude both refunded and refund-pending payment rows. These records are not provider/bank reconciliation proof. Neither a reservation nor a staff-paid record calls a payment provider. New fields absent from an older event service must be treated as unavailable, not zero.
 
 `GET /payments/events/:slug`
 
-Event header, `event_payments` lines, settlements.
+Event header, `event_payments` lines, settlements. Payment lines add `id`, `captured_at`, `refund_gross`, `razorpay_refund_id`, `refunded_at`, and `currency`. Settlement lines add `created_at`, `marked_paid_at`, `marked_paid_by`, and `currency`. New timestamps are RFC3339 UTC strings or null when absent; the existing header `start_time` representation is unchanged. Detail history is currently unpaginated.
+
+This is the existing capture and manual settlement history, not the full append-only accounting ledger, two-person approval flow, payout holds, or automated reconciliation from the feature plan. Those are follow-on work. The UI requires a completed-transfer reference before recording paid, but the legacy write API is unchanged and does not verify bank evidence.
 
 `POST /payments/events/:slug/settlements`
 
@@ -97,13 +124,13 @@ curl -s -b mat=<access-jwt> -H 'Content-Type: application/json' \
 
 Viewer / Support / Community cookies get 403 on `/payments/*`.
 
-### Verifications (Admin or Support)
+### Verifications (Admin, Support or Community)
 
 `GET /verifications?status=&limit=&offset=`
 
 Each item includes checksums for uploaded docs (`selfie_checksum`, `id_front_checksum`, `id_back_checksum`), not image bytes. Checksums appear after `POST /api/v1/user/verification`; `*_object_key` is `verifications/sha256/{checksum}`. Staff then fetch a short-lived URL:
 
-`GET /api/v2/storage/verifications/:request_id/:kind/url` (`kind` = `selfie` \| `id_front` \| `id_back`). Admin and Support only (plus the requesting user). Documents stay in the private verification bucket.
+`GET /api/v2/storage/verifications/:request_id/:kind/url` (`kind` = `selfie` \| `id_front` \| `id_back`). Admin, Support and Community (plus the requesting user). Documents stay in the private verification bucket.
 
 `POST /verifications/:id/review`
 

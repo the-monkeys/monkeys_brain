@@ -225,12 +225,13 @@ func (adh *authDBHandler) CheckIfUsernameExist(username string) (*models.TheMonk
 	if err := adh.db.QueryRow(`
 			SELECT ua.id, ua.account_id, ua.username, ua.first_name, ua.last_name, 
 			ua.email, uai.password_hash, uai.password_recovery_token, uai.password_recovery_timeout,
-			evs.status, ua.user_status, uai.email_validation_token, uai.email_verification_timeout,
+			evs.status, COALESCE(us.status, ''), uai.email_validation_token, uai.email_verification_timeout,
 			COALESCE(ur.role_desc, '')
 			FROM user_account ua
 			LEFT JOIN user_auth_info uai ON ua.id = uai.user_id
 			LEFT JOIN email_validation_status evs ON uai.email_validation_status = evs.id
 			LEFT JOIN user_role ur ON ur.id = ua.role_id
+			LEFT JOIN user_status us ON us.id = ua.user_status
 			WHERE ua.username = $1;	
 		`, username).
 		Scan(&tmu.Id, &tmu.AccountId, &tmu.Username, &tmu.FirstName, &tmu.LastName, &tmu.Email,

@@ -16,7 +16,6 @@ import (
 	grouppb "github.com/the-monkeys/the_monkeys/apis/serviceconn/gateway_group/pb"
 	userpb "github.com/the-monkeys/the_monkeys/apis/serviceconn/gateway_user/pb"
 	"github.com/the-monkeys/the_monkeys/config"
-	"github.com/the-monkeys/the_monkeys/constants"
 	"github.com/the-monkeys/the_monkeys/microservices/the_monkeys_gateway/internal/auth"
 	"go.uber.org/zap"
 	"google.golang.org/grpc"
@@ -149,48 +148,7 @@ func RegisterAdminRouter(router *gin.Engine, cfg *config.Config, authClient *aut
 	staff.Use(LocalNetworkMiddleware(logg))
 	staff.Use(mware.AuthRequired)
 
-	pay := staff.Group("/payments", RequireRole(logg, constants.RoleAdmin, constants.RoleCommunity))
-	pay.GET("/events", asc.ListEventPayments)
-	pay.GET("/events/:slug", asc.GetEventPayments)
-	pay.POST("/events/:slug/settlements", asc.CreateSettlement)
-	pay.POST("/settlements/:id/mark-paid", asc.MarkSettlementPaid)
-
-	// Community can search and take takedown actions. Role/flag/orphan stay Admin.
-	catalog := staff.Group("", RequireRole(logg, constants.RoleAdmin, constants.RoleCommunity))
-	catalog.GET("/users", asc.ListUsers)
-	catalog.DELETE("/users/:id", asc.DeleteUserJWT)
-	catalog.GET("/blogs", asc.ListBlogs)
-	catalog.POST("/blogs/:blog_id/unpublish", asc.UnpublishBlog)
-	catalog.DELETE("/blogs/:blog_id", asc.DeleteBlog)
-	catalog.GET("/events", asc.ListAdminEvents)
-	catalog.POST("/events/:slug/cancel", asc.CancelAdminEvent)
-	catalog.POST("/events/:slug/unpublish", asc.UnpublishAdminEvent)
-	catalog.DELETE("/events/:slug", asc.DeleteAdminEvent)
-	catalog.GET("/groups", asc.ListAdminGroups)
-	catalog.POST("/groups/:slug/suspend", asc.SuspendGroup)
-	catalog.DELETE("/groups/:slug", asc.DeleteAdminGroup)
-
-	cat := staff.Group("", RequireRole(logg, constants.RoleAdmin))
-	cat.POST("/users/:id/role", asc.SetUserRole)
-	cat.POST("/users/:id/flag", asc.FlagUser)
-	cat.POST("/users/:id/unflag", asc.UnflagUserJWT)
-	cat.POST("/users/:id/suspend", asc.SuspendUser)
-	cat.GET("/blogs/orphans", asc.ListOrphanBlogs)
-
-	stats := staff.Group("", RequireRole(logg, constants.RoleAdmin, constants.RoleSupport, constants.RoleCommunity))
-	stats.GET("/stats", asc.GetStats)
-
-	ver := staff.Group("", RequireRole(logg, constants.RoleAdmin, constants.RoleSupport, constants.RoleCommunity))
-	ver.GET("/verifications", asc.ListVerifications)
-	ver.POST("/verifications/:id/review", asc.ReviewVerification)
-
-	mod := staff.Group("", RequireRole(logg, constants.RoleAdmin, constants.RoleCommunity))
-	mod.POST("/events/:slug/nsfw", asc.FlagNsfw("event"))
-	mod.POST("/blogs/:blog_id/nsfw", asc.FlagNsfw("blog"))
-	mod.POST("/groups/:slug/nsfw", asc.FlagNsfw("group"))
-	mod.POST("/users/:id/nsfw", asc.FlagNsfw("user"))
-	mod.POST("/events/:slug/comments/:id/hide", asc.HideEventComment)
-	mod.POST("/events/:slug/questions/:id/hide", asc.HideEventQuestion)
+	registerStaffRoutes(staff, asc, logg)
 
 	adminRoutes := router.Group("/api/v1/admin")
 	adminRoutes.Use(LocalNetworkMiddleware(logg))
