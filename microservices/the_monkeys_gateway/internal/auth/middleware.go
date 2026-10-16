@@ -7,10 +7,13 @@ import (
 	"strings"
 
 	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
 	"github.com/the-monkeys/the_monkeys/apis/serviceconn/gateway_authz/pb"
+	"github.com/the-monkeys/the_monkeys/common/staffaccess"
 	"github.com/the-monkeys/the_monkeys/constants"
 	"go.uber.org/zap"
 	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
 )
 
@@ -50,14 +53,24 @@ func (c *AuthMiddlewareConfig) extractToken(ctx *gin.Context) (string, error) {
 
 // Validate the token and retrieve user information
 func (c *AuthMiddlewareConfig) validateToken(ctx *gin.Context) (*pb.ValidateResponse, error) {
+	rpcContext := ctx.Request.Context()
+	if strings.HasPrefix(ctx.FullPath(), "/api/v1/admin/") {
+		// Generate this server-side; never copy arbitrary client headers into logs.
+		id := uuid.NewString()
+		ctx.Set(staffaccess.RequestIDContextKey, id)
+		ctx.Header("X-Request-ID", id)
+		rpcContext = metadata.AppendToOutgoingContext(rpcContext, staffaccess.RequestIDMetadataKey, id)
+	}
 	token, err := c.extractToken(ctx)
 	if err != nil {
+		c.logStaffAuthenticationFailure(ctx, "missing_credentials", codes.Unauthenticated)
 		ctx.AbortWithStatusJSON(http.StatusUnauthorized, Authorization{AuthorizationStatus: false, Error: "unauthorized"})
 		return nil, err
 	}
 
-	res, err := c.svc.Client.Validate(ctx.Request.Context(), &pb.ValidateRequest{Token: token})
+	res, err := c.svc.Client.Validate(rpcContext, &pb.ValidateRequest{Token: token})
 	if err != nil {
+		c.logStaffAuthenticationFailure(ctx, "authentication_failed", status.Code(err))
 		ctx.AbortWithStatusJSON(http.StatusUnauthorized, Authorization{AuthorizationStatus: false, Error: "unauthorized"})
 		return nil, err
 	}
@@ -66,6 +79,17 @@ func (c *AuthMiddlewareConfig) validateToken(ctx *gin.Context) (*pb.ValidateResp
 	ctx.Set("accountId", res.AccountId)
 	ctx.Set("user_role", res.Role)
 	return res, nil
+}
+
+func (c *AuthMiddlewareConfig) logStaffAuthenticationFailure(ctx *gin.Context, reason string, code codes.Code) {
+	if id := ctx.GetString(staffaccess.RequestIDContextKey); id != "" && c.log != nil {
+		// No identity is trustworthy before Validate succeeds. This names only
+		// the minimum staff-admission requirement, not a route's finer permission.
+		c.log.Warnw("staff authentication denied", "staff_request_id", id,
+			"reason", reason, "grpc_code", code.String(), "status", http.StatusUnauthorized,
+			"received_role", "unavailable", "required_permission", staffaccess.Access, "permission_scope", "staff_admission",
+			"method", ctx.Request.Method, "route", ctx.FullPath())
+	}
 }
 
 // Middleware to check basic authorization

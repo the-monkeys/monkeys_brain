@@ -505,28 +505,49 @@ func (as *AuthzSvc) RegisterUser(ctx context.Context, req *pb.RegisterUserReques
 // Is the token belongs to the user
 // Is the user existing in the db or an active user
 func (as *AuthzSvc) Validate(ctx context.Context, req *pb.ValidateRequest) (*pb.ValidateResponse, error) {
+	staffLog := as.staffValidationLogger(ctx)
 	claims, err := as.jwt.ValidateToken(req.Token)
 	if err != nil {
-		as.logger.Errorf("cannot validate the auth token, error: %v", err)
+		if staffLog != nil {
+			staffLog.Warnw("staff validation failed", "reason", "invalid_token", "grpc_code", codes.Unauthenticated.String())
+		} else {
+			as.logger.Errorf("cannot validate the auth token, error: %v", err)
+		}
 		return nil, status.Errorf(codes.Unauthenticated, "couldn't validate auth token")
 	}
 
 	// Check if the email exists
 	user, err := as.dbConn.CheckIfEmailExist(claims.Email)
 	if err != nil {
-		as.logger.Errorf("cannot validate token as the email %s doesn't exist, error: %+v", claims.Email, err)
+		if staffLog != nil {
+			staffLog.Warnw("staff validation failed", "reason", "account_lookup_failed", "grpc_code", codes.NotFound.String())
+		} else {
+			as.logger.Errorf("cannot validate token as the email %s doesn't exist, error: %+v", claims.Email, err)
+		}
 		return nil, status.Errorf(codes.NotFound, "email does not exist")
 	}
 
 	if err := utils.EnsureAccountEnabled(user); err != nil {
+		if staffLog != nil {
+			staffLog.Warnw("staff validation failed", "reason", "account_disabled", "grpc_code", status.Code(err).String())
+		}
 		return nil, err
 	}
 	if claims.TokenType != "" && claims.TokenType != "access" && claims.TokenType != "password_reset" {
-		as.logger.Errorf("invalid token type: expected access or password_reset, got %s", claims.TokenType)
+		if staffLog != nil {
+			staffLog.Warnw("staff validation failed", "reason", "invalid_token_type", "grpc_code", codes.Unauthenticated.String())
+		} else {
+			as.logger.Errorf("invalid token type: expected access or password_reset, got %s", claims.TokenType)
+		}
 		return nil, status.Errorf(codes.Unauthenticated, "invalid token type")
 	}
 
-	as.logger.Debugf("User with email %s successfully verified!", claims.Email)
+	if staffLog != nil {
+		staffLog.Infow("staff identity resolved", "account_id", user.AccountId,
+			"db_role", user.Role, "token_role", claims.Role, "role_source", "database")
+	} else {
+		as.logger.Debugf("User with email %s successfully verified!", claims.Email)
+	}
 	return &pb.ValidateResponse{
 		StatusCode: http.StatusOK,
 		UserId:     user.Id,

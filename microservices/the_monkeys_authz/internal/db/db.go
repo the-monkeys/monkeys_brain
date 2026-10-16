@@ -78,7 +78,9 @@ func NewAuthDBHandler(cfg *config.Config, logger *zap.SugaredLogger) (AuthDBHand
 		return nil, err
 	}
 
-	return &authDBHandler{db: dbPsql, log: logger}, nil
+	handler := &authDBHandler{db: dbPsql, log: logger}
+	handler.logConnectionIdentity()
+	return handler, nil
 }
 
 // TODO: Find all the fields of models.TheMonkeysUser
@@ -97,7 +99,7 @@ func (adh *authDBHandler) CheckIfEmailExist(email string) (*models.TheMonkeysUse
         `, email).
 		Scan(&tmu.Id, &tmu.AccountId, &tmu.Username, &tmu.FirstName, &tmu.LastName, &tmu.Email, &tmu.Password,
 			&tmu.EmailVerificationStatus, &tmu.UserStatus, &tmu.EmailVerificationToken, &tmu.EmailVerificationTimeout, &tmu.Role); err != nil {
-		adh.log.Errorf("can't find a user existing with email %s", email, err)
+		adh.log.Warnw("account lookup failed", "reason", "account_lookup_failed")
 		return nil, err
 	}
 	return &tmu, nil
