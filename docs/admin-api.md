@@ -28,6 +28,16 @@ Returns only the current username, account ID, role and explicit permissions. It
 
 The admin app must use this endpoint, not infer staff roles from successful catalog or statistics requests. A failed or malformed session response is not permission. Direct URLs to unauthorized sections must not mount or fetch their page data. On access failures the app clears the staff view and offers retry or logout.
 
+### Staff access diagnostics
+
+JWT-protected `/api/v1/admin/*` requests receive a server-generated `X-Request-ID` response header. Gateway authentication/permission-denial warnings and the corresponding authz `Validate` records share its `staff_request_id`. Client-provided request IDs are not reused. This identifier is diagnostic only and never grants access.
+
+- Gateway warnings distinguish missing credentials, authentication failure, missing identity, and permission denial. Permission warnings include the received role, required permission, HTTP status, method and route template, not query strings.
+- Authz logs `staff identity resolved` at info level for gateway-marked staff validation. `db_role` is the current role read from the database; `token_role` is the claim issued earlier. Authorization still uses the current database role. Ordinary public-page validation does not emit these staff records.
+- At startup, authz logs `authz database identity` at info level: actual database name/user, server address/port, current schema/search path, and resolved `user_account`/`user_role` table schemas. This is one read-only catalog query with a two-second timeout. A diagnostic failure warns and does not prevent service startup or change authorization.
+
+Production's default info level includes these records, including denial warnings, without globally enabling debug logging. Explicit higher log levels still apply. These diagnostic records exclude passwords, signing secrets, tokens, cookies, admin keys, email addresses, request bodies and raw database/RPC errors. Do not collect or share full environment files or authentication headers while investigating. No schema migration or protobuf generation is required.
+
 Current permission names include `staff.access`, `overview.read`, `users.read`, `users.manage`, `users.delete`, `posts.read`, `posts.manage`, `posts.orphans.read`, `events.read`, `events.manage`, `groups.read`, `groups.manage`, `verification.read`, `verification.review`, `verification.documents.read`, `moderation.manage`, `payments.read`, and `payments.manage`.
 
 Deploy authz, event service and gateway changes before the new admin bundle. The admin deliberately has no role-guessing fallback if `/session` is unavailable. Public login routes and response shapes remain unchanged. Suspended accounts are rejected during login, token issuance, validation, identity decoding and refresh; other existing account states retain their earlier behavior. The legacy auth verification-review handler and authz service both enforce staff review permission, with a current database check in authz.
