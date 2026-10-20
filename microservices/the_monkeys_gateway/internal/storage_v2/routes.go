@@ -228,6 +228,7 @@ func RegisterRoutes(router *gin.Engine, cfg *config.Config, storageCli pb.Upload
 	{
 		v2auth.POST("/verifications", vh.UploadVerificationAsset)
 		v2auth.GET("/verifications/:request_id/:kind/url", vh.GetVerificationAssetURL)
+		v2auth.GET("/verifications/:request_id/:kind/content", vh.GetVerificationAssetContent)
 	}
 
 	// Public reads (CDN-style). We may later gate or sign URLs as needed.
