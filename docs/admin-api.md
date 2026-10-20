@@ -136,9 +136,21 @@ Viewer / Support / Community cookies get 403 on `/payments/*`.
 
 ### Verifications (Admin, Support or Community)
 
+#### Private document viewing
+
+`GET /api/v2/storage/verifications/:request_id/:kind/content`, where `kind` is `selfie`, `id_front`, or `id_back`, returns authenticated JPEG, PNG, or WebP bytes. Owners may read their own documents; staff reading another applicant's evidence require `verification.documents.read` and the existing private-network restriction. Login/session checks run on every request.
+
+The gateway reads through its existing internal MinIO client. This endpoint does not redirect to a public storage hostname, generate browser storage signatures, create buckets, change bucket policies, or write objects. It fails closed if the private bucket policy cannot be checked or a policy is attached. Responses use `Cache-Control: private, no-store`, `nosniff`, and safe image content types. Transfers are bounded by the existing verification-upload size limit, a 20-second read context, and a response write deadline. Cancellation interrupts blocked writes; the deadline is cleared before the handler returns.
+
+The staff UI fetches bytes through its existing same-origin `/api` proxy with credentials and displays short-lived browser Blob URLs. These URLs are released on request changes, retry, failure, and page disposal. Review actions remain unavailable until all attached images have displayed successfully. ID-document requests must include both required selfie and ID-front references; document-free readiness is reserved for explicitly classified social-proof requests.
+
+The existing `/api/v2/storage/verifications/:request_id/:kind/url` endpoint and its JSON contract remain unchanged for existing clients. Deploy the gateway change before updating the staff UI; there is deliberately no fallback to public signed links. No database migration, protobuf generation, MinIO upgrade/configuration change, or admin `GATEWAY_URL` change is required.
+
+Safe failure responses include a `request_id` matching the `verification document unavailable` warning. `404` means the request/document is absent; backend storage access failures return `503`, not a staff-session `403`. Do not log or share document bytes, signed URLs, storage credentials, or authentication headers.
+
 `GET /verifications?status=&limit=&offset=`
 
-Each item includes checksums for uploaded docs (`selfie_checksum`, `id_front_checksum`, `id_back_checksum`), not image bytes. Checksums appear after `POST /api/v1/user/verification`; `*_object_key` is `verifications/sha256/{checksum}`. Staff then fetch a short-lived URL:
+Each item includes checksums for uploaded docs (`selfie_checksum`, `id_front_checksum`, `id_back_checksum`), not image bytes. Checksums appear after `POST /api/v1/user/verification`; `*_object_key` is `verifications/sha256/{checksum}`. The staff UI uses the authenticated `/content` endpoint above. Legacy clients can still fetch a short-lived URL:
 
 `GET /api/v2/storage/verifications/:request_id/:kind/url` (`kind` = `selfie` \| `id_front` \| `id_back`). Admin, Support and Community (plus the requesting user). Documents stay in the private verification bucket.
 
