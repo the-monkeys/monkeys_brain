@@ -3,6 +3,7 @@ package services
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"github.com/the-monkeys/the_monkeys/apis/serviceconn/gateway_event/pb"
 	"github.com/the-monkeys/the_monkeys/config"
@@ -69,6 +70,11 @@ func NewEventService(db database.EventDB, log *zap.SugaredLogger, cfg *config.Co
 // -----------------------------------------------------------------------------
 
 func (s *EventService) CreateEvent(ctx context.Context, req *pb.CreateEventReq) (*pb.EventResp, error) {
+	location, err := validateSchedule(req.GetStartTime(), req.GetEndTime(), req.GetTimezone())
+	if err != nil {
+		return nil, err
+	}
+	req.Timezone = location.String()
 	if hasPaidTier(req.TicketTiers) {
 		if err := s.rejectIfPaymentsDisabled(); err != nil {
 			return nil, err
@@ -82,6 +88,11 @@ func (s *EventService) CreateEvent(ctx context.Context, req *pb.CreateEventReq) 
 }
 
 func (s *EventService) UpdateEvent(ctx context.Context, req *pb.UpdateEventReq) (*pb.EventResp, error) {
+	location, err := validateSchedule(req.GetStartTime(), req.GetEndTime(), req.GetTimezone())
+	if err != nil {
+		return nil, err
+	}
+	req.Timezone = location.String()
 	before, _, getErr := s.db.GetEvent(ctx, req.Slug, req.AccountId)
 	event, err := s.db.UpdateEvent(ctx, req)
 	if err != nil {
@@ -669,6 +680,19 @@ func (s *EventService) Authorize(ctx context.Context, req *pb.AuthorizeReq) (*pb
 }
 
 func (s *EventService) CloneEvent(ctx context.Context, req *pb.CloneEventReq) (*pb.EventResp, error) {
+	zone := req.GetTimezone()
+	if strings.TrimSpace(zone) == "" {
+		inheritedZone, err := s.db.GetEventTimezone(ctx, req.GetSlug())
+		if err != nil {
+			return nil, err
+		}
+		zone = inheritedZone
+	}
+	location, err := validateSchedule(req.GetStartTime(), req.GetEndTime(), zone)
+	if err != nil {
+		return nil, err
+	}
+	req.Timezone = location.String()
 	event, err := s.db.CloneEvent(ctx, req)
 	if err != nil {
 		return nil, err
@@ -677,14 +701,24 @@ func (s *EventService) CloneEvent(ctx context.Context, req *pb.CloneEventReq) (*
 }
 
 func (s *EventService) CreateSeries(ctx context.Context, req *pb.CreateSeriesReq) (*pb.EventResp, error) {
+	location, err := validateSchedule(req.GetStartTime(), req.GetEndTime(), req.GetTimezone())
+	if err != nil {
+		return nil, err
+	}
+	req.Timezone = location.String()
 	if hasPaidTier(req.TicketTiers) {
 		if err := s.rejectIfPaymentsDisabled(); err != nil {
 			return nil, err
 		}
 	}
-	occs, rule, err := expandRecurrence(req.Recurrence, req.GetStartTime().AsTime())
+	occs, rule, err := expandRecurrence(req.Recurrence, req.GetStartTime().AsTime().In(location))
 	if err != nil {
 		return nil, err
+	}
+	// The existing timestamp columns store UTC wall values. Do not pass zoned
+	// time.Time values to that boundary after expanding the local calendar.
+	for i := range occs {
+		occs[i] = occs[i].UTC()
 	}
 	event, err := s.db.MaterializeSeries(ctx, req, occs, rule)
 	if err != nil {

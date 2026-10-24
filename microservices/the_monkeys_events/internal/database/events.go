@@ -523,6 +523,10 @@ func (db *eventDB) CloneEvent(ctx context.Context, req *pb.CloneEventReq) (*pb.E
 		).Scan(&title, &desc, &tz, &eventType, &loc, &link, &capacity, &cover, &vis, &groupID, &srcLat, &srcLng, &requiresReview); err != nil {
 			return status.Error(codes.Internal, "failed to load event")
 		}
+		if req.GetTimezone() != "" {
+			tz = req.GetTimezone()
+		}
+		tz = defaultTimezone(tz)
 
 		var groupCol any
 		if groupID.Valid {

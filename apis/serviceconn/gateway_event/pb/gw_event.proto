@@ -582,6 +582,8 @@ message CloneEventReq {
     google.protobuf.Timestamp start_time = 3;
     google.protobuf.Timestamp end_time = 4;
     ClientInfo client_info = 5;
+    // Optional override for the new draft; omitted inherits the source timezone.
+    string timezone = 6;
 }
 
 message Recurrence {

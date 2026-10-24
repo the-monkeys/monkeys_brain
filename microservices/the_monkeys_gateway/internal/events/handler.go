@@ -164,6 +164,7 @@ func (esc *EventServiceClient) CloneEvent(ctx *gin.Context) {
 		AccountId:  accountID(ctx),
 		StartTime:  toTimestamp(&body.StartTime),
 		EndTime:    toTimestamp(&body.EndTime),
+		Timezone:   body.Timezone,
 		ClientInfo: clientInfo(ctx),
 	})
 	if esc.fail(ctx, err, "clone event") {

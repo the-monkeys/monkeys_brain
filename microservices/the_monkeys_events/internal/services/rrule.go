@@ -70,39 +70,74 @@ func buildRRULE(freq string, interval int, byDay []string, count int32, until *t
 func walkRecurrence(freq string, interval int, start time.Time, byDay []string, count int, until *time.Time, limit int) []time.Time {
 	out := make([]time.Time, 0, limit)
 	wanted := weekdaySet(byDay)
-	t := start
+	// Walk a civil calendar independently of DST, reconstructing the requested
+	// wall time each day. Adding zoned dates directly can normalize a missing
+	// hour and then carry that unwanted hour into every later occurrence.
+	firstDay := time.Date(start.Year(), start.Month(), start.Day(), 0, 0, 0, 0, time.UTC)
+	// RRULE defaults WKST to Monday. Keep the first partial week in the same
+	// interval bucket as its Monday, rather than starting a new week at DTSTART.
+	firstWeek := firstDay.AddDate(0, 0, -(int(firstDay.Weekday())+6)%7)
+	day := firstDay
 	for n := 0; n < 400 && len(out) < limit; n++ {
-		if until != nil && t.After(*until) {
+		t, exists := recurrenceWallTime(day, start)
+		if day.Equal(firstDay) {
+			// DTSTART is already an explicit instant, including which repeated
+			// hour the caller chose. Never move the first occurrence backwards.
+			t, exists = start, true
+		}
+		if exists && until != nil && t.After(*until) {
 			break
 		}
 		if count > 0 && len(out) >= count {
 			break
 		}
 		if freq == "weekly" && len(wanted) > 0 {
-			if wanted[t.Weekday()] {
-				weeks := int(t.Sub(start).Hours() / 24 / 7)
+			if exists && wanted[day.Weekday()] {
+				// Count civil days, not elapsed hours: DST makes some weeks 167/169 hours.
+				weeks := int(day.Sub(firstWeek).Hours() / 24 / 7)
 				if weeks%interval == 0 {
 					out = append(out, t)
 				}
 			}
-			t = t.AddDate(0, 0, 1)
+			day = day.AddDate(0, 0, 1)
 			continue
 		}
-		out = append(out, t)
+		if exists {
+			out = append(out, t)
+		}
 		switch freq {
 		case "daily":
-			t = t.AddDate(0, 0, interval)
+			day = day.AddDate(0, 0, interval)
 		case "weekly":
-			t = t.AddDate(0, 0, 7*interval)
+			day = day.AddDate(0, 0, 7*interval)
 		case "monthly":
-			t = t.AddDate(0, interval, 0)
+			day = day.AddDate(0, interval, 0)
 		case "yearly":
-			t = t.AddDate(interval, 0, 0)
+			day = day.AddDate(interval, 0, 0)
 		default:
 			return out
 		}
 	}
 	return out
+}
+
+// RFC 5545 semantics: skip missing local times, and use the first occurrence
+// of a repeated local time. Compare actual local fields rather than relying
+// on time.Date's unspecified choice during a clock transition.
+func recurrenceWallTime(day, start time.Time) (time.Time, bool) {
+	wall := time.Date(day.Year(), day.Month(), day.Day(), start.Hour(), start.Minute(), start.Second(), start.Nanosecond(), time.UTC)
+	var earliest time.Time
+	for _, hours := range []int{-48, -24, 0, 24, 48} {
+		_, offset := wall.Add(time.Duration(hours) * time.Hour).In(start.Location()).Zone()
+		candidate := wall.Add(-time.Duration(offset) * time.Second).In(start.Location())
+		if candidate.Year() != day.Year() || candidate.Month() != day.Month() || candidate.Day() != day.Day() || candidate.Hour() != start.Hour() || candidate.Minute() != start.Minute() || candidate.Second() != start.Second() {
+			continue
+		}
+		if earliest.IsZero() || candidate.Before(earliest) {
+			earliest = candidate
+		}
+	}
+	return earliest, !earliest.IsZero()
 }
 
 func weekdaySet(byDay []string) map[time.Weekday]bool {

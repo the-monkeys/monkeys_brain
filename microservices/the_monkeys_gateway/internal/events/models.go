@@ -68,6 +68,7 @@ func (r *RecurrenceBody) toProto() *pb.Recurrence {
 type CloneBody struct {
 	StartTime time.Time `json:"start_time" binding:"required"`
 	EndTime   time.Time `json:"end_time" binding:"required"`
+	Timezone  string    `json:"timezone"`
 }
 
 // TierBody is the JSON payload for a ticket tier.
