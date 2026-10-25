@@ -661,7 +661,10 @@ func (s *EventService) RemoveCoHost(ctx context.Context, req *pb.CoHostReq) (*pb
 }
 
 func (s *EventService) GetCalendarFile(ctx context.Context, req *pb.CalendarReq) (*pb.CalendarResp, error) {
-	event, viewerStatus, err := s.db.GetEvent(ctx, req.EventSlug, req.AccountId)
+	if req.GetEventSlug() == "" {
+		return nil, status.Error(codes.InvalidArgument, "event slug is required")
+	}
+	event, viewerStatus, err := s.db.GetCalendarEvent(ctx, req.EventSlug, req.AccountId)
 	if err != nil {
 		return nil, err
 	}
@@ -670,7 +673,51 @@ func (s *EventService) GetCalendarFile(ctx context.Context, req *pb.CalendarReq)
 	if err := s.redactForViewer(ctx, event, req.AccountId, viewerStatus); err != nil {
 		return nil, err
 	}
-	return &pb.CalendarResp{IcsData: buildICS(event)}, nil
+	events := []*pb.Event{event}
+	if req.IncludeSeries {
+		slugs, err := s.db.CalendarOccurrenceSlugs(ctx, event)
+		if err != nil {
+			return nil, err
+		}
+		events = nil
+		for _, slug := range slugs {
+			if err := ctx.Err(); err != nil {
+				return nil, status.FromContextError(err).Err()
+			}
+			candidate, attendance := event, viewerStatus
+			if slug != event.Slug {
+				candidate, attendance, err = s.db.GetCalendarEvent(ctx, slug, req.AccountId)
+				if codes.NotFound == status.Code(err) || codes.PermissionDenied == status.Code(err) {
+					continue
+				}
+				if err != nil {
+					return nil, err
+				}
+			}
+			if candidate.Status != "published" && candidate.Status != "live" && candidate.Status != "completed" {
+				continue
+			}
+			// Knowing one unlisted occurrence's URL does not reveal sibling links.
+			if slug != event.Slug && candidate.Visibility == "unlisted" && attendance != "confirmed" {
+				host, err := s.db.ViewerIsHost(ctx, candidate.Id, candidate.OrganizerAccountId, req.AccountId)
+				if err != nil {
+					return nil, err
+				}
+				if !host {
+					continue
+				}
+			}
+			if err := s.redactForViewer(ctx, candidate, req.AccountId, attendance); err != nil {
+				return nil, err
+			}
+			events = append(events, candidate)
+		}
+	}
+	data, err := buildCalendarFile(events)
+	if err != nil {
+		return nil, err
+	}
+	return &pb.CalendarResp{IcsData: data, IncludesSeries: req.IncludeSeries}, nil
 }
 
 // Authorize backs the gateway's fast-reject layer. It reports what the caller

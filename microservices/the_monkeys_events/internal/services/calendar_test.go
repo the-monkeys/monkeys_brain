@@ -4,10 +4,41 @@ import (
 	"strings"
 	"testing"
 	"time"
+	"unicode/utf8"
 
 	"github.com/the-monkeys/the_monkeys/apis/serviceconn/gateway_event/pb"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
+
+func TestCalendarFoldingPreservesUnicodeAndOctetLimit(t *testing.T) {
+	title := strings.Repeat("学习", 50)
+	content := "SUMMARY:" + title + "\r\n"
+	folded := foldLines(content)
+	for _, line := range strings.Split(folded, "\r\n") {
+		if len(line) > 75 {
+			t.Errorf("line contains %d octets", len(line))
+		}
+		if !utf8.ValidString(line) {
+			t.Fatal("folding split a UTF-8 character")
+		}
+	}
+	if !strings.Contains(strings.ReplaceAll(folded, "\r\n ", ""), "SUMMARY:"+title) {
+		t.Fatal("folding changed the title")
+	}
+}
+
+func TestCalendarOrganizerParameterCannotInjectProperties(t *testing.T) {
+	event := &pb.Event{Id: 1, Title: "Safe", OrganizerUsername: "Doe, \"J\"\r\nX-Injected:yes",
+		StartTime: timestamppb.New(time.Date(2026, 11, 12, 13, 30, 0, 0, time.UTC)),
+		EndTime:   timestamppb.New(time.Date(2026, 11, 12, 14, 30, 0, 0, time.UTC))}
+	ics := strings.ReplaceAll(string(buildICS(event)), "\r\n ", "")
+	if !strings.Contains(ics, `ORGANIZER;CN="Doe, ^'J^'^nX-Injected:yes":mailto:noreply@themonkeys.live`) {
+		t.Fatalf("unsafe or corrupt organizer parameter: %s", ics)
+	}
+	if strings.Contains(ics, "\r\nX-Injected:") {
+		t.Fatal("injected calendar property")
+	}
+}
 
 func TestIcalStampUsesUTC(t *testing.T) {
 	local := time.Date(2026, 8, 22, 15, 30, 45, 0, time.FixedZone("IST", 5*60*60+30*60))

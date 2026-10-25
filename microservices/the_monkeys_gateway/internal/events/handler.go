@@ -700,11 +700,27 @@ func (esc *EventServiceClient) RemoveCoHost(ctx *gin.Context) {
 func (esc *EventServiceClient) DownloadCalendar(ctx *gin.Context) {
 	slug := ctx.Param("slug")
 
-	res, err := esc.Client.GetCalendarFile(ctx, &pb.CalendarReq{EventSlug: slug})
+	scope := ctx.DefaultQuery("scope", "this")
+	if scope != "this" && scope != "series" {
+		ctx.JSON(http.StatusBadRequest, gin.H{"error": "scope must be this or series"})
+		return
+	}
+	res, err := esc.Client.GetCalendarFile(ctx.Request.Context(), &pb.CalendarReq{
+		EventSlug: slug, AccountId: accountID(ctx), IncludeSeries: scope == "series",
+	})
 	if esc.fail(ctx, err, "download calendar") {
 		return
 	}
 
+	if scope == "series" && !res.GetIncludesSeries() {
+		ctx.JSON(http.StatusNotImplemented, gin.H{"error": "calendar series export is not available; add this occurrence instead"})
+		return
+	}
+	ctx.Header("Cache-Control", "private, no-store")
+	ctx.Header("X-Monkeys-Calendar-Scope", scope)
+	if scope == "series" {
+		slug += "-series"
+	}
 	ctx.Header("Content-Disposition", fmt.Sprintf(`attachment; filename="%s.ics"`, slug))
 	ctx.Data(http.StatusOK, "text/calendar; charset=utf-8", res.IcsData)
 }

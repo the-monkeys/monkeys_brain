@@ -547,11 +547,15 @@ message CoHostReq {
 message CalendarReq {
     string event_slug = 1;
     string account_id = 2;  // viewer; decides whether the join link is embedded
+    // Opt-in only. Omitted/false preserves the existing single-date download.
+    bool include_series = 3;
 }
 
 message CalendarResp {
     bytes ics_data = 1;
     string error = 2;
+    // Lets a newer gateway detect an older service instead of silently exporting one date.
+    bool includes_series = 3;
 }
 
 // -----------------------------------------------------------------------------
