@@ -3,6 +3,7 @@ package services
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"github.com/the-monkeys/the_monkeys/apis/serviceconn/gateway_event/pb"
 	"github.com/the-monkeys/the_monkeys/config"
@@ -27,7 +28,7 @@ type EventService struct {
 	db    database.EventDB
 	log   *zap.SugaredLogger
 	cfg   *config.Config
-	qConn *rabbitmq.ConnManager
+	qConn eventPublisher
 	pay   *razorpay
 }
 
@@ -55,13 +56,16 @@ func hasPaidTier(tiers []*pb.TicketTierInput) bool {
 }
 
 func NewEventService(db database.EventDB, log *zap.SugaredLogger, cfg *config.Config, qConn *rabbitmq.ConnManager) *EventService {
-	return &EventService{
-		db:    db,
-		log:   log,
-		cfg:   cfg,
-		qConn: qConn,
-		pay:   newRazorpay(cfg.Keys.RazorpayKeyID, cfg.Keys.RazorpaySecret, cfg.Keys.RazorpayWebhookSecret),
+	s := &EventService{
+		db:  db,
+		log: log,
+		cfg: cfg,
+		pay: newRazorpay(cfg.Keys.RazorpayKeyID, cfg.Keys.RazorpaySecret, cfg.Keys.RazorpayWebhookSecret),
 	}
+	if qConn != nil {
+		s.qConn = qConn
+	}
+	return s
 }
 
 // -----------------------------------------------------------------------------
@@ -69,6 +73,11 @@ func NewEventService(db database.EventDB, log *zap.SugaredLogger, cfg *config.Co
 // -----------------------------------------------------------------------------
 
 func (s *EventService) CreateEvent(ctx context.Context, req *pb.CreateEventReq) (*pb.EventResp, error) {
+	location, err := validateSchedule(req.GetStartTime(), req.GetEndTime(), req.GetTimezone())
+	if err != nil {
+		return nil, err
+	}
+	req.Timezone = location.String()
 	if hasPaidTier(req.TicketTiers) {
 		if err := s.rejectIfPaymentsDisabled(); err != nil {
 			return nil, err
@@ -78,10 +87,16 @@ func (s *EventService) CreateEvent(ctx context.Context, req *pb.CreateEventReq) 
 	if err != nil {
 		return nil, err
 	}
+	s.notifyCreatedCoHosts(event)
 	return &pb.EventResp{Message: "event created as draft", Event: event}, nil
 }
 
 func (s *EventService) UpdateEvent(ctx context.Context, req *pb.UpdateEventReq) (*pb.EventResp, error) {
+	location, err := validateSchedule(req.GetStartTime(), req.GetEndTime(), req.GetTimezone())
+	if err != nil {
+		return nil, err
+	}
+	req.Timezone = location.String()
 	before, _, getErr := s.db.GetEvent(ctx, req.Slug, req.AccountId)
 	event, err := s.db.UpdateEvent(ctx, req)
 	if err != nil {
@@ -636,21 +651,38 @@ func (s *EventService) ReportEvent(ctx context.Context, req *pb.ReportEventReq) 
 // -----------------------------------------------------------------------------
 
 func (s *EventService) AddCoHost(ctx context.Context, req *pb.CoHostReq) (*pb.BasicResp, error) {
+	event, actor, err := s.coHostContext(ctx, req)
+	if err != nil {
+		return nil, err
+	}
 	if err := s.db.AddCoHost(ctx, req); err != nil {
 		return nil, err
 	}
+	s.notifyCoHost(event, actor, req.CohostUsername, constants.EVENT_COHOST_ADDED)
 	return &pb.BasicResp{Message: "co-host added", Success: true}, nil
 }
 
 func (s *EventService) RemoveCoHost(ctx context.Context, req *pb.CoHostReq) (*pb.BasicResp, error) {
+	event, actor, err := s.coHostContext(ctx, req)
+	if err != nil {
+		return nil, err
+	}
 	if err := s.db.RemoveCoHost(ctx, req); err != nil {
 		return nil, err
 	}
+	if actor == req.CohostUsername {
+		s.notifyCoHost(event, actor, event.OrganizerUsername, constants.EVENT_COHOST_LEFT)
+		return &pb.BasicResp{Message: "left as co-host", Success: true}, nil
+	}
+	s.notifyCoHost(event, actor, req.CohostUsername, constants.EVENT_COHOST_REMOVED)
 	return &pb.BasicResp{Message: "co-host removed", Success: true}, nil
 }
 
 func (s *EventService) GetCalendarFile(ctx context.Context, req *pb.CalendarReq) (*pb.CalendarResp, error) {
-	event, viewerStatus, err := s.db.GetEvent(ctx, req.EventSlug, req.AccountId)
+	if req.GetEventSlug() == "" {
+		return nil, status.Error(codes.InvalidArgument, "event slug is required")
+	}
+	event, viewerStatus, err := s.db.GetCalendarEvent(ctx, req.EventSlug, req.AccountId)
 	if err != nil {
 		return nil, err
 	}
@@ -659,7 +691,51 @@ func (s *EventService) GetCalendarFile(ctx context.Context, req *pb.CalendarReq)
 	if err := s.redactForViewer(ctx, event, req.AccountId, viewerStatus); err != nil {
 		return nil, err
 	}
-	return &pb.CalendarResp{IcsData: buildICS(event)}, nil
+	events := []*pb.Event{event}
+	if req.IncludeSeries {
+		slugs, err := s.db.CalendarOccurrenceSlugs(ctx, event)
+		if err != nil {
+			return nil, err
+		}
+		events = nil
+		for _, slug := range slugs {
+			if err := ctx.Err(); err != nil {
+				return nil, status.FromContextError(err).Err()
+			}
+			candidate, attendance := event, viewerStatus
+			if slug != event.Slug {
+				candidate, attendance, err = s.db.GetCalendarEvent(ctx, slug, req.AccountId)
+				if codes.NotFound == status.Code(err) || codes.PermissionDenied == status.Code(err) {
+					continue
+				}
+				if err != nil {
+					return nil, err
+				}
+			}
+			if candidate.Status != "published" && candidate.Status != "live" && candidate.Status != "completed" {
+				continue
+			}
+			// Knowing one unlisted occurrence's URL does not reveal sibling links.
+			if slug != event.Slug && candidate.Visibility == "unlisted" && attendance != "confirmed" {
+				host, err := s.db.ViewerIsHost(ctx, candidate.Id, candidate.OrganizerAccountId, req.AccountId)
+				if err != nil {
+					return nil, err
+				}
+				if !host {
+					continue
+				}
+			}
+			if err := s.redactForViewer(ctx, candidate, req.AccountId, attendance); err != nil {
+				return nil, err
+			}
+			events = append(events, candidate)
+		}
+	}
+	data, err := buildCalendarFile(events)
+	if err != nil {
+		return nil, err
+	}
+	return &pb.CalendarResp{IcsData: data, IncludesSeries: req.IncludeSeries}, nil
 }
 
 // Authorize backs the gateway's fast-reject layer. It reports what the caller
@@ -669,6 +745,19 @@ func (s *EventService) Authorize(ctx context.Context, req *pb.AuthorizeReq) (*pb
 }
 
 func (s *EventService) CloneEvent(ctx context.Context, req *pb.CloneEventReq) (*pb.EventResp, error) {
+	zone := req.GetTimezone()
+	if strings.TrimSpace(zone) == "" {
+		inheritedZone, err := s.db.GetEventTimezone(ctx, req.GetSlug())
+		if err != nil {
+			return nil, err
+		}
+		zone = inheritedZone
+	}
+	location, err := validateSchedule(req.GetStartTime(), req.GetEndTime(), zone)
+	if err != nil {
+		return nil, err
+	}
+	req.Timezone = location.String()
 	event, err := s.db.CloneEvent(ctx, req)
 	if err != nil {
 		return nil, err
@@ -677,19 +766,30 @@ func (s *EventService) CloneEvent(ctx context.Context, req *pb.CloneEventReq) (*
 }
 
 func (s *EventService) CreateSeries(ctx context.Context, req *pb.CreateSeriesReq) (*pb.EventResp, error) {
+	location, err := validateSchedule(req.GetStartTime(), req.GetEndTime(), req.GetTimezone())
+	if err != nil {
+		return nil, err
+	}
+	req.Timezone = location.String()
 	if hasPaidTier(req.TicketTiers) {
 		if err := s.rejectIfPaymentsDisabled(); err != nil {
 			return nil, err
 		}
 	}
-	occs, rule, err := expandRecurrence(req.Recurrence, req.GetStartTime().AsTime())
+	occs, rule, err := expandRecurrence(req.Recurrence, req.GetStartTime().AsTime().In(location))
 	if err != nil {
 		return nil, err
+	}
+	// The existing timestamp columns store UTC wall values. Do not pass zoned
+	// time.Time values to that boundary after expanding the local calendar.
+	for i := range occs {
+		occs[i] = occs[i].UTC()
 	}
 	event, err := s.db.MaterializeSeries(ctx, req, occs, rule)
 	if err != nil {
 		return nil, err
 	}
+	s.notifyCreatedCoHosts(event)
 	return &pb.EventResp{Message: "series created", Event: event}, nil
 }
 

@@ -52,6 +52,9 @@ type OccurrenceTemplate struct {
 	Latitude           float64
 	Longitude          float64
 	RequiresHostReview bool
+	// CoHostIDs applies only to newly generated dates. MaterializeSeries resolves
+	// selected usernames before creating the series; later generators may omit it.
+	CoHostIDs []int64
 }
 
 // CreateSeries records a recurring-event definition and returns its id. The
@@ -186,6 +189,16 @@ func (db *eventDB) GenerateSeriesOccurrences(ctx context.Context, seriesID int64
 
 			if err := grantPermissions(ctx, tx, eventID, organizerID); err != nil {
 				return err
+			}
+			seenHosts := map[int64]bool{organizerID: true}
+			for _, hostID := range tmpl.CoHostIDs {
+				if seenHosts[hostID] {
+					continue
+				}
+				seenHosts[hostID] = true
+				if err := addCoHost(ctx, tx, eventID, hostID, organizerID); err != nil {
+					return err
+				}
 			}
 			if err := replaceTags(ctx, tx, eventID, tmpl.Tags); err != nil {
 				return err
@@ -369,6 +382,12 @@ func (db *eventDB) MaterializeSeries(ctx context.Context, req *pb.CreateSeriesRe
 	if err != nil {
 		return nil, err
 	}
+	// CreateSeries and occurrence generation commit separately. Resolve every
+	// selected user first so an invalid handle cannot leave a partial series.
+	coHostIDs, err := db.resolveSeriesCoHosts(ctx, req.GetCoHostUsernames())
+	if err != nil {
+		return nil, err
+	}
 
 	seriesID, err := db.CreateSeries(ctx, SeriesInput{
 		OrganizerAccountID:   req.AccountId,
@@ -400,6 +419,7 @@ func (db *eventDB) MaterializeSeries(ctx context.Context, req *pb.CreateSeriesRe
 		Latitude:           lat,
 		Longitude:          lng,
 		RequiresHostReview: req.RequiresHostReview,
+		CoHostIDs:          coHostIDs,
 	})
 	if err != nil {
 		return nil, err
@@ -409,6 +429,31 @@ func (db *eventDB) MaterializeSeries(ctx context.Context, req *pb.CreateSeriesRe
 	}
 	event, _, err := db.GetEvent(ctx, slugs[0], req.AccountId)
 	return event, err
+}
+
+func (db *eventDB) resolveSeriesCoHosts(ctx context.Context, usernames []string) ([]int64, error) {
+	var ids []int64
+	seenNames := make(map[string]bool, len(usernames))
+	seenIDs := make(map[int64]bool, len(usernames))
+	for _, raw := range usernames {
+		username := strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(raw), "@"))
+		if username == "" {
+			return nil, status.Error(codes.InvalidArgument, "co-host username is required")
+		}
+		if seenNames[username] {
+			continue
+		}
+		seenNames[username] = true
+		id, err := resolveUsername(ctx, db.db, username)
+		if err != nil {
+			return nil, err
+		}
+		if !seenIDs[id] {
+			seenIDs[id] = true
+			ids = append(ids, id)
+		}
+	}
+	return ids, nil
 }
 
 // recurrenceText turns a stored RRULE into a short card label. Called only when

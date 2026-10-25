@@ -12,6 +12,13 @@ import (
 // eventNotification is the payload the notification service consumes.
 type eventNotification = interservice.Message
 
+// eventPublisher is the transport boundary shared by event notifications and
+// storage fan-out. The existing RabbitMQ connection manager implements it.
+type eventPublisher interface {
+	PublishMessage(exchange, routingKey string, body []byte) error
+	PublishReliable(exchange, routingKey string, body []byte, retries int) error
+}
+
 // notify publishes one notification. Failures are logged rather than
 // propagated: a missed notification must never fail the user's request.
 func (s *EventService) notify(n eventNotification) {

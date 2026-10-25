@@ -86,11 +86,19 @@ func authorize(ctx context.Context, q querier, slug, accountID, perm string) (ev
 // addCoHost inserts the host row, grants rights and audits, all on the given
 // querier so it can join a caller's transaction (used by CreateEvent too).
 func addCoHost(ctx context.Context, q querier, eventID, hostID, actorID int64) error {
-	if _, err := q.ExecContext(ctx,
+	res, err := q.ExecContext(ctx,
 		`INSERT INTO event_co_hosts (event_id, co_host_id, role, added_by)
 		 VALUES ($1, $2, $3, $4) ON CONFLICT (event_id, co_host_id) DO NOTHING`,
-		eventID, hostID, defaultCoHostRole, actorID); err != nil {
+		eventID, hostID, defaultCoHostRole, actorID)
+	if err != nil {
 		return status.Errorf(codes.Internal, "failed to add host: %v", err)
+	}
+	inserted, err := res.RowsAffected()
+	if err != nil {
+		return status.Error(codes.Internal, "failed to check added host")
+	}
+	if inserted == 0 {
+		return nil
 	}
 	if err := grantPermissions(ctx, q, eventID, hostID); err != nil {
 		return err
@@ -102,6 +110,9 @@ func addCoHost(ctx context.Context, q querier, eventID, hostID, actorID int64) e
 // manage_hosts, may add hosts.
 func (db *eventDB) AddCoHost(ctx context.Context, req *pb.CoHostReq) error {
 	return db.inTx(ctx, func(tx *sql.Tx) error {
+		if err := lockCoHostEvent(ctx, tx, req.EventSlug); err != nil {
+			return err
+		}
 		eventID, actorID, err := authorize(ctx, tx, req.EventSlug, req.AccountId, permManageHosts)
 		if err != nil {
 			return err
@@ -137,6 +148,9 @@ func (db *eventDB) AddCoHost(ctx context.Context, req *pb.CoHostReq) error {
 // RemoveCoHost revokes hosting rights. The organizer can never be removed.
 func (db *eventDB) RemoveCoHost(ctx context.Context, req *pb.CoHostReq) error {
 	return db.inTx(ctx, func(tx *sql.Tx) error {
+		if err := lockCoHostEvent(ctx, tx, req.EventSlug); err != nil {
+			return err
+		}
 		eventID, actorID, err := authorize(ctx, tx, req.EventSlug, req.AccountId, permManageHosts)
 		if err != nil {
 			return err
@@ -161,6 +175,24 @@ func (db *eventDB) RemoveCoHost(ctx context.Context, req *pb.CoHostReq) error {
 			return status.Errorf(codes.Internal, "failed to revoke permissions: %v", err)
 		}
 
-		return auditHostAction(ctx, tx, eventID, targetID, "removed", actorID)
+		action := "removed"
+		if actorID == targetID {
+			action = "left"
+		}
+		return auditHostAction(ctx, tx, eventID, targetID, action, actorID)
 	})
+}
+
+// Serialize host changes before authorizing the actor. A concurrent revocation
+// must be visible before another add/remove checks the actor's permissions.
+func lockCoHostEvent(ctx context.Context, q querier, slug string) error {
+	var id int64
+	err := q.QueryRowContext(ctx, `SELECT id FROM events WHERE slug = $1 FOR UPDATE`, slug).Scan(&id)
+	if err == sql.ErrNoRows {
+		return status.Error(codes.NotFound, "event not found")
+	}
+	if err != nil {
+		return status.Error(codes.Internal, "failed to lock event hosts")
+	}
+	return nil
 }

@@ -144,6 +144,7 @@ func (esc *EventServiceClient) CreateSeries(ctx *gin.Context) {
 		GroupSlug:          body.GroupSlug,
 		Visibility:         body.Visibility,
 		Recurrence:         rec,
+		CoHostUsernames:    body.CoHostUsernames,
 		ClientInfo:         clientInfo(ctx),
 		RequiresHostReview: derefBool(body.RequiresHostReview),
 	})
@@ -164,6 +165,7 @@ func (esc *EventServiceClient) CloneEvent(ctx *gin.Context) {
 		AccountId:  accountID(ctx),
 		StartTime:  toTimestamp(&body.StartTime),
 		EndTime:    toTimestamp(&body.EndTime),
+		Timezone:   body.Timezone,
 		ClientInfo: clientInfo(ctx),
 	})
 	if esc.fail(ctx, err, "clone event") {
@@ -670,7 +672,7 @@ func (esc *EventServiceClient) AddCoHost(ctx *gin.Context) {
 		return
 	}
 
-	res, err := esc.Client.AddCoHost(ctx, &pb.CoHostReq{
+	res, err := esc.Client.AddCoHost(ctx.Request.Context(), &pb.CoHostReq{
 		EventSlug:      ctx.Param("slug"),
 		AccountId:      accountID(ctx),
 		CohostUsername: body.Username,
@@ -679,11 +681,14 @@ func (esc *EventServiceClient) AddCoHost(ctx *gin.Context) {
 	if esc.fail(ctx, err, "add co-host") {
 		return
 	}
+	if esc.authz != nil {
+		esc.authz.InvalidateEvent(ctx.Param("slug"))
+	}
 	ctx.JSON(http.StatusOK, res)
 }
 
 func (esc *EventServiceClient) RemoveCoHost(ctx *gin.Context) {
-	res, err := esc.Client.RemoveCoHost(ctx, &pb.CoHostReq{
+	res, err := esc.Client.RemoveCoHost(ctx.Request.Context(), &pb.CoHostReq{
 		EventSlug:      ctx.Param("slug"),
 		AccountId:      accountID(ctx),
 		CohostUsername: ctx.Param("username"),
@@ -692,6 +697,9 @@ func (esc *EventServiceClient) RemoveCoHost(ctx *gin.Context) {
 	if esc.fail(ctx, err, "remove co-host") {
 		return
 	}
+	if esc.authz != nil {
+		esc.authz.InvalidateEvent(ctx.Param("slug"))
+	}
 	ctx.JSON(http.StatusOK, res)
 }
 
@@ -699,11 +707,27 @@ func (esc *EventServiceClient) RemoveCoHost(ctx *gin.Context) {
 func (esc *EventServiceClient) DownloadCalendar(ctx *gin.Context) {
 	slug := ctx.Param("slug")
 
-	res, err := esc.Client.GetCalendarFile(ctx, &pb.CalendarReq{EventSlug: slug})
+	scope := ctx.DefaultQuery("scope", "this")
+	if scope != "this" && scope != "series" {
+		ctx.JSON(http.StatusBadRequest, gin.H{"error": "scope must be this or series"})
+		return
+	}
+	res, err := esc.Client.GetCalendarFile(ctx.Request.Context(), &pb.CalendarReq{
+		EventSlug: slug, AccountId: accountID(ctx), IncludeSeries: scope == "series",
+	})
 	if esc.fail(ctx, err, "download calendar") {
 		return
 	}
 
+	if scope == "series" && !res.GetIncludesSeries() {
+		ctx.JSON(http.StatusNotImplemented, gin.H{"error": "calendar series export is not available; add this occurrence instead"})
+		return
+	}
+	ctx.Header("Cache-Control", "private, no-store")
+	ctx.Header("X-Monkeys-Calendar-Scope", scope)
+	if scope == "series" {
+		slug += "-series"
+	}
 	ctx.Header("Content-Disposition", fmt.Sprintf(`attachment; filename="%s.ics"`, slug))
 	ctx.Data(http.StatusOK, "text/calendar; charset=utf-8", res.IcsData)
 }

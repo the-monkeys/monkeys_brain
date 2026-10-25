@@ -167,11 +167,18 @@ func (db *eventDB) fillMissingCoords(ctx context.Context, event *pb.Event) {
 	if resolvedLat == 0 && resolvedLng == 0 {
 		return
 	}
-	if _, err := db.db.ExecContext(ctx, `
+	result, err := db.db.ExecContext(ctx, `
 		UPDATE events SET latitude = $1, longitude = $2, updated_at = NOW()
-		WHERE slug = $3 AND (latitude IS NULL OR longitude IS NULL)`,
-		resolvedLat, resolvedLng, event.Slug); err != nil {
+		WHERE slug = $3 AND (latitude IS NULL OR longitude IS NULL)
+		AND COALESCE(location, '') = $4 AND event_type = $5`,
+		resolvedLat, resolvedLng, event.Slug, event.Location, event.EventType)
+	if err != nil {
 		db.log.Warnw("failed to persist geocoded pin", "slug", event.Slug, "err", err)
+		return
+	}
+	// A newer edit or another lookup may have replaced the address or pin.
+	// Do not attach stale coordinates when the conditional update did not win.
+	if affected, err := result.RowsAffected(); err != nil || affected != 1 {
 		return
 	}
 	attachEventCoords(event, sql.NullFloat64{Float64: resolvedLat, Valid: true},
@@ -300,14 +307,15 @@ func (db *eventDB) UpdateEvent(ctx context.Context, req *pb.UpdateEventReq) (*pb
 			curCap                                      int32
 			curSeries                                   sql.NullInt64
 			curRsvpCloses                               sql.NullTime
+			curLat, curLng                              sql.NullFloat64
 		)
 		if err := tx.QueryRowContext(ctx, `
 			SELECT status, start_time, end_time, event_type, COALESCE(location, ''),
 			       COALESCE(meeting_link, ''), capacity, COALESCE(visibility, 'public'),
-			       series_id, rsvp_closes_at
+			       series_id, rsvp_closes_at, latitude, longitude
 			FROM events WHERE id = $1`, eventID,
 		).Scan(&curStatus, &curStart, &curEnd, &curType, &curLoc, &curLink, &curCap, &curVis,
-			&curSeries, &curRsvpCloses); err != nil {
+			&curSeries, &curRsvpCloses, &curLat, &curLng); err != nil {
 			return status.Error(codes.Internal, "failed to load event")
 		}
 		ended := eventHasEnded(curStatus, curEnd)
@@ -347,7 +355,16 @@ func (db *eventDB) UpdateEvent(ctx context.Context, req *pb.UpdateEventReq) (*pb
 			}
 		}
 
-		lat, lng := resolveEventCoords(ctx, req.EventType, req.Latitude, req.Longitude, req.Location)
+		pinLat, pinLng := req.Latitude, req.Longitude
+		samePlace := strings.EqualFold(strings.Join(strings.Fields(curLoc), " "),
+			strings.Join(strings.Fields(req.Location), " "))
+		if !samePlace && curLat.Valid && curLng.Valid &&
+			pinLat == curLat.Float64 && pinLng == curLng.Float64 {
+			// Older clients resend the stored pin even when changing the address.
+			// Resolve the new place instead; never keep another address's pin.
+			pinLat, pinLng = 0, 0
+		}
+		lat, lng := resolveEventCoords(ctx, req.EventType, pinLat, pinLng, req.Location)
 
 		rsvpClose := any(nil)
 		if curRsvpCloses.Valid {
@@ -523,6 +540,10 @@ func (db *eventDB) CloneEvent(ctx context.Context, req *pb.CloneEventReq) (*pb.E
 		).Scan(&title, &desc, &tz, &eventType, &loc, &link, &capacity, &cover, &vis, &groupID, &srcLat, &srcLng, &requiresReview); err != nil {
 			return status.Error(codes.Internal, "failed to load event")
 		}
+		if req.GetTimezone() != "" {
+			tz = req.GetTimezone()
+		}
+		tz = defaultTimezone(tz)
 
 		var groupCol any
 		if groupID.Valid {

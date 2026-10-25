@@ -1,6 +1,60 @@
 {
   "templates": [
     {
+      "name": "event_cohost_added_inapp",
+      "channel": "in_app",
+      "locale": "en",
+      "subject": "You are a co-host",
+      "body": "{{.actor_name}} added you as a co-host for \"{{.event_title}}\".",
+      "variables": ["actor_name", "event_title", "event_slug"],
+      "metadata": { "category": "events", "priority": "normal" }
+    },
+    {
+      "name": "event_cohost_added_sse",
+      "channel": "sse",
+      "locale": "en",
+      "subject": "You are a co-host",
+      "body": "{{.actor_name}} added you as a co-host for \"{{.event_title}}\".",
+      "variables": ["actor_name", "event_title", "event_slug"],
+      "metadata": { "category": "events", "priority": "normal" }
+    },
+    {
+      "name": "event_cohost_removed_inapp",
+      "channel": "in_app",
+      "locale": "en",
+      "subject": "Co-host access removed",
+      "body": "{{.actor_name}} removed you as a co-host for \"{{.event_title}}\".",
+      "variables": ["actor_name", "event_title", "event_slug"],
+      "metadata": { "category": "events", "priority": "normal" }
+    },
+    {
+      "name": "event_cohost_removed_sse",
+      "channel": "sse",
+      "locale": "en",
+      "subject": "Co-host access removed",
+      "body": "{{.actor_name}} removed you as a co-host for \"{{.event_title}}\".",
+      "variables": ["actor_name", "event_title", "event_slug"],
+      "metadata": { "category": "events", "priority": "normal" }
+    },
+    {
+      "name": "event_cohost_left_inapp",
+      "channel": "in_app",
+      "locale": "en",
+      "subject": "Co-host left",
+      "body": "{{.actor_name}} left as a co-host for \"{{.event_title}}\".",
+      "variables": ["actor_name", "event_title", "event_slug"],
+      "metadata": { "category": "events", "priority": "normal" }
+    },
+    {
+      "name": "event_cohost_left_sse",
+      "channel": "sse",
+      "locale": "en",
+      "subject": "Co-host left",
+      "body": "{{.actor_name}} left as a co-host for \"{{.event_title}}\".",
+      "variables": ["actor_name", "event_title", "event_slug"],
+      "metadata": { "category": "events", "priority": "normal" }
+    },
+    {
       "name": "event_application_received_inapp",
       "channel": "in_app",
       "locale": "en",

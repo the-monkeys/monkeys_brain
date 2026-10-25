@@ -29,6 +29,29 @@ exist, edit the body to the HTML version below.
 
 ---
 
+## Events: co-host changes
+
+The seed JSON includes six co-host templates, one in-app and one SSE template
+for each action. No co-host email templates are used.
+
+- `event_cohost_added_inapp`, `event_cohost_added_sse`: sent to the added user,
+  including when the organizer selects co-hosts while creating an event.
+- `event_cohost_removed_inapp`, `event_cohost_removed_sse`: sent to a user whose
+  co-host role was removed by another host.
+- `event_cohost_left_inapp`, `event_cohost_left_sse`: sent to the organizer when
+  a co-host leaves voluntarily.
+
+All use `actor_name`, `event_title` and `event_slug`. The notification service
+adds `actor_url` and `event_url`; meeting links and attendee data are not sent.
+Co-host access is granted immediately, as before; these are informational
+notifications, not accept/decline invitations. Seed these templates in the
+target FRN application before deploying the new notification consumer.
+
+For local testing, use only the isolated local FRN URL and its own application
+key. The root `seed.templates.py` is currently a PowerShell/Python snippet with
+a private-network URL and a production-config file path, so do not execute its
+defaults for local testing. Reuse the seed JSON with explicit local configuration.
+
 ## Events: application received
 
 Host-review is on. A guest applied. Send to organizer and co-hosts. In-app, SSE, and email.

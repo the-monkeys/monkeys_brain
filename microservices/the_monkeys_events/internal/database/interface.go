@@ -18,6 +18,9 @@ type EventDB interface {
 	DeleteEvent(ctx context.Context, req *pb.EventActionReq) error
 	SetEventStatus(ctx context.Context, req *pb.EventActionReq, newStatus string) (*pb.Event, error)
 	GetEvent(ctx context.Context, slug, viewerAccountID string) (*pb.Event, string, error)
+	GetEventTimezone(ctx context.Context, slug string) (string, error)
+	GetCalendarEvent(ctx context.Context, slug, viewerAccountID string) (*pb.Event, string, error)
+	CalendarOccurrenceSlugs(ctx context.Context, event *pb.Event) ([]string, error)
 	ListEvents(ctx context.Context, req *pb.ListEventsReq) ([]*pb.Event, int32, error)
 	GetUserEvents(ctx context.Context, req *pb.ListEventsReq) ([]*pb.Event, int32, error)
 	GetUserAttendingEvents(ctx context.Context, req *pb.ListEventsReq) ([]*pb.Event, int32, error)
