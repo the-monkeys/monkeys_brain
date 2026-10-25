@@ -144,6 +144,7 @@ func (esc *EventServiceClient) CreateSeries(ctx *gin.Context) {
 		GroupSlug:          body.GroupSlug,
 		Visibility:         body.Visibility,
 		Recurrence:         rec,
+		CoHostUsernames:    body.CoHostUsernames,
 		ClientInfo:         clientInfo(ctx),
 		RequiresHostReview: derefBool(body.RequiresHostReview),
 	})
@@ -671,7 +672,7 @@ func (esc *EventServiceClient) AddCoHost(ctx *gin.Context) {
 		return
 	}
 
-	res, err := esc.Client.AddCoHost(ctx, &pb.CoHostReq{
+	res, err := esc.Client.AddCoHost(ctx.Request.Context(), &pb.CoHostReq{
 		EventSlug:      ctx.Param("slug"),
 		AccountId:      accountID(ctx),
 		CohostUsername: body.Username,
@@ -680,11 +681,14 @@ func (esc *EventServiceClient) AddCoHost(ctx *gin.Context) {
 	if esc.fail(ctx, err, "add co-host") {
 		return
 	}
+	if esc.authz != nil {
+		esc.authz.InvalidateEvent(ctx.Param("slug"))
+	}
 	ctx.JSON(http.StatusOK, res)
 }
 
 func (esc *EventServiceClient) RemoveCoHost(ctx *gin.Context) {
-	res, err := esc.Client.RemoveCoHost(ctx, &pb.CoHostReq{
+	res, err := esc.Client.RemoveCoHost(ctx.Request.Context(), &pb.CoHostReq{
 		EventSlug:      ctx.Param("slug"),
 		AccountId:      accountID(ctx),
 		CohostUsername: ctx.Param("username"),
@@ -692,6 +696,9 @@ func (esc *EventServiceClient) RemoveCoHost(ctx *gin.Context) {
 	})
 	if esc.fail(ctx, err, "remove co-host") {
 		return
+	}
+	if esc.authz != nil {
+		esc.authz.InvalidateEvent(ctx.Param("slug"))
 	}
 	ctx.JSON(http.StatusOK, res)
 }

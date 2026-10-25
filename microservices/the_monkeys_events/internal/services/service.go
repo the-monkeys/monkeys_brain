@@ -28,7 +28,7 @@ type EventService struct {
 	db    database.EventDB
 	log   *zap.SugaredLogger
 	cfg   *config.Config
-	qConn *rabbitmq.ConnManager
+	qConn eventPublisher
 	pay   *razorpay
 }
 
@@ -56,13 +56,16 @@ func hasPaidTier(tiers []*pb.TicketTierInput) bool {
 }
 
 func NewEventService(db database.EventDB, log *zap.SugaredLogger, cfg *config.Config, qConn *rabbitmq.ConnManager) *EventService {
-	return &EventService{
-		db:    db,
-		log:   log,
-		cfg:   cfg,
-		qConn: qConn,
-		pay:   newRazorpay(cfg.Keys.RazorpayKeyID, cfg.Keys.RazorpaySecret, cfg.Keys.RazorpayWebhookSecret),
+	s := &EventService{
+		db:  db,
+		log: log,
+		cfg: cfg,
+		pay: newRazorpay(cfg.Keys.RazorpayKeyID, cfg.Keys.RazorpaySecret, cfg.Keys.RazorpayWebhookSecret),
 	}
+	if qConn != nil {
+		s.qConn = qConn
+	}
+	return s
 }
 
 // -----------------------------------------------------------------------------
@@ -84,6 +87,7 @@ func (s *EventService) CreateEvent(ctx context.Context, req *pb.CreateEventReq) 
 	if err != nil {
 		return nil, err
 	}
+	s.notifyCreatedCoHosts(event)
 	return &pb.EventResp{Message: "event created as draft", Event: event}, nil
 }
 
@@ -647,16 +651,30 @@ func (s *EventService) ReportEvent(ctx context.Context, req *pb.ReportEventReq) 
 // -----------------------------------------------------------------------------
 
 func (s *EventService) AddCoHost(ctx context.Context, req *pb.CoHostReq) (*pb.BasicResp, error) {
+	event, actor, err := s.coHostContext(ctx, req)
+	if err != nil {
+		return nil, err
+	}
 	if err := s.db.AddCoHost(ctx, req); err != nil {
 		return nil, err
 	}
+	s.notifyCoHost(event, actor, req.CohostUsername, constants.EVENT_COHOST_ADDED)
 	return &pb.BasicResp{Message: "co-host added", Success: true}, nil
 }
 
 func (s *EventService) RemoveCoHost(ctx context.Context, req *pb.CoHostReq) (*pb.BasicResp, error) {
+	event, actor, err := s.coHostContext(ctx, req)
+	if err != nil {
+		return nil, err
+	}
 	if err := s.db.RemoveCoHost(ctx, req); err != nil {
 		return nil, err
 	}
+	if actor == req.CohostUsername {
+		s.notifyCoHost(event, actor, event.OrganizerUsername, constants.EVENT_COHOST_LEFT)
+		return &pb.BasicResp{Message: "left as co-host", Success: true}, nil
+	}
+	s.notifyCoHost(event, actor, req.CohostUsername, constants.EVENT_COHOST_REMOVED)
 	return &pb.BasicResp{Message: "co-host removed", Success: true}, nil
 }
 
@@ -771,6 +789,7 @@ func (s *EventService) CreateSeries(ctx context.Context, req *pb.CreateSeriesReq
 	if err != nil {
 		return nil, err
 	}
+	s.notifyCreatedCoHosts(event)
 	return &pb.EventResp{Message: "series created", Event: event}, nil
 }
 

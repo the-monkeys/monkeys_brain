@@ -2,8 +2,10 @@ package authx
 
 import (
 	"context"
+	"hash/maphash"
 	"net/http"
 	"strconv"
+	"sync/atomic"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -35,6 +37,9 @@ type Guard struct {
 	log    *zap.SugaredLogger
 	cache  *cache
 	flight singleflight.Group
+	// Fixed-size generation buckets keep invalidation bounded without holding
+	// a mutex during upstream calls. A rare hash collision only loses a cache hit.
+	generations [1024]atomic.Uint64
 }
 
 func NewGuard(client pb.EventServiceClient, log *zap.SugaredLogger) *Guard {
@@ -50,7 +55,8 @@ func GrantFrom(ctx *gin.Context) Grant {
 
 // resolve returns the caller's grant on the event, from cache when possible.
 func (g *Guard) resolve(ctx *gin.Context, accountID, slug string) (Grant, error) {
-	key := accountID + "\x00" + slug
+	generation := g.eventGeneration(slug).Load()
+	key := accountID + "\x00" + slug + "\x00" + strconv.FormatUint(generation, 10)
 	if grant, ok := g.cache.get(key); ok {
 		return grant, nil
 	}
@@ -83,6 +89,16 @@ func (g *Guard) resolve(ctx *gin.Context, accountID, slug string) (Grant, error)
 		return Grant{}, err
 	}
 	return v.(Grant), nil
+}
+
+// Incrementing the generation fences out old in-flight results: they may finish
+// under the old key but no request starting after this change can reuse it.
+func (g *Guard) InvalidateEvent(slug string) {
+	g.eventGeneration(slug).Add(1)
+}
+
+func (g *Guard) eventGeneration(slug string) *atomic.Uint64 {
+	return &g.generations[maphash.String(g.cache.seed, slug)%uint64(len(g.generations))]
 }
 
 // load resolves the grant and parks it, or writes an error response and

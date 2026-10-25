@@ -23,6 +23,7 @@ type EventServiceClient struct {
 	// to build Open Graph / social share links. Sourced from config (SEO_BASE_URL)
 	// so it is never hardcoded to a stale domain.
 	baseURL string
+	authz   interface{ InvalidateEvent(string) }
 }
 
 func NewEventServiceClient(cfg *config.Config, lg *zap.SugaredLogger) pb.EventServiceClient {

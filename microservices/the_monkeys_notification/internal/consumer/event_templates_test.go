@@ -58,7 +58,7 @@ func TestFanoutNotifyRequestWiresSSEAndExtraFields(t *testing.T) {
 
 func TestFanoutNotifyRequestHostNoticeSkipsEmail(t *testing.T) {
 	req, ok := fanoutNotifyRequest(models.TheMonkeysMessage{
-		Action:     constants.EVENT_RSVP_HOST_NOTICE,
+		Action:      constants.EVENT_RSVP_HOST_NOTICE,
 		NewUsername: "host",
 		Username:    "guest",
 		EventSlug:   "tea-talk",
@@ -78,5 +78,26 @@ func TestFanoutNotifyRequestHostNoticeSkipsEmail(t *testing.T) {
 func TestFanoutNotifyRequestUnknownAction(t *testing.T) {
 	if _, ok := fanoutNotifyRequest(models.TheMonkeysMessage{Action: "not_a_thing"}); ok {
 		t.Fatal("unknown action must be rejected")
+	}
+}
+
+func TestCoHostNotificationsUseInAppAndSSEWithoutEmail(t *testing.T) {
+	for _, tc := range []struct{ action, inapp, sse string }{
+		{"event_cohost_added", "event_cohost_added_inapp", "event_cohost_added_sse"},
+		{"event_cohost_removed", "event_cohost_removed_inapp", "event_cohost_removed_sse"},
+		{"event_cohost_left", "event_cohost_left_inapp", "event_cohost_left_sse"},
+	} {
+		t.Run(tc.action, func(t *testing.T) {
+			req, ok := fanoutNotifyRequest(models.TheMonkeysMessage{Action: tc.action, Username: "actor", NewUsername: "recipient", EventSlug: "local-event", EventTitle: "Local event"})
+			if !ok {
+				t.Fatal("co-host notification action is not delivered")
+			}
+			if req.UserID != "recipient" || req.InAppTpl != tc.inapp || req.SSETpl != tc.sse || req.EmailTpl != "" {
+				t.Fatalf("wrong delivery: %+v", req)
+			}
+			if req.Data["actor_name"] != "actor" || req.Data["event_slug"] != "local-event" || req.Data["event_title"] != "Local event" {
+				t.Fatalf("wrong data: %+v", req.Data)
+			}
+		})
 	}
 }

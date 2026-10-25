@@ -621,6 +621,8 @@ message CreateSeriesReq {
     double latitude = 18;
     double longitude = 19;
     bool requires_host_review = 20;
+    // Optional; older clients retain the existing organizer-only behavior.
+    repeated string co_host_usernames = 21;
 }
 
 // -----------------------------------------------------------------------------

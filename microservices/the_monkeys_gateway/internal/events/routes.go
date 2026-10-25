@@ -40,6 +40,7 @@ func RegisterEventRouter(router *gin.Engine, cfg *config.Config, authClient *aut
 		baseURL: strings.TrimRight(cfg.SEO.BaseURL, "/"),
 	}
 	guard := authx.NewGuard(esc.Client, lg)
+	esc.authz = guard
 
 	// --------------------  -----------------------------------------------
 	// Public reads

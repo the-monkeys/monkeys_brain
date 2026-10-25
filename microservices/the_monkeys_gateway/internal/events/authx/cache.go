@@ -47,10 +47,8 @@ type shard struct {
 	m  map[string]entry
 }
 
-// cache is a sharded, TTL-only store of grants. There is deliberately no
-// invalidation API: the events service re-checks every mutation, so the worst
-// a stale entry can do is delay a newly granted co-host by one TTL, or let a
-// request through to a service call that then refuses it.
+// cache is a sharded, TTL-bounded store of grants. Guard generation keys fence
+// out old entries immediately on co-host changes, including in-flight writes.
 type cache struct {
 	seed   maphash.Seed
 	ttl    time.Duration
