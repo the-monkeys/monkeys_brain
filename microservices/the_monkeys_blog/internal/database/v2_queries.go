@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"net/http"
 	"strings"
 
 	"github.com/elastic/go-elasticsearch/v8/esapi"
@@ -22,20 +23,22 @@ func (es *elasticsearchStorage) SaveBlog(ctx context.Context, blog map[string]in
 	// any cross-shard joins at query time.
 	blog = searchdoc.Apply(blog)
 
+	req := esapi.IndexRequest{
+		Index:      constants.ElasticsearchBlogIndex,
+		DocumentID: blogId,
+	}
+	if err := es.preserveMissingDraftScope(ctx, blog, &req); err != nil {
+		es.log.Errorf("SaveBlog: cannot preserve scope for blog %s, error: %v", blogId, err)
+		return nil, err
+	}
+
 	bs, err := json.Marshal(blog)
 	if err != nil {
 		es.log.Errorf("SaveBlog: cannot marshal the blog %s, error: %v", blogId, err)
 		return nil, err
 	}
 
-	jsonStr := string(bs)
-	document := strings.NewReader(jsonStr)
-
-	req := esapi.IndexRequest{
-		Index:      constants.ElasticsearchBlogIndex,
-		DocumentID: blogId,
-		Body:       document,
-	}
+	req.Body = strings.NewReader(string(bs))
 
 	insertResponse, err := req.Do(ctx, es.client)
 	if err != nil {
@@ -51,6 +54,56 @@ func (es *elasticsearchStorage) SaveBlog(ctx context.Context, blog map[string]in
 
 	es.log.Infof("SaveBlog: successfully indexed blog %s", blogId)
 	return insertResponse, nil
+}
+
+// Preserve only omitted scope keys on the enriched copy, leaving explicit
+// values (including an empty group slug) and the caller's map unchanged.
+func (es *elasticsearchStorage) preserveMissingDraftScope(ctx context.Context, blog map[string]interface{}, write *esapi.IndexRequest) error {
+	_, hasGroup := blog["group_slug"]
+	_, hasAudience := blog["audience"]
+	if hasGroup && hasAudience {
+		return nil
+	}
+	read := esapi.GetRequest{
+		Index:          write.Index,
+		DocumentID:     write.DocumentID,
+		SourceIncludes: []string{"group_slug", "audience"},
+	}
+	res, err := read.Do(ctx, es.client)
+	if err != nil {
+		return err
+	}
+	defer res.Body.Close()
+	if res.StatusCode == http.StatusNotFound {
+		// A concurrently created draft must not lose its newly saved scope.
+		write.OpType = "create"
+		return nil
+	}
+	if res.StatusCode != http.StatusOK {
+		return fmt.Errorf("cannot read saved draft scope: status %d", res.StatusCode)
+	}
+	var saved struct {
+		Source      map[string]interface{} `json:"_source"`
+		SeqNo       *int                   `json:"_seq_no"`
+		PrimaryTerm *int                   `json:"_primary_term"`
+	}
+	if err := json.NewDecoder(res.Body).Decode(&saved); err != nil {
+		return fmt.Errorf("cannot decode saved draft scope: %w", err)
+	}
+	if saved.Source == nil || saved.SeqNo == nil || saved.PrimaryTerm == nil {
+		return fmt.Errorf("saved draft scope or version is missing")
+	}
+	for _, key := range []string{"group_slug", "audience"} {
+		if _, supplied := blog[key]; !supplied {
+			if value, exists := saved.Source[key]; exists {
+				blog[key] = value
+			}
+		}
+	}
+	// Refuse a stale replacement if any writer changed scope after our read.
+	write.IfSeqNo = saved.SeqNo
+	write.IfPrimaryTerm = saved.PrimaryTerm
+	return nil
 }
 
 func (es *elasticsearchStorage) GetBlogsOfUsersByAccountIds(ctx context.Context, accountIds []string, limit, offset int32) ([]map[string]interface{}, error) {

@@ -17,6 +17,7 @@ type ListInput struct {
 	AccountID      string
 	GroupSlug      string
 	BeforePublicID string
+	FollowingOnly  bool
 }
 
 // ReplyInput adds a reply. ParentPublicID empty means a top-level reply.

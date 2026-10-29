@@ -164,6 +164,14 @@ func insertDiscussionPost(ctx context.Context, tx *sql.Tx, authorID int64, group
 
 func (db *discussionDB) ListDiscussions(ctx context.Context, in discussions.ListInput) ([]*discussions.Post, error) {
 	slug := strings.TrimSpace(in.GroupSlug)
+	if in.FollowingOnly {
+		if strings.TrimSpace(in.AccountID) == "" {
+			return nil, status.Error(codes.Unauthenticated, "Log in to see discussions from people you follow.")
+		}
+		if slug != "" {
+			return nil, status.Error(codes.InvalidArgument, "Choose either a group or the following feed.")
+		}
+	}
 	if slug == "" {
 		return db.listDiscussionFeed(ctx, in, nil)
 	}
@@ -192,6 +200,12 @@ func (db *discussionDB) listDiscussionFeed(ctx context.Context, in discussions.L
 			where += ` AND p.audience = 'public'`
 		}
 	}
+	if in.FollowingOnly {
+		where += ` AND EXISTS (
+			SELECT 1 FROM user_follows follows
+			WHERE follows.follower_id = viewer.id AND follows.following_id = p.author_id
+		)`
+	}
 	if before := strings.TrimSpace(in.BeforePublicID); before != "" {
 		var cursorID int64
 		var cursorAt time.Time
@@ -199,12 +213,22 @@ func (db *discussionDB) listDiscussionFeed(ctx context.Context, in discussions.L
 		var cursorAudience string
 		var cursorVis string
 		var cursorStatus string
-		err := db.db.QueryRowContext(ctx, `
+		cursorQuery := `
 			SELECT p.id, p.created_at, p.group_id, p.audience,
 			       COALESCE(g.visibility, ''), COALESCE(g.status, '')
 			FROM discussion_posts p
 			LEFT JOIN groups g ON g.id = p.group_id
-			WHERE p.public_id = $1`, before).
+			WHERE p.public_id = $1`
+		cursorArgs := []any{before}
+		if in.FollowingOnly {
+			cursorQuery += ` AND EXISTS (
+				SELECT 1 FROM user_follows follows
+				JOIN user_account follower ON follower.id = follows.follower_id
+				WHERE follows.following_id = p.author_id AND follower.account_id = $2
+			)`
+			cursorArgs = append(cursorArgs, in.AccountID)
+		}
+		err := db.db.QueryRowContext(ctx, cursorQuery, cursorArgs...).
 			Scan(&cursorID, &cursorAt, &cursorGroup, &cursorAudience, &cursorVis, &cursorStatus)
 		if err == sql.ErrNoRows {
 			return nil, status.Error(codes.InvalidArgument, "That page is not part of this feed.")
@@ -372,6 +396,10 @@ func (db *discussionDB) EditDiscussion(ctx context.Context, accountID, publicID,
 	err := db.inTx(ctx, func(tx *sql.Tx) error {
 		authorID, err := resolveAccount(ctx, tx, accountID)
 		if err != nil {
+			return err
+		}
+		// Apply read privacy before validation or ownership errors can reveal a post.
+		if _, err := loadDiscussion(ctx, tx, accountID, publicID); err != nil {
 			return err
 		}
 		var fileCount int
@@ -590,8 +618,10 @@ func scanPosts(rows *sql.Rows, enforceRead bool) ([]*discussions.Post, error) {
 		if err := json.Unmarshal(rawFiles, &packed); err != nil {
 			return nil, status.Error(codes.Internal, "could not load the images")
 		}
-		for _, f := range packed {
-			p.Files = append(p.Files, discussions.File{StorageKey: f.Key, ContentType: f.Type})
+		if p.Status == "visible" || authorSelf || staff {
+			for _, f := range packed {
+				p.Files = append(p.Files, discussions.File{StorageKey: f.Key, ContentType: f.Type})
+			}
 		}
 		out = append(out, &p)
 	}
