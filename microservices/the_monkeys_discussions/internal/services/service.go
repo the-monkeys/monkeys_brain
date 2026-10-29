@@ -46,6 +46,7 @@ func (s *DiscussionService) ListDiscussions(ctx context.Context, req *pb.ListDis
 		AccountID:      req.GetAccountId(),
 		GroupSlug:      req.GetGroupSlug(),
 		BeforePublicID: req.GetBeforePublicId(),
+		FollowingOnly:  req.GetFollowingOnly(),
 	})
 	if err != nil {
 		return nil, err
@@ -54,7 +55,7 @@ func (s *DiscussionService) ListDiscussions(ctx context.Context, req *pb.ListDis
 	for _, post := range posts {
 		out = append(out, discussionProto(post))
 	}
-	return &pb.ListDiscussionsResp{Discussions: out}, nil
+	return &pb.ListDiscussionsResp{Discussions: out, FollowingOnly: req.GetFollowingOnly()}, nil
 }
 
 func (s *DiscussionService) GetDiscussion(ctx context.Context, req *pb.DiscussionActionReq) (*pb.DiscussionResp, error) {

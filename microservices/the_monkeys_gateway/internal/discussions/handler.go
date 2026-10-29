@@ -69,17 +69,35 @@ func (c *Client) ListDiscussions(ctx *gin.Context) {
 	c.list(ctx, "")
 }
 
+func (c *Client) ListFollowingDiscussions(ctx *gin.Context) {
+	ctx.Header("Cache-Control", "private, no-store")
+	if accountID(ctx) == "" {
+		ctx.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Log in to see discussions from people you follow."})
+		return
+	}
+	c.listScope(ctx, "", true)
+}
+
 func (c *Client) ListGroupDiscussions(ctx *gin.Context) {
 	c.list(ctx, ctx.Param("slug"))
 }
 
 func (c *Client) list(ctx *gin.Context, slug string) {
+	c.listScope(ctx, slug, false)
+}
+
+func (c *Client) listScope(ctx *gin.Context, slug string, followingOnly bool) {
 	res, err := c.svc.ListDiscussions(ctx, &pb.ListDiscussionsReq{
 		AccountId:      accountID(ctx),
 		GroupSlug:      slug,
 		BeforePublicId: ctx.Query("before_id"),
+		FollowingOnly:  followingOnly,
 	})
 	if c.fail(ctx, err, "list discussions") {
+		return
+	}
+	if followingOnly && !res.GetFollowingOnly() {
+		ctx.AbortWithStatusJSON(http.StatusServiceUnavailable, gin.H{"error": "Your following discussions are temporarily unavailable. Please try again."})
 		return
 	}
 	ctx.JSON(http.StatusOK, gin.H{"discussions": res.GetDiscussions()})

@@ -25,6 +25,7 @@ func RegisterDiscussionRouter(router *gin.Engine, cfg *config.Config, authClient
 
 	read := router.Group("/api/v1/discussions", rateLimit(rateRead))
 	read.GET("", mware.AuthOptional, c.ListDiscussions)
+	read.GET("/following", mware.AuthRequired, c.ListFollowingDiscussions)
 	read.GET("/:id", mware.AuthOptional, c.GetDiscussion)
 
 	write := router.Group("/api/v1/discussions", mware.AuthRequired, rateLimit(rateWrite))

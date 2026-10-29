@@ -57,10 +57,14 @@ message ListDiscussionsReq {
     string account_id = 1;
     string group_slug = 2;
     string before_public_id = 3;
+    // Optional authenticated filter. False preserves the existing public feed.
+    bool following_only = 4;
 }
 
 message ListDiscussionsResp {
     repeated Discussion discussions = 1;
+    // Confirms the service applied the filter during a rolling upgrade.
+    bool following_only = 2;
 }
 
 message DiscussionActionReq {
