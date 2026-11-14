@@ -77,6 +77,7 @@ func (asc *BlogServiceClient) GetFeedPostsMeta(ctx *gin.Context) {
 	if err != nil {
 		limitInt = 500
 	}
+	limitInt = min(limitInt, 1000)
 
 	offsetInt, err := strconv.Atoi(offset)
 	if err != nil {
@@ -95,7 +96,7 @@ func (asc *BlogServiceClient) GetFeedPostsMeta(ctx *gin.Context) {
 	clientInfo := utils.GetClientInfo(ctx)
 
 	// Call gRPC to get blog metadata with client tracking
-	stream, err := asc.Client.GetBlogsMetadata(context.Background(), &pb.BlogListReq{
+	stream, err := asc.Client.GetBlogsMetadata(ctx.Request.Context(), &pb.BlogListReq{
 		Limit:      int32(limitInt),
 		Offset:     int32(offsetInt),
 		Tags:       tags.Tags,
@@ -218,6 +219,7 @@ func (asc *BlogServiceClient) GetsMetaFeed(ctx *gin.Context) {
 	if err != nil {
 		limitInt = 500
 	}
+	limitInt = min(limitInt, 1000)
 
 	offsetInt, err := strconv.Atoi(offset)
 	if err != nil {
@@ -231,7 +233,7 @@ func (asc *BlogServiceClient) GetsMetaFeed(ctx *gin.Context) {
 	userAccountId := ctx.GetString("accountId")
 
 	// Call gRPC to get blog metadata with comprehensive user and client tracking
-	stream, err := asc.Client.GetBlogsMetadata(context.Background(), &pb.BlogListReq{
+	stream, err := asc.Client.GetBlogsMetadata(ctx.Request.Context(), &pb.BlogListReq{
 		AccountId:  userAccountId, // Include user account ID for personalized feed tracking
 		Limit:      int32(limitInt),
 		Offset:     int32(offsetInt),

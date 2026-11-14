@@ -77,12 +77,16 @@ func addAIMetadata(dst, src map[string]interface{}) {
 
 // Returns metadata, total counts of blogs, and errors
 func (es *elasticsearchStorage) GetBlogsMetadataByTags(ctx context.Context, tags []string, isDraft bool, limit, offset int32) ([]map[string]interface{}, int, error) {
+	limit = min(limit, publicCatalogMaxPageSize)
 	// Ensure tags are not empty
 	if len(tags) == 0 {
 		es.log.Error("GetBlogsMetadataByTags: tags array is empty")
 		return nil, 0, fmt.Errorf("tags array cannot be empty")
 	}
 
+	if err := ctx.Err(); err != nil {
+		return nil, 0, err
+	}
 	// Normalize tags to lowercase for case-insensitive search
 	normalizedTags := make([]string, len(tags))
 	for i, tag := range tags {
@@ -91,6 +95,7 @@ func (es *elasticsearchStorage) GetBlogsMetadataByTags(ctx context.Context, tags
 
 	// Build the query to get blogs by tags with sorting by latest first
 	query := map[string]interface{}{
+		"track_total_hits": true,
 		"sort": []map[string]interface{}{
 			{
 				"published_time": map[string]interface{}{
@@ -150,9 +155,13 @@ func (es *elasticsearchStorage) GetBlogsMetadataByTags(ctx context.Context, tags
 	if !isDraft {
 		boolQuery := query["query"].(map[string]interface{})["bool"].(map[string]interface{})
 		mustNot := boolQuery["must_not"].([]map[string]interface{})
+		mustNot = append(mustNot, map[string]interface{}{"term": map[string]interface{}{"is_scheduled": true}})
 		boolQuery["must_not"] = audience.AppendPublicListMustNot(mustNot)
 	}
 
+	if publicCatalogNeedsScroll(int(limit), int(offset)) {
+		return es.publicCatalogScroll(ctx, query, int(limit), int(offset))
+	}
 	// Marshal the query to JSON
 	bs, err := json.Marshal(query)
 	if err != nil {
@@ -200,69 +209,23 @@ func (es *elasticsearchStorage) GetBlogsMetadataByTags(ctx context.Context, tags
 	}
 
 	// Extract the total count of matching blogs
-	totalCount := 0
-	if hitsTotal, ok := esResponse["hits"].(map[string]interface{})["total"].(map[string]interface{}); ok {
-		if value, exists := hitsTotal["value"].(float64); exists {
-			totalCount = int(value)
-		}
-	}
-
-	// Extract the hits from the response
-	hits, ok := esResponse["hits"].(map[string]interface{})["hits"].([]interface{})
-	if !ok {
-		err := fmt.Errorf("GetBlogsMetadataByTags: failed to parse hits from response")
-		es.log.Error(err)
+	hits, totalCount, err := publicCatalogHits(esResponse)
+	if err != nil {
+		es.log.Errorf("GetBlogsMetadataByTags: %v", err)
 		return nil, totalCount, err
 	}
 
-	// Prepare the result
 	blogsMetadata := make([]map[string]interface{}, 0, len(hits))
 	for _, hit := range hits {
-		hitSource := hit.(map[string]interface{})["_source"].(map[string]interface{})
-		blogMetadata := map[string]interface{}{
-			"blog_id":          hitSource["blog_id"],
-			"owner_account_id": hitSource["owner_account_id"],
-			"tags":             hitSource["tags"],
-			"content_type":     hitSource["content_type"],
-			"published_time":   hitSource["published_time"],
-		}
-
-		// Extract title, first paragraph, and first image from blog.blocks
-		blocks, ok := hitSource["blog"].(map[string]interface{})["blocks"].([]interface{})
+		hitMap, ok := hit.(map[string]interface{})
 		if !ok {
-			es.log.Errorf("GetBlogsMetadataByTags: failed to parse blog blocks")
 			continue
 		}
-
-		var title, firstParagraph, firstImage string
-		for _, block := range blocks {
-			blockMap := block.(map[string]interface{})
-			blockType := blockMap["type"].(string)
-			blockData := blockMap["data"].(map[string]interface{})
-
-			switch blockType {
-			case "header":
-				if title == "" && blockData["level"].(float64) == 1 {
-					title = blockData["text"].(string)
-				}
-			case "paragraph":
-				if firstParagraph == "" {
-					firstParagraph = blockData["text"].(string)
-				}
-			case "image":
-				if firstImage == "" {
-					firstImage = blockData["file"].(map[string]interface{})["url"].(string)
-				}
-			}
+		hitSource, ok := hitMap["_source"].(map[string]interface{})
+		if !ok || hitSource == nil {
+			continue
 		}
-
-		blogMetadata["title"] = title
-		blogMetadata["first_paragraph"] = firstParagraph
-		blogMetadata["first_image"] = firstImage
-
-		addAIMetadata(blogMetadata, hitSource)
-
-		blogsMetadata = append(blogsMetadata, blogMetadata)
+		blogsMetadata = append(blogsMetadata, publicCatalogMetadata(hitSource))
 	}
 
 	es.log.Debugf("GetBlogsMetadataByTags: successfully fetched %d blogs metadata out of %d total", len(blogsMetadata), totalCount)
@@ -270,8 +233,13 @@ func (es *elasticsearchStorage) GetBlogsMetadataByTags(ctx context.Context, tags
 }
 
 func (es *elasticsearchStorage) GetAllPublishedBlogsMetadata(ctx context.Context, limit, offset int) ([]map[string]interface{}, int, error) {
+	limit = min(limit, publicCatalogMaxPageSize)
+	if err := ctx.Err(); err != nil {
+		return nil, 0, err
+	}
 	// Build the query to get all published blogs sorted by published_time
 	query := map[string]interface{}{
+		"track_total_hits": true,
 		"sort": []map[string]interface{}{
 			{
 				"published_time": map[string]interface{}{
@@ -317,6 +285,9 @@ func (es *elasticsearchStorage) GetAllPublishedBlogsMetadata(ctx context.Context
 		},
 	}
 
+	if publicCatalogNeedsScroll(limit, offset) {
+		return es.publicCatalogScroll(ctx, query, limit, offset)
+	}
 	bs, err := json.Marshal(query)
 	if err != nil {
 		es.log.Errorf("GetAllPublishedBlogsMetadata: cannot marshal the query, error: %v", err)
@@ -358,66 +329,23 @@ func (es *elasticsearchStorage) GetAllPublishedBlogsMetadata(ctx context.Context
 		return nil, 0, err
 	}
 
-	totalCount := 0
-	if hitsTotal, ok := esResponse["hits"].(map[string]interface{})["total"].(map[string]interface{}); ok {
-		if value, exists := hitsTotal["value"].(float64); exists {
-			totalCount = int(value)
-		}
-	}
-
-	hits, ok := esResponse["hits"].(map[string]interface{})["hits"].([]interface{})
-	if !ok {
-		err := fmt.Errorf("GetAllPublishedBlogsMetadata: failed to parse hits from response")
-		es.log.Error(err)
+	hits, totalCount, err := publicCatalogHits(esResponse)
+	if err != nil {
+		es.log.Errorf("GetAllPublishedBlogsMetadata: %v", err)
 		return nil, totalCount, err
 	}
 
 	blogsMetadata := make([]map[string]interface{}, 0, len(hits))
 	for _, hit := range hits {
-		hitSource := hit.(map[string]interface{})["_source"].(map[string]interface{})
-		blogMetadata := map[string]interface{}{
-			"blog_id":          hitSource["blog_id"],
-			"owner_account_id": hitSource["owner_account_id"],
-			"tags":             hitSource["tags"],
-			"content_type":     hitSource["content_type"],
-			"published_time":   hitSource["published_time"],
-		}
-
-		blocks, ok := hitSource["blog"].(map[string]interface{})["blocks"].([]interface{})
+		hitMap, ok := hit.(map[string]interface{})
 		if !ok {
-			es.log.Errorf("GetAllPublishedBlogsMetadata: failed to parse blog blocks")
 			continue
 		}
-
-		var title, firstParagraph, firstImage string
-		for _, block := range blocks {
-			blockMap := block.(map[string]interface{})
-			blockType := blockMap["type"].(string)
-			blockData := blockMap["data"].(map[string]interface{})
-
-			switch blockType {
-			case "header":
-				if title == "" && blockData["level"].(float64) == 1 {
-					title = blockData["text"].(string)
-				}
-			case "paragraph":
-				if firstParagraph == "" {
-					firstParagraph = blockData["text"].(string)
-				}
-			case "image":
-				if firstImage == "" {
-					firstImage = blockData["file"].(map[string]interface{})["url"].(string)
-				}
-			}
+		hitSource, ok := hitMap["_source"].(map[string]interface{})
+		if !ok || hitSource == nil {
+			continue
 		}
-
-		blogMetadata["title"] = title
-		blogMetadata["first_paragraph"] = firstParagraph
-		blogMetadata["first_image"] = firstImage
-
-		addAIMetadata(blogMetadata, hitSource)
-
-		blogsMetadata = append(blogsMetadata, blogMetadata)
+		blogsMetadata = append(blogsMetadata, publicCatalogMetadata(hitSource))
 	}
 
 	es.log.Debugf("GetAllPublishedBlogsMetadata: successfully fetched %d blogs metadata out of %d total", len(blogsMetadata), totalCount)
