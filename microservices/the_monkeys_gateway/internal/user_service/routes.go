@@ -14,6 +14,7 @@ import (
 	"github.com/the-monkeys/the_monkeys/apis/serviceconn/gateway_user/pb"
 	"github.com/the-monkeys/the_monkeys/config"
 	"github.com/the-monkeys/the_monkeys/constants"
+	"github.com/the-monkeys/the_monkeys/microservices/the_monkeys_gateway/internal/idempotency"
 
 	"github.com/the-monkeys/the_monkeys/microservices/the_monkeys_gateway/internal/auth"
 	"github.com/the-monkeys/the_monkeys/microservices/the_monkeys_gateway/internal/blogacl"
@@ -48,7 +49,7 @@ func NewUserServiceClient(cfg *config.Config, lg *zap.SugaredLogger) pb.UserServ
 	return pb.NewUserServiceClient(cc)
 }
 
-func RegisterUserRouter(router *gin.Engine, cfg *config.Config, authClient *auth.ServiceClient, log *zap.SugaredLogger, cache *searchcache.Cache) *UserServiceClient {
+func RegisterUserRouter(router *gin.Engine, cfg *config.Config, authClient *auth.ServiceClient, log *zap.SugaredLogger, cache *searchcache.Cache, creationGuards ...*idempotency.Guard) *UserServiceClient {
 	mware := auth.InitAuthMiddleware(authClient, log)
 
 	usc := &UserServiceClient{
@@ -68,7 +69,7 @@ func RegisterUserRouter(router *gin.Engine, cfg *config.Config, authClient *auth
 
 	{
 		// Account verification (blue-check)
-		routes.POST("/verification", middleware.RateLimiterMiddleware("10-H"), usc.SubmitVerification)
+		routes.POST("/verification", middleware.RateLimiterMiddleware("10-H"), usc.verificationIdempotency(idempotency.Optional(creationGuards)), usc.SubmitVerification)
 		routes.GET("/verification/me", usc.GetMyVerification)
 		routes.DELETE("/verification/:request_id", usc.CancelVerification)
 	}

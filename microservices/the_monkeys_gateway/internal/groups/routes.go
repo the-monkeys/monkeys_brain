@@ -7,6 +7,7 @@ import (
 	"github.com/the-monkeys/the_monkeys/config"
 	"github.com/the-monkeys/the_monkeys/microservices/the_monkeys_gateway/internal/auth"
 	"github.com/the-monkeys/the_monkeys/microservices/the_monkeys_gateway/internal/groups/authx"
+	"github.com/the-monkeys/the_monkeys/microservices/the_monkeys_gateway/internal/idempotency"
 	"github.com/the-monkeys/the_monkeys/microservices/the_monkeys_gateway/internal/storage_v2"
 	"go.uber.org/zap"
 )
@@ -39,6 +40,7 @@ func RegisterGroupRouter(
 	blogClient blogpb.BlogServiceClient,
 	storageSvc *storage_v2.Service,
 	lg *zap.SugaredLogger,
+	creationGuards ...*idempotency.Guard,
 ) *GroupServiceClient {
 	mware := auth.InitAuthMiddleware(authClient, lg)
 
@@ -74,7 +76,7 @@ func RegisterGroupRouter(
 	// Group lifecycle. Creating a group needs no group guard (there is no
 	// group yet); editing needs edit_group; deleting stays with the organizer
 	// even though co-organizers carry delete_group in their bundle.
-	write.POST("", gsc.CreateGroup)
+	write.POST("", idempotency.Optional(creationGuards).Handler(), gsc.CreateGroup)
 	write.PUT("/:slug", guard.RequireGroupPermission(authx.PermEditGroup), gsc.UpdateGroup)
 	write.DELETE("/:slug", guard.RequireGroupOrganizer(), gsc.DeleteGroup)
 	write.POST("/:slug/publish", guard.RequireGroupPermission(authx.PermEditGroup), gsc.PublishGroup)
@@ -115,7 +117,7 @@ func RegisterGroupRouter(
 
 	// Group-scoped event creation, delegated to the events service. Creating
 	// an event under the group needs manage_events on the group.
-	write.POST("/:slug/events", guard.RequireGroupPermission(authx.PermManageEvents), gec.CreateGroupEvent)
+	write.POST("/:slug/events", guard.RequireGroupPermission(authx.PermManageEvents), idempotency.Optional(creationGuards).Handler(), gec.CreateGroupEvent)
 
 	// -------------------------------------------------------------------
 	// Invite links, addressed by token on a separate top-level prefix.
