@@ -329,7 +329,7 @@ func (s *ActivityServiceServer) GetPerformanceAnalytics(ctx context.Context, req
 }
 func (s *ActivityServiceServer) GetTrendingBlogs(ctx context.Context, req *pb.GetTrendingBlogsRequest) (*pb.GetTrendingBlogsResponse, error) {
 	// If it's a global request and we have a cache, use it
-	if req.GetAccountId() == "" && req.GetTimeRange() == "24h" {
+	if !homepageTrendingRequested(ctx) && req.GetAccountId() == "" && req.GetTimeRange() == "24h" {
 		s.cacheMutex.RLock()
 		cached := s.trendingCache
 		s.cacheMutex.RUnlock()
