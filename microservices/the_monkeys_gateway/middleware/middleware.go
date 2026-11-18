@@ -10,6 +10,7 @@ import (
 
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
+	"github.com/the-monkeys/the_monkeys/microservices/the_monkeys_gateway/internal/idempotency"
 	"github.com/ulule/limiter/v3"
 	limiterGin "github.com/ulule/limiter/v3/drivers/middleware/gin"
 	"github.com/ulule/limiter/v3/drivers/store/memory"
@@ -34,8 +35,9 @@ func CORSMiddleware(allowedOriginExp string) gin.HandlerFunc {
 			lg.Warnw("cors request blocked", "origin", requestOrigin, "method", c.Request.Method)
 		}
 		c.Writer.Header().Set("Access-Control-Allow-Credentials", "true")
-		c.Writer.Header().Set("Access-Control-Allow-Headers", "Content-Type, Content-Length, Accept-Encoding, X-CSRF-Token, Authorization, accept, origin, Cache-Control, X-Requested-With, IP, Client, OS, User-Agent, Accept-Language, DNT, Sec-CH-UA, Sec-CH-UA-Mobile, Sec-CH-UA-Platform, Sec-Fetch-Site, Sec-Fetch-Mode, Sec-Fetch-User, Sec-Fetch-Dest, Referer, X-Forwarded-For, X-Real-IP, X-Forwarded-Proto, X-Forwarded-Host, X-Original-URL, CF-Connecting-IP, CF-IPCountry, CF-Ray, CF-Visitor, X-UTM-Source, X-UTM-Medium, X-UTM-Campaign, X-UTM-Term, X-UTM-Content, X-Client-ID, X-Session-ID, X-Request-ID, X-Correlation-ID")
+		c.Writer.Header().Set("Access-Control-Allow-Headers", "Content-Type, Content-Length, Accept-Encoding, X-CSRF-Token, Authorization, accept, origin, Cache-Control, X-Requested-With, IP, Client, OS, User-Agent, Accept-Language, DNT, Sec-CH-UA, Sec-CH-UA-Mobile, Sec-CH-UA-Platform, Sec-Fetch-Site, Sec-Fetch-Mode, Sec-Fetch-User, Sec-Fetch-Dest, Referer, X-Forwarded-For, X-Real-IP, X-Forwarded-Proto, X-Forwarded-Host, X-Original-URL, CF-Connecting-IP, CF-IPCountry, CF-Ray, CF-Visitor, X-UTM-Source, X-UTM-Medium, X-UTM-Campaign, X-UTM-Term, X-UTM-Content, X-Client-ID, X-Session-ID, X-Request-ID, X-Correlation-ID, Idempotency-Key")
 		c.Writer.Header().Set("Access-Control-Allow-Methods", "POST, OPTIONS, GET, PUT, PATCH, DELETE")
+		c.Header("Access-Control-Expose-Headers", "Idempotency-Replayed, Retry-After")
 		if c.Request.Method == "OPTIONS" {
 			c.AbortWithStatus(204)
 			return
@@ -45,7 +47,7 @@ func CORSMiddleware(allowedOriginExp string) gin.HandlerFunc {
 }
 
 func TmpCORSMiddleware() gin.HandlerFunc {
-	cfg := cors.Config{AllowOrigins: []string{"*"}, AllowMethods: []string{"GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"}, AllowHeaders: []string{"*"}, AllowCredentials: true}
+	cfg := cors.Config{AllowOrigins: []string{"*"}, AllowMethods: []string{"GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"}, AllowHeaders: []string{"*"}, ExposeHeaders: []string{"Idempotency-Replayed", "Retry-After"}, AllowCredentials: true}
 	corsMiddleware := cors.New(cfg)
 	lg := zap.S().With("middleware", "tmp_cors")
 	return func(c *gin.Context) {
@@ -58,12 +60,17 @@ func TmpCORSMiddleware() gin.HandlerFunc {
 }
 
 func NewCorsMiddleware() gin.HandlerFunc {
-	return cors.New(cors.Config{AllowOrigins: []string{"*"}, AllowMethods: []string{"GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"}, AllowHeaders: []string{"Origin", "Content-Type", "Authorization", "IP", "Client", "Content-Length", "Accept-Encoding", "X-CSRF-Token", "accept", "Cache-Control", "X-Requested-With", "User-Agent", "Accept-Language", "DNT", "Sec-CH-UA", "Sec-CH-UA-Mobile", "Sec-CH-UA-Platform", "Sec-Fetch-Site", "Sec-Fetch-Mode", "Sec-Fetch-User", "Sec-Fetch-Dest", "Referer", "X-Forwarded-For", "X-Real-IP", "X-Forwarded-Proto", "X-Forwarded-Host", "X-Original-URL", "CF-Connecting-IP", "CF-IPCountry", "CF-Ray", "CF-Visitor", "X-UTM-Source", "X-UTM-Medium", "X-UTM-Campaign", "X-UTM-Term", "X-UTM-Content", "X-Client-ID", "X-Session-ID", "X-Request-ID", "X-Correlation-ID"}, ExposeHeaders: []string{"Content-Length"}, AllowCredentials: true})
+	return cors.New(cors.Config{AllowOrigins: []string{"*"}, AllowMethods: []string{"GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"}, AllowHeaders: []string{"Origin", "Content-Type", "Authorization", "IP", "Client", "Content-Length", "Accept-Encoding", "X-CSRF-Token", "accept", "Cache-Control", "X-Requested-With", "User-Agent", "Accept-Language", "DNT", "Sec-CH-UA", "Sec-CH-UA-Mobile", "Sec-CH-UA-Platform", "Sec-Fetch-Site", "Sec-Fetch-Mode", "Sec-Fetch-User", "Sec-Fetch-Dest", "Referer", "X-Forwarded-For", "X-Real-IP", "X-Forwarded-Proto", "X-Forwarded-Host", "X-Original-URL", "CF-Connecting-IP", "CF-IPCountry", "CF-Ray", "CF-Visitor", "X-UTM-Source", "X-UTM-Medium", "X-UTM-Campaign", "X-UTM-Term", "X-UTM-Content", "X-Client-ID", "X-Session-ID", "X-Request-ID", "X-Correlation-ID", "Idempotency-Key"}, ExposeHeaders: []string{"Content-Length", "Idempotency-Replayed", "Retry-After"}, AllowCredentials: true})
 }
 
 func LogRequestBody() gin.HandlerFunc {
 	lg := zap.S().With("middleware", "req_body")
 	return func(c *gin.Context) {
+		// Keyed creation bodies must be bounded and read only after authentication.
+		if _, keyed := c.Request.Header[http.CanonicalHeaderKey("Idempotency-Key")]; keyed && idempotency.IsCreation(c.Request.Method, c.FullPath()) {
+			c.Next()
+			return
+		}
 		// Skip logging for multipart form data (large files/videos)
 		contentType := c.Request.Header.Get("Content-Type")
 		if strings.Contains(contentType, "multipart/form-data") {

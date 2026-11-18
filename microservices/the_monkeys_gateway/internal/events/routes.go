@@ -7,6 +7,7 @@ import (
 	"github.com/the-monkeys/the_monkeys/config"
 	"github.com/the-monkeys/the_monkeys/microservices/the_monkeys_gateway/internal/auth"
 	"github.com/the-monkeys/the_monkeys/microservices/the_monkeys_gateway/internal/events/authx"
+	"github.com/the-monkeys/the_monkeys/microservices/the_monkeys_gateway/internal/idempotency"
 	"github.com/the-monkeys/the_monkeys/microservices/the_monkeys_gateway/internal/storage_v2"
 	"go.uber.org/zap"
 )
@@ -31,7 +32,7 @@ import (
 // Every route scoped to one event carries a guard. The events service still
 // re-checks each mutation against event_permissions, so the guard is there to
 // reject early and to keep drafts and meeting links out of responses.
-func RegisterEventRouter(router *gin.Engine, cfg *config.Config, authClient *auth.ServiceClient, storageSvc *storage_v2.Service, lg *zap.SugaredLogger) *EventServiceClient {
+func RegisterEventRouter(router *gin.Engine, cfg *config.Config, authClient *auth.ServiceClient, storageSvc *storage_v2.Service, lg *zap.SugaredLogger, creationGuards ...*idempotency.Guard) *EventServiceClient {
 	mware := auth.InitAuthMiddleware(authClient, lg)
 
 	esc := &EventServiceClient{
@@ -73,10 +74,10 @@ func RegisterEventRouter(router *gin.Engine, cfg *config.Config, authClient *aut
 
 	// Event lifecycle. Deleting an event is destructive enough to stay with
 	// the organizer rather than delegate to co-hosts.
-	write.POST("", esc.CreateEvent)
-	write.POST("/series", esc.CreateSeries)
+	write.POST("", idempotency.Optional(creationGuards).Handler(), esc.CreateEvent)
+	write.POST("/series", idempotency.Optional(creationGuards).Handler(), esc.CreateSeries)
 	write.PUT("/:slug", guard.Require(authx.PermEditEvent), esc.UpdateEvent)
-	write.POST("/:slug/clone", guard.Require(authx.PermEditEvent), esc.CloneEvent)
+	write.POST("/:slug/clone", guard.Require(authx.PermEditEvent), idempotency.Optional(creationGuards).Handler(), esc.CloneEvent)
 	write.DELETE("/:slug", guard.RequireOrganizer(), esc.DeleteEvent)
 	write.POST("/:slug/publish", guard.Require(authx.PermEditEvent), esc.PublishEvent)
 	write.POST("/:slug/cancel", guard.Require(authx.PermEditEvent), esc.CancelEvent)

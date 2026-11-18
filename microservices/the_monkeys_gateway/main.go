@@ -22,6 +22,7 @@ import (
 	"github.com/the-monkeys/the_monkeys/microservices/the_monkeys_gateway/internal/discussions"
 	"github.com/the-monkeys/the_monkeys/microservices/the_monkeys_gateway/internal/events"
 	"github.com/the-monkeys/the_monkeys/microservices/the_monkeys_gateway/internal/groups"
+	"github.com/the-monkeys/the_monkeys/microservices/the_monkeys_gateway/internal/idempotency"
 	"github.com/the-monkeys/the_monkeys/microservices/the_monkeys_gateway/internal/notification"
 	"github.com/the-monkeys/the_monkeys/microservices/the_monkeys_gateway/internal/snapshot"
 	"github.com/the-monkeys/the_monkeys/microservices/the_monkeys_gateway/internal/storage"
@@ -72,7 +73,7 @@ func main() {
 			log.Warnw("searchcache close failed", "err", err)
 		}
 	}()
-	_ = searchCache // additional consumers wired in later phases
+	creationGuard := idempotency.New(searchCache.RedisClient())
 	// Set Gin to Release mode
 	gin.SetMode(gin.ReleaseMode)
 
@@ -106,7 +107,7 @@ func main() {
 
 	// Register REST routes for all the microservices
 	authClient := auth.RegisterAuthRouter(server.router, cfg, log)
-	userClient := user_service.RegisterUserRouter(server.router, cfg, authClient, log, searchCache)
+	userClient := user_service.RegisterUserRouter(server.router, cfg, authClient, log, searchCache, creationGuard)
 	blogClient := blog.RegisterBlogRouter(server.router, cfg, authClient, userClient, log)
 	// Phase 3: search-v2 blog & autocomplete endpoints. Hits ES via the
 	// the_monkeys_blogs alias, so it follows whichever physical index
@@ -115,8 +116,8 @@ func main() {
 	storageClient := storage.RegisterFileStorageRouter(server.router, cfg, authClient, log)
 	storageV2Svc := storage_v2.RegisterRoutes(server.router, cfg, storageClient.Client, authClient, log)
 	notification.RegisterNotificationRoute(server.router, cfg, authClient, log)
-	eventClient := events.RegisterEventRouter(server.router, cfg, authClient, storageV2Svc, log)
-	groupClient := groups.RegisterGroupRouter(server.router, cfg, authClient, eventClient.Client, blogClient.Client, storageV2Svc, log)
+	eventClient := events.RegisterEventRouter(server.router, cfg, authClient, storageV2Svc, log, creationGuard)
+	groupClient := groups.RegisterGroupRouter(server.router, cfg, authClient, eventClient.Client, blogClient.Client, storageV2Svc, log, creationGuard)
 	discussions.RegisterDiscussionRouter(server.router, cfg, authClient, log)
 	blogClient.Groups = groupClient.Client
 	userClient.ACL = &blogacl.Checker{Blogs: blogClient.Client, Groups: groupClient.Client, Log: log}

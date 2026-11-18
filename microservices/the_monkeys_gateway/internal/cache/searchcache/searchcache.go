@@ -175,3 +175,12 @@ func orDefault(v, d int) int {
 	}
 	return v
 }
+
+// RedisClient exposes the shared pool for fail-closed coordination. Unlike the
+// best-effort search cache API, callers must handle every Redis error.
+func (c *Cache) RedisClient() redis.UniversalClient {
+	if c == nil || c.rdb == nil {
+		return nil
+	}
+	return c.rdb
+}
