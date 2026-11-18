@@ -5,7 +5,7 @@ import (
 	"time"
 )
 
-// Issuable verification request types (verification_requests.verification_type).
+// Verification request types. Social proof is retained for historical records only.
 // The legacy 'professional' type from schema/000004 remains readable but
 // is no longer issuable through the API.
 const (
@@ -29,6 +29,7 @@ const (
 	IDDocumentNationalID      = "national_id"
 	IDDocumentDriversLicense  = "drivers_license"
 	IDDocumentResidencePermit = "residence_permit"
+	IDDocumentGovernmentID    = "government_id"
 )
 
 // Upload slots for the private-bucket asset endpoint
@@ -59,15 +60,9 @@ const (
 	VerificationPurgeAfter = 30 * 24 * time.Hour
 )
 
-// AllowedIDDocuments maps ISO 3166-1 alpha-2 codes to the DOMESTIC id
-// types commonly issued there. Passports and residence permits are valid
-// for every country (see universalIDDocs) and are deliberately NOT
-// repeated per entry — this keeps the table small and the fallback rule
-// obvious.
-//
-// This is a pragmatic starter set (~40 launch regions); extend entries as
-// review volume demands. A country without an entry falls back to the
-// universal set only — conservative, but never rejects a passport holder.
+// AllowedIDDocuments contains historical country hints retained for source compatibility.
+// Deprecated: this map is not the current acceptance policy. Use IsAllowedIDDocument;
+// every supported government-issued category is reviewable for every named country.
 var AllowedIDDocuments = map[string][]string{
 	"AR": {IDDocumentNationalID, IDDocumentDriversLicense}, // DNI
 	"AU": {IDDocumentDriversLicense},                       // no federal ID card
@@ -112,32 +107,41 @@ var AllowedIDDocuments = map[string][]string{
 	"ZA": {IDDocumentNationalID, IDDocumentDriversLicense}, // Smart ID
 }
 
-// universalIDDocs are accepted for every country, including countries
-// absent from AllowedIDDocuments. Residence permits ride this lane because
-// they evidence lawful residence rather than citizenship — many legitimate
-// verifiers hold one instead of a domestic document.
-var universalIDDocs = map[string]struct{}{
+// acceptedGovernmentIDDocs are reviewable for every country. The reviewer
+// checks the issuing authority and authenticity; selecting a category never
+// approves an account automatically.
+var acceptedGovernmentIDDocs = map[string]struct{}{
 	IDDocumentPassport:        {},
+	IDDocumentNationalID:      {},
+	IDDocumentDriversLicense:  {},
 	IDDocumentResidencePermit: {},
+	IDDocumentGovernmentID:    {},
 }
 
-// IsAllowedIDDocument reports whether docType is reviewable for the given
-// country. Input is normalized defensively; an unknown or unmapped
-// country degrades gracefully to the universal set rather than erroring.
-func IsAllowedIDDocument(country, docType string) bool {
-	if _, ok := universalIDDocs[docType]; ok {
-		return true
-	}
-	for _, d := range AllowedIDDocuments[strings.ToUpper(strings.TrimSpace(country))] {
-		if d == docType {
-			return true
-		}
-	}
-	return false
+// IsAllowedIDDocument accepts supported government-issued document categories
+// without nationality-based exclusions. Country shape is validated at submission.
+func IsAllowedIDDocument(_ string, docType string) bool {
+	_, ok := acceptedGovernmentIDDocs[docType]
+	return ok
 }
 
-// IsValidVerificationType reports whether t is issuable today. Legacy
-// rows of other types stay readable; they just cannot be created again.
+// IsValidVerificationType controls new submissions only. Existing social-proof
+// and professional records remain readable and retain their review status.
 func IsValidVerificationType(t string) bool {
-	return t == VerificationTypeSocialProof || t == VerificationTypeIDDocument
+	return t == VerificationTypeIDDocument
+}
+
+// verificationCountries contains the 249 ISO country/territory codes plus XK
+// (Kosovo), matching the named application selector. Historical rows are not modified.
+var verificationCountries = func() map[string]struct{} {
+	result := make(map[string]struct{}, 250)
+	for _, code := range strings.Fields("AD AE AF AG AI AL AM AO AQ AR AS AT AU AW AX AZ BA BB BD BE BF BG BH BI BJ BL BM BN BO BQ BR BS BT BV BW BY BZ CA CC CD CF CG CH CI CK CL CM CN CO CR CU CV CW CX CY CZ DE DJ DK DM DO DZ EC EE EG EH ER ES ET FI FJ FK FM FO FR GA GB GD GE GF GG GH GI GL GM GN GP GQ GR GS GT GU GW GY HK HM HN HR HT HU ID IE IL IM IN IO IQ IR IS IT JE JM JO JP KE KG KH KI KM KN KP KR KW KY KZ LA LB LC LI LK LR LS LT LU LV LY MA MC MD ME MF MG MH MK ML MM MN MO MP MQ MR MS MT MU MV MW MX MY MZ NA NC NE NF NG NI NL NO NP NR NU NZ OM PA PE PF PG PH PK PL PM PN PR PS PT PW PY QA RE RO RS RU RW SA SB SC SD SE SG SH SI SJ SK SL SM SN SO SR SS ST SV SX SY SZ TC TD TF TG TH TJ TK TL TM TN TO TR TT TV TW TZ UA UG UM US UY UZ VA VC VE VG VI VN VU WF WS XK YE YT ZA ZM ZW") {
+		result[code] = struct{}{}
+	}
+	return result
+}()
+
+func IsValidVerificationCountry(country string) bool {
+	_, ok := verificationCountries[strings.ToUpper(strings.TrimSpace(country))]
+	return ok
 }

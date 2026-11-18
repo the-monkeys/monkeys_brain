@@ -99,8 +99,7 @@ func (us *UserSvc) SubmitVerificationRequest(ctx context.Context, req *pb.Submit
 
 	vType := strings.TrimSpace(req.VerificationType)
 	if !constants.IsValidVerificationType(vType) {
-		return nil, status.Errorf(codes.InvalidArgument, "verification_type must be %q or %q",
-			constants.VerificationTypeSocialProof, constants.VerificationTypeIDDocument)
+		return nil, status.Error(codes.InvalidArgument, "government-issued ID is required for new verification requests")
 	}
 
 	info := strings.TrimSpace(req.AdditionalInfo)
@@ -147,13 +146,13 @@ func (us *UserSvc) SubmitVerificationRequest(ctx context.Context, req *pb.Submit
 		return nil, err
 	}
 
-	// Country-scoped rules apply only to the government-ID flow. Unknown
-	// countries degrade to passport/residence-permit (see constants).
+	// Government-issued documents are accepted regardless of country; document
+	// checksums and the country code remain required before review.
 	if vType == constants.VerificationTypeIDDocument {
 		country := strings.ToUpper(strings.TrimSpace(req.Country))
-		if len(country) != 2 || country[0] < 'A' || country[0] > 'Z' || country[1] < 'A' || country[1] > 'Z' {
+		if !constants.IsValidVerificationCountry(country) {
 			return nil, status.Error(codes.InvalidArgument,
-				"a 2-letter ISO country code is required for id_document requests")
+				"choose a valid named issuing country or territory")
 		}
 		docType := strings.TrimSpace(req.IdDocumentType)
 		if !constants.IsAllowedIDDocument(country, docType) {

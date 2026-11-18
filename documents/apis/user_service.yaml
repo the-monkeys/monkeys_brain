@@ -583,9 +583,9 @@ paths:
       summary: Submit a verification request (step 2 of the flow)
       description: >
         Creates a `pending` request. One active request per account -
-        duplicates get 409. For `id_document` requests the server enforces
-        country-specific document rules (~40 launch regions; unknown
-        countries accept passport/residence_permit only), requires
+        duplicates get 409. New requests require `id_document`; social proof is
+        retained only in historical records. Government-issued document
+        categories are accepted for every country. The server requires
         `selfie_checksum` + `id_front_checksum` (`id_back_checksum`
         recommended where the ID has a reverse side), and verifies every
         checksum exists from step 1 uploads. Rate limited to 10/hour.
@@ -606,7 +606,7 @@ paths:
             properties:
               verification_type:
                 type: string
-                enum: [social_proof, id_document]
+                enum: [id_document]
                 example: id_document
               country:
                 type: string
@@ -614,7 +614,7 @@ paths:
                 example: IN
               id_document_type:
                 type: string
-                enum: [passport, national_id, drivers_license, residence_permit]
+                enum: [passport, national_id, drivers_license, residence_permit, government_id]
                 example: passport
               selfie_checksum:
                 type: string
@@ -628,7 +628,7 @@ paths:
               additional_info:
                 type: string
                 maxLength: 2000
-                description: Free-text context for reviewers (e.g. social links for social_proof)
+                description: Optional context about the government-issued document for reviewers
       responses:
         '201':
           description: Request created with status `pending`.
@@ -719,7 +719,7 @@ definitions:
         example: IN
       id_document_type:
         type: string
-        enum: [passport, national_id, drivers_license, residence_permit]
+        enum: [passport, national_id, drivers_license, residence_permit, government_id]
       status:
         type: string
         enum: [pending, under_review, approved, rejected]
@@ -735,4 +735,3 @@ definitions:
       created_at: { type: string, format: date-time }
       updated_at: { type: string, format: date-time }
       reviewed_at: { type: string, format: date-time }
-
