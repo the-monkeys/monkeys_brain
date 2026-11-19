@@ -1888,6 +1888,7 @@ func (db *ActivityDB) UpdateIPLocation(ctx context.Context, ip string, location 
 
 // GetTrendingBlogs calculates trending blogs based on views and likes
 func (db *ActivityDB) GetTrendingBlogs(ctx context.Context, req *pb.GetTrendingBlogsRequest) ([]*pb.TrendingBlog, error) {
+	homepagePolicy := homepageTrendingRequested(ctx)
 	timeRange := req.GetTimeRange()
 	if timeRange == "" {
 		timeRange = "24h"
@@ -1933,8 +1934,13 @@ func (db *ActivityDB) GetTrendingBlogs(ctx context.Context, req *pb.GetTrendingB
 	if err != nil {
 		return nil, err
 	}
+	if homepagePolicy {
+		defer res.Body.Close()
+	}
 
 	var searchRes struct {
+		TimedOut     json.RawMessage `json:"timed_out"`
+		Shards       json.RawMessage `json:"_shards"`
 		Aggregations struct {
 			Trending struct {
 				Buckets []struct {
@@ -1950,6 +1956,11 @@ func (db *ActivityDB) GetTrendingBlogs(ctx context.Context, req *pb.GetTrendingB
 
 	if err := json.NewDecoder(res.Body).Decode(&searchRes); err != nil {
 		return nil, err
+	}
+	if homepagePolicy {
+		if err := validateHomepageTrendingSearch(searchRes.TimedOut, searchRes.Shards); err != nil {
+			return nil, err
+		}
 	}
 
 	trending := make([]*pb.TrendingBlog, 0)

@@ -165,6 +165,7 @@ func RegisterBlogRouter(router *gin.Engine, cfg *config.Config, authClient *auth
 	routesV2 := router.Group("/api/v2/blog")
 	// Public APIs
 	{
+		routesV2.GET("/homepage", rateLimiter, blogClient.GetHomepageBlogs)
 		routesV2.POST("/meta-feed", rateLimiter, blogClient.GetFeedPostsMeta)
 		routesV2.GET("/meta-feed", rateLimiter, blogClient.GetsMetaFeed)
 		// Get all blogs

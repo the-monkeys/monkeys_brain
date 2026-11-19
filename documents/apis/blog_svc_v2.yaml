@@ -15,6 +15,97 @@ produces:
   - application/json
   
 paths:
+  /blog/homepage:
+    get:
+      tags:
+        - Blog
+      summary: Get the public homepage article catalog
+      description: >
+        Evaluates the stored article on every read using homepage-v1. Only public,
+        published, non-archived, non-scheduled articles with an authored title,
+        a usable topic and at least 250 readable body words qualify. An image is
+        additionally required for lead_eligible. Eligibility is applied before
+        offset and limit; ordinary feeds, search and publishing are unchanged.
+        This endpoint does not accept personalized article selection. Client
+        policy headers are ignored. Unsupported service versions fail closed.
+        Trending preserves activity rank and falls back across 24h, 14d, 90d and
+        1y windows when a window has no eligible articles. Candidate prefixes
+        widen from 100 to 10000 before eligible pagination; a traversal deadline
+        or candidate ceiling returns 503 rather than an unfiltered fallback.
+      operationId: getHomepageBlogs
+      parameters:
+        - name: limit
+          in: query
+          type: integer
+          minimum: 1
+          maximum: 50
+          default: 12
+        - name: offset
+          in: query
+          type: integer
+          minimum: 0
+          maximum: 1000
+          default: 0
+        - name: sort
+          in: query
+          type: string
+          enum: [latest, trending]
+          default: latest
+      responses:
+        200:
+          description: Eligible page, with lookahead instead of a candidate total
+          schema:
+            type: object
+            required: [blogs, has_more, homepage_policy_version]
+            properties:
+              homepage_policy_version:
+                type: string
+                enum: [homepage-v1]
+              has_more:
+                type: boolean
+              time_range_used:
+                type: string
+                description: Activity window used for trending, if applicable
+              blogs:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    blog_id:
+                      type: string
+                    title:
+                      type: string
+                      description: Authored title, with no paragraph fallback
+                    first_image:
+                      type: string
+                      description: First usable persisted cover reference
+                    tags:
+                      type: array
+                      items:
+                        type: string
+                    homepage_eligibility:
+                      type: object
+                      properties:
+                        eligible:
+                          type: boolean
+                        lead_eligible:
+                          type: boolean
+                        word_count:
+                          type: integer
+                        minimum_words:
+                          type: integer
+                          enum: [250]
+                        reasons:
+                          type: array
+                          items:
+                            type: string
+                        version:
+                          type: string
+                          enum: [homepage-v1]
+        400:
+          description: Invalid pagination or sort
+        503:
+          description: Homepage policy unavailable or bounded traversal incomplete
   /blog/search:
     get:
       tags:

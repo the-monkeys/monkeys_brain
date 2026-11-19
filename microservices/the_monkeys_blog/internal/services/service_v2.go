@@ -575,6 +575,9 @@ func (blog *BlogService) MetaGetFeedBlogs(req *pb.BlogListReq, stream pb.BlogSer
 }
 
 func (blog *BlogService) GetBlogsMetadata(req *pb.BlogListReq, stream pb.BlogService_GetBlogsMetadataServer) error {
+	if homepageRequested(stream.Context()) {
+		return blog.getHomepageMetadata(req, stream)
+	}
 	returnData := make(map[string]interface{})
 	var blogs []map[string]interface{}
 
