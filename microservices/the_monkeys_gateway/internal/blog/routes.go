@@ -166,6 +166,9 @@ func RegisterBlogRouter(router *gin.Engine, cfg *config.Config, authClient *auth
 	// Public APIs
 	{
 		routesV2.GET("/homepage", rateLimiter, blogClient.GetHomepageBlogs)
+		// No longer used by the homepage: GET /homepage applies homepage-only eligibility.
+		// Both /meta-feed methods remain active for topic pages, recommendations,
+		// discovery/catalog readers and existing clients. Do not remove as unused.
 		routesV2.POST("/meta-feed", rateLimiter, blogClient.GetFeedPostsMeta)
 		routesV2.GET("/meta-feed", rateLimiter, blogClient.GetsMetaFeed)
 		// Get all blogs
@@ -193,6 +196,8 @@ func RegisterBlogRouter(router *gin.Engine, cfg *config.Config, authClient *auth
 		routesV2.GET("/user-tags/:username", rateLimiter, blogClient.GetUserTags) // Get user tags
 
 		// Activity & Analytics APIs
+		// No longer used by the homepage: GET /homepage?sort=trending replaces that usage.
+		// Still used by discussion discovery and shared sidebar widgets; keep this route active.
 		routesV2.GET("/trending", rateLimiter, blogClient.GetTrendingBlogs) // Get trending blogs
 		// routesV2.GET("/account/:acc_id/activity", rateLimiter, blogClient.GetAccountActivities) // Get account activities
 		// routesV2.GET("/analytics/advanced", rateLimiter, blogClient.GetAdvancedAnalytics) // Get advanced analytics
