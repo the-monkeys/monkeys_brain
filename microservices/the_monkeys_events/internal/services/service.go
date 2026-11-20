@@ -253,24 +253,37 @@ func (s *EventService) redactForViewer(ctx context.Context, event *pb.Event, acc
 }
 
 func (s *EventService) ListEvents(ctx context.Context, req *pb.ListEventsReq) (*pb.ListEventsResp, error) {
-	return listResp(s.db.ListEvents(ctx, req))
+	events, total, err := s.db.ListEvents(ctx, req)
+	return listResp(req.GetAccountId(), events, total, err)
 }
 
 func (s *EventService) GetUserEvents(ctx context.Context, req *pb.ListEventsReq) (*pb.ListEventsResp, error) {
-	return listResp(s.db.GetUserEvents(ctx, req))
+	events, total, err := s.db.GetUserEvents(ctx, req)
+	return listResp(req.GetAccountId(), events, total, err)
 }
 
 func (s *EventService) GetUserAttendingEvents(ctx context.Context, req *pb.ListEventsReq) (*pb.ListEventsResp, error) {
-	return listResp(s.db.GetUserAttendingEvents(ctx, req))
+	events, total, err := s.db.GetUserAttendingEvents(ctx, req)
+	return listResp(req.GetAccountId(), events, total, err)
 }
 
 func (s *EventService) GetGroupEvents(ctx context.Context, req *pb.ListEventsReq) (*pb.ListEventsResp, error) {
-	return listResp(s.db.GetGroupEvents(ctx, req))
+	events, total, err := s.db.GetGroupEvents(ctx, req)
+	return listResp(req.GetAccountId(), events, total, err)
 }
 
-func listResp(events []*pb.Event, total int32, err error) (*pb.ListEventsResp, error) {
+func listResp(accountID string, events []*pb.Event, total int32, err error) (*pb.ListEventsResp, error) {
 	if err != nil {
 		return nil, err
+	}
+	// List rows contain attendee-only join links; anonymous discovery must
+	// not expose them. Preserve existing authenticated list behavior.
+	if accountID == "" {
+		for _, event := range events {
+			if event != nil {
+				event.MeetingLink = ""
+			}
+		}
 	}
 	return &pb.ListEventsResp{Events: events, Total: total}, nil
 }
