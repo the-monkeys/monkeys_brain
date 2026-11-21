@@ -1203,31 +1203,54 @@ func (s *Service) UploadProfileImage(ctx *gin.Context) {
 // Method: HEAD /api/v2/storage/profiles/:user_id/profile (auth required)
 // Behavior: returns metadata headers; includes X-Blurhash and dimensions if image
 func (s *Service) HeadProfileImage(ctx *gin.Context) {
-	userID := ctx.Param("user_id")
-
-	objectName, found := s.resolveProfileKey(ctx.Request.Context(), userID)
-	if !found {
-		ctx.AbortWithStatusJSON(http.StatusNotFound, gin.H{"message": "profile not found"})
+	_, info, ok := s.statProfileImageRead(ctx)
+	if !ok {
 		return
 	}
-
-	info, err := s.mc.StatObject(ctx.Request.Context(), s.bucket, objectName, minio.StatObjectOptions{})
-	if err != nil {
-		ctx.AbortWithStatusJSON(http.StatusNotFound, gin.H{"message": "profile not found"})
+	if profileImageReadHeaders(ctx, info) {
 		return
 	}
+	ctx.Status(http.StatusOK)
+}
 
+// Only the public profile image handlers use these cache semantics. Private
+// documents, event assets and authenticated storage reads retain their policy.
+func (s *Service) statProfileImageRead(ctx *gin.Context) (string, minio.ObjectInfo, bool) {
+	ctx.Header("Cache-Control", "no-store")
+	base := "profiles/" + ctx.Param("user_id") + "/profile"
+	for _, ext := range []string{".png", ".jpg", ".jpeg", ".webp", ".avif", ".gif", ""} {
+		key := base + ext
+		info, err := s.mc.StatObject(ctx.Request.Context(), s.bucket, key, minio.StatObjectOptions{})
+		if err == nil {
+			return key, info, true
+		}
+		switch minio.ToErrorResponse(err).Code {
+		case "NoSuchKey", "NoSuchObject", "NotFound":
+			continue
+		default:
+			s.log.Errorf("minio StatObject (profile) error: %v", err)
+			ctx.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"message": "read failed"})
+			return "", minio.ObjectInfo{}, false
+		}
+	}
+	ctx.AbortWithStatusJSON(http.StatusNotFound, gin.H{"message": "profile not found"})
+	return "", minio.ObjectInfo{}, false
+}
+
+func profileImageReadHeaders(ctx *gin.Context, info minio.ObjectInfo) bool {
+	// The route is mutable across uploads, so every HTTP reuse must validate.
+	// TanStack Query independently deduplicates fresh reads in the application.
+	ctx.Header("Cache-Control", "public, no-cache, max-age=0, must-revalidate")
 	if info.ContentType != "" {
 		ctx.Header("Content-Type", info.ContentType)
 	}
+	etag := ""
 	if info.ETag != "" {
-		ctx.Header("ETag", info.ETag)
+		etag = strconv.Quote(strings.Trim(info.ETag, `"`))
+		ctx.Header("ETag", etag)
 	}
 	if !info.LastModified.IsZero() {
 		ctx.Header("Last-Modified", info.LastModified.UTC().Format(http.TimeFormat))
-	}
-	if cc := info.Metadata.Get("Cache-Control"); cc != "" {
-		ctx.Header("Cache-Control", cc)
 	}
 	if info.UserMetadata != nil {
 		if bh := metaValue(info.UserMetadata, "x-blurhash"); bh != "" {
@@ -1240,8 +1263,24 @@ func (s *Service) HeadProfileImage(ctx *gin.Context) {
 			ctx.Header("X-Image-Height", h)
 		}
 	}
-
-	ctx.Status(http.StatusOK)
+	if validators := ctx.GetHeader("If-None-Match"); validators != "" {
+		for _, validator := range strings.Split(validators, ",") {
+			candidate := strings.TrimSpace(validator)
+			if candidate == "*" || (etag != "" && strings.TrimPrefix(candidate, "W/") == etag) {
+				ctx.Status(http.StatusNotModified)
+				return true
+			}
+		}
+		// If-None-Match takes precedence, including when a replacement shares
+		// its predecessor's Last-Modified second.
+		return false
+	}
+	if modified, err := http.ParseTime(ctx.GetHeader("If-Modified-Since")); err == nil &&
+		!info.LastModified.IsZero() && !info.LastModified.Truncate(time.Second).After(modified) {
+		ctx.Status(http.StatusNotModified)
+		return true
+	}
+	return false
 }
 
 // UpdateProfileImage
@@ -1498,17 +1537,18 @@ func (s *Service) GetProfileURL(ctx *gin.Context) {
 
 func (s *Service) GetProfileImage(ctx *gin.Context) {
 	// Streams the user's profile image (public)
-	userID := ctx.Param("user_id")
-
-	objectName, found := s.resolveProfileKey(ctx.Request.Context(), userID)
-	if !found {
-		ctx.AbortWithStatusJSON(http.StatusNotFound, gin.H{"message": "profile not found"})
+	objectName, info, ok := s.statProfileImageRead(ctx)
+	if !ok {
+		return
+	}
+	if profileImageReadHeaders(ctx, info) {
 		return
 	}
 
 	obj, err := s.mc.GetObject(ctx.Request.Context(), s.bucket, objectName, minio.GetObjectOptions{})
 	if err != nil {
 		s.log.Errorf("minio GetObject (profile) error: %v", err)
+		ctx.Header("Cache-Control", "no-store")
 		ctx.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"message": "read failed"})
 		return
 	}
@@ -1516,32 +1556,17 @@ func (s *Service) GetProfileImage(ctx *gin.Context) {
 
 	stat, err := obj.Stat()
 	if err != nil {
-		ctx.AbortWithStatusJSON(http.StatusNotFound, gin.H{"message": "profile not found"})
+		ctx.Header("Cache-Control", "no-store")
+		status := http.StatusInternalServerError
+		switch minio.ToErrorResponse(err).Code {
+		case "NoSuchKey", "NoSuchObject", "NotFound":
+			status = http.StatusNotFound
+		}
+		ctx.AbortWithStatusJSON(status, gin.H{"message": "read failed"})
 		return
 	}
-
-	if stat.ContentType != "" {
-		ctx.Header("Content-Type", stat.ContentType)
-	}
-	if stat.ETag != "" {
-		ctx.Header("ETag", stat.ETag)
-	}
-	if !stat.LastModified.IsZero() {
-		ctx.Header("Last-Modified", stat.LastModified.UTC().Format(http.TimeFormat))
-	}
-	if cc := stat.Metadata.Get("Cache-Control"); cc != "" {
-		ctx.Header("Cache-Control", cc)
-	}
-	if stat.UserMetadata != nil {
-		if bh := metaValue(stat.UserMetadata, "x-blurhash"); bh != "" {
-			ctx.Header("X-Blurhash", bh)
-		}
-		if w := metaValue(stat.UserMetadata, "x-width"); w != "" {
-			ctx.Header("X-Image-Width", w)
-		}
-		if h := metaValue(stat.UserMetadata, "x-height"); h != "" {
-			ctx.Header("X-Image-Height", h)
-		}
+	if profileImageReadHeaders(ctx, stat) {
+		return
 	}
 
 	if _, err := io.Copy(ctx.Writer, obj); err != nil {
