@@ -56,18 +56,24 @@ func (es *elasticsearchStorage) SaveBlog(ctx context.Context, blog map[string]in
 	return insertResponse, nil
 }
 
-// Preserve only omitted scope keys on the enriched copy, leaving explicit
+// Preserve omitted scope and editorial keys on the enriched copy, leaving explicit
 // values (including an empty group slug) and the caller's map unchanged.
 func (es *elasticsearchStorage) preserveMissingDraftScope(ctx context.Context, blog map[string]interface{}, write *esapi.IndexRequest) error {
-	_, hasGroup := blog["group_slug"]
-	_, hasAudience := blog["audience"]
-	if hasGroup && hasAudience {
+	fields := append([]string{"group_slug", "audience"}, editorialMetadataFields...)
+	missing := false
+	for _, field := range fields {
+		if _, supplied := blog[field]; !supplied {
+			missing = true
+			break
+		}
+	}
+	if !missing {
 		return nil
 	}
 	read := esapi.GetRequest{
 		Index:          write.Index,
 		DocumentID:     write.DocumentID,
-		SourceIncludes: []string{"group_slug", "audience"},
+		SourceIncludes: fields,
 	}
 	res, err := read.Do(ctx, es.client)
 	if err != nil {
@@ -93,14 +99,14 @@ func (es *elasticsearchStorage) preserveMissingDraftScope(ctx context.Context, b
 	if saved.Source == nil || saved.SeqNo == nil || saved.PrimaryTerm == nil {
 		return fmt.Errorf("saved draft scope or version is missing")
 	}
-	for _, key := range []string{"group_slug", "audience"} {
+	for _, key := range fields {
 		if _, supplied := blog[key]; !supplied {
 			if value, exists := saved.Source[key]; exists {
 				blog[key] = value
 			}
 		}
 	}
-	// Refuse a stale replacement if any writer changed scope after our read.
+	// Refuse a stale replacement if any writer changed the document after our read.
 	write.IfSeqNo = saved.SeqNo
 	write.IfPrimaryTerm = saved.PrimaryTerm
 	return nil

@@ -58,19 +58,22 @@ var aiMetadataFields = []string{
 	"ai_tell_count",
 }
 
-// withAIMetadataSource appends the optional AI-detection fields to an ES _source
-// include list, leaving the base fields untouched.
-func withAIMetadataSource(base ...string) []string {
-	return append(base, aiMetadataFields...)
+// editorialMetadataFields are additive. In particular canonical_slug is a full
+// path component, and rss_guid preserves RSS identity independently of the title.
+var editorialMetadataFields = []string{"canonical_slug", "seo_description", "content_modified_at", "rss_guid"}
+
+// withOptionalMetadataSource leaves the existing base projection intact.
+func withOptionalMetadataSource(base ...string) []string {
+	return append(append(base, aiMetadataFields...), editorialMetadataFields...)
 }
 
-// addAIMetadata copies any present AI-detection fields from the ES _source into
-// the metadata map. Missing fields (older blogs) are skipped, so responses stay
-// backward compatible and nothing panics on a nil value.
-func addAIMetadata(dst, src map[string]interface{}) {
-	for _, field := range aiMetadataFields {
-		if value, ok := src[field]; ok {
-			dst[field] = value
+// Missing optional fields stay absent on legacy responses.
+func addOptionalMetadata(dst, src map[string]interface{}) {
+	for _, fields := range [][]string{aiMetadataFields, editorialMetadataFields} {
+		for _, field := range fields {
+			if value, ok := src[field]; ok {
+				dst[field] = value
+			}
 		}
 	}
 }
@@ -106,7 +109,7 @@ func (es *elasticsearchStorage) GetBlogsMetadataByTags(ctx context.Context, tags
 		},
 		"from": offset,
 		"size": limit,
-		"_source": withAIMetadataSource(
+		"_source": withOptionalMetadataSource(
 			"blog_id",
 			"owner_account_id",
 			"blog.blocks", // To extract title, first paragraph, and first image
@@ -250,7 +253,7 @@ func (es *elasticsearchStorage) GetAllPublishedBlogsMetadata(ctx context.Context
 		},
 		"from": offset,
 		"size": limit,
-		"_source": withAIMetadataSource(
+		"_source": withOptionalMetadataSource(
 			"blog_id",
 			"owner_account_id",
 			"blog.blocks", // To extract title, first paragraph, and first image
@@ -369,7 +372,7 @@ func (es *elasticsearchStorage) GetBlogsMetadataByQuery(ctx context.Context, que
 				},
 			},
 		},
-		"_source": withAIMetadataSource(
+		"_source": withOptionalMetadataSource(
 			"blog_id",
 			"owner_account_id",
 			"blog.blocks",
@@ -546,7 +549,7 @@ func (es *elasticsearchStorage) GetBlogsMetadataByQuery(ctx context.Context, que
 			}
 		}
 
-		addAIMetadata(blogMetadata, hitSource)
+		addOptionalMetadata(blogMetadata, hitSource)
 
 		blogsMetadata = append(blogsMetadata, blogMetadata)
 	}
@@ -671,7 +674,7 @@ func (es *elasticsearchStorage) GetBlogsMetaByAccountId(ctx context.Context, acc
 		"from": offset,
 		"size": limit,
 		"sort": sort,
-		"_source": withAIMetadataSource(
+		"_source": withOptionalMetadataSource(
 			"blog_id",
 			"owner_account_id",
 			"blog.blocks",
@@ -820,7 +823,7 @@ func (es *elasticsearchStorage) GetBlogsMetaByAccountId(ctx context.Context, acc
 			}
 		}
 
-		addAIMetadata(blogMetadata, hitSource)
+		addOptionalMetadata(blogMetadata, hitSource)
 
 		blogsMetadata = append(blogsMetadata, blogMetadata)
 	}
@@ -850,7 +853,7 @@ func (es *elasticsearchStorage) GetBlogsMetaByBlogIdsV2(ctx context.Context, blo
 		},
 		"from": offset,
 		"size": limit,
-		"_source": withAIMetadataSource(
+		"_source": withOptionalMetadataSource(
 			"blog_id",
 			"owner_account_id",
 			"blog.blocks", // To extract title, first paragraph, and first image
@@ -1000,7 +1003,7 @@ func (es *elasticsearchStorage) GetBlogsMetaByBlogIdsV2(ctx context.Context, blo
 			}
 		}
 
-		addAIMetadata(blogMetadata, hitSource)
+		addOptionalMetadata(blogMetadata, hitSource)
 
 		blogsMetadata = append(blogsMetadata, blogMetadata)
 	}

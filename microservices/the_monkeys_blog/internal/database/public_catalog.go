@@ -109,6 +109,6 @@ func publicCatalogMetadata(source map[string]interface{}) map[string]interface{}
 	metadata["title"] = title
 	metadata["first_paragraph"] = firstParagraph
 	metadata["first_image"] = firstImage
-	addAIMetadata(metadata, source)
+	addOptionalMetadata(metadata, source)
 	return metadata
 }

@@ -24,7 +24,7 @@ import (
 // Elasticsearch writes from the streaming auto-save loop.
 func computeContentFingerprint(req map[string]interface{}) [32]byte {
 	content := make(map[string]interface{}, 4)
-	for _, key := range []string{"blog", "tags", "slug", "owner_account_id", "group_slug", "audience"} {
+	for _, key := range []string{"blog", "tags", "slug", "owner_account_id", "group_slug", "audience", "canonical_slug", "seo_description", "content_modified_at", "rss_guid"} {
 		if v, ok := req[key]; ok {
 			content[key] = v
 		}
