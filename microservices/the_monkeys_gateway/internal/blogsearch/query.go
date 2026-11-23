@@ -30,6 +30,7 @@ type Hit struct {
 	Title             string                 `json:"title,omitempty"`
 	Summary           string                 `json:"summary,omitempty"`
 	Slug              string                 `json:"slug,omitempty"`
+	CanonicalSlug     string                 `json:"canonical_slug,omitempty"`
 	AuthorUsername    string                 `json:"author_username,omitempty"`
 	AuthorDisplayName string                 `json:"author_display_name,omitempty"`
 	OwnerAccountID    string                 `json:"owner_account_id,omitempty"`
@@ -85,7 +86,7 @@ func (c *Client) Search(ctx context.Context, opts SearchOpts) (*SearchResult, er
 		c.es.Search.WithBody(bytes.NewReader(body)),
 		// Trim the wire payload — we project hits ourselves below.
 		c.es.Search.WithSourceIncludes(
-			"blog_id", "title", "summary", "slug",
+			"blog_id", "title", "summary", "slug", "canonical_slug",
 			"author_username", "author_display_name",
 			"owner_account_id", "published_time",
 			"like_count", "view_count", "tags",
@@ -133,7 +134,7 @@ func (c *Client) Suggest(ctx context.Context, opts SuggestOpts) (*SearchResult, 
 		c.es.Search.WithIndex(BlogIndexAlias),
 		c.es.Search.WithBody(bytes.NewReader(body)),
 		c.es.Search.WithSourceIncludes(
-			"blog_id", "title", "slug", "author_username", "published_time",
+			"blog_id", "title", "slug", "canonical_slug", "author_username", "published_time",
 		),
 	)
 	if err != nil {
@@ -346,6 +347,7 @@ func decodeSearch(r io.Reader) (*SearchResult, error) {
 			Title:             asString(h.Source["title"], ""),
 			Summary:           asString(h.Source["summary"], ""),
 			Slug:              asString(h.Source["slug"], ""),
+			CanonicalSlug:     asString(h.Source["canonical_slug"], ""),
 			AuthorUsername:    asString(h.Source["author_username"], ""),
 			AuthorDisplayName: asString(h.Source["author_display_name"], ""),
 			OwnerAccountID:    asString(h.Source["owner_account_id"], ""),

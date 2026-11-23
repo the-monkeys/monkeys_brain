@@ -1,0 +1,436 @@
+{
+  "canonical_slug": "the-ultimate-guide-to-grafana-what-it-is-why-it-used-and-how-to-build-a-complete-monitoring-1uvwek",
+  "seo_description": "Learn how to use Grafana to monitor a Linux server with Prometheus, Node Exporter and Docker Compose, with setup checks and fixes for missing data.",
+  "blog": {
+    "blocks": [
+      {
+        "id": "title",
+        "type": "header",
+        "data": {
+          "text": "Grafana Tutorial: Monitor Linux with Prometheus and Docker",
+          "level": 1,
+          "anchor": "title"
+        }
+      },
+      {
+        "id": "intro",
+        "type": "paragraph",
+        "data": {
+          "text": "Grafana turns metrics into dashboards. In this tutorial, Node Exporter exposes a Linux server’s CPU, memory and filesystem metrics, Prometheus stores them, and Grafana displays three useful panels. The example is for a Linux host running Docker Engine; Docker Desktop measures its Linux VM rather than your Windows or macOS host."
+        }
+      },
+      {
+        "id": "dashboard-image",
+        "type": "image",
+        "data": {
+          "file": {
+            "url": "/grafana-linux-dashboard.jpg"
+          },
+          "caption": "Docker Desktop Linux VM metrics: CPU, memory and the actual ext4 /var/lib filesystem. This is not a native Ubuntu or VM-root-filesystem measurement.",
+          "withBorder": false,
+          "withBackground": false,
+          "stretched": false,
+          "alt": "Grafana dashboard showing CPU and memory metrics plus ext4 /var/lib filesystem usage on the Docker Desktop Linux VM."
+        }
+      },
+      {
+        "id": "toc",
+        "type": "paragraph",
+        "data": {
+          "text": "<a href=\"#prerequisites\">Prerequisites</a> · <a href=\"#architecture\">Architecture</a> · <a href=\"#setup\">Setup</a> · <a href=\"#checks\">Checks</a> · <a href=\"#dashboard\">Dashboard</a> · <a href=\"#troubleshooting\">Troubleshooting</a> · <a href=\"#best-practices\">Best practices</a> · <a href=\"#remote-exporter\">Optional remote exporter</a>"
+        }
+      },
+      {
+        "id": "prerequisites",
+        "type": "header",
+        "data": {
+          "text": "Linux prerequisites",
+          "level": 2,
+          "anchor": "prerequisites"
+        }
+      },
+      {
+        "id": "linux-prerequisites",
+        "type": "paragraph",
+        "data": {
+          "text": "Use a Linux server with Docker Engine and the Docker Compose plugin installed, a shell account allowed to run Docker, and curl. Check docker --version and docker compose version. Choose unused local ports (defaults 3000 and 9090). The exporter mounts the host filesystem read-only with default private mount propagation and uses the host PID namespace; run this only on a host you administer. This example collects host metrics; it does not collect logs or configure alerts."
+        }
+      },
+      {
+        "id": "architecture",
+        "type": "header",
+        "data": {
+          "text": "What each component does",
+          "level": 2,
+          "anchor": "architecture"
+        }
+      },
+      {
+        "id": "roles",
+        "type": "paragraph",
+        "data": {
+          "text": "Node Exporter reads Linux host counters and serves metrics on port 9100 inside the Compose network, without publishing that port on the host. Prometheus scrapes node-exporter:9100 and its own localhost:9090 endpoint every 15 seconds. Grafana queries Prometheus at http://prometheus:9090. Inside the Grafana container, localhost points to Grafana itself, so localhost:9090 is the wrong datasource URL. Grafana and Prometheus are published only on 127.0.0.1."
+        }
+      },
+      {
+        "id": "setup",
+        "type": "header",
+        "data": {
+          "text": "Create the monitoring stack",
+          "level": 2,
+          "anchor": "setup"
+        }
+      },
+      {
+        "id": "fixture-files",
+        "type": "paragraph",
+        "data": {
+          "text": "Use the accompanying monitoring directory, which contains compose.yml, prometheus.yml, datasource.yml, dashboards.yml and linux-dashboard.json. The Compose and Prometheus configuration below matches those files. Datasource and dashboard provisioning loads the included Linux dashboard automatically. The pinned images are grafana/grafana:12.3.0, prom/prometheus:v3.7.3 and prom/node-exporter:v1.10.2. Use these explicit versions when reproducing this configuration. Download the companion files: <a href=\"/tutorials/grafana-linux/compose.yml\" download>compose.yml</a> · <a href=\"/tutorials/grafana-linux/prometheus.yml\" download>prometheus.yml</a> · <a href=\"/tutorials/grafana-linux/datasource.yml\" download>datasource.yml</a> · <a href=\"/tutorials/grafana-linux/dashboards.yml\" download>dashboards.yml</a> · <a href=\"/tutorials/grafana-linux/linux-dashboard.json\" download>linux-dashboard.json</a>. Save all five into one monitoring directory."
+        }
+      },
+      {
+        "id": "download-files",
+        "type": "code",
+        "data": {
+          "code": "mkdir -p monitoring\ncd monitoring\nBASE_URL=\"https://monkeys.com.co\"\ncurl -fL \"$BASE_URL/tutorials/grafana-linux/compose.yml\" -o compose.yml\ncurl -fL \"$BASE_URL/tutorials/grafana-linux/prometheus.yml\" -o prometheus.yml\ncurl -fL \"$BASE_URL/tutorials/grafana-linux/datasource.yml\" -o datasource.yml\ncurl -fL \"$BASE_URL/tutorials/grafana-linux/dashboards.yml\" -o dashboards.yml\ncurl -fL \"$BASE_URL/tutorials/grafana-linux/linux-dashboard.json\" -o linux-dashboard.json",
+          "language": "bash"
+        }
+      },
+      {
+        "id": "compose-config",
+        "type": "header",
+        "data": {
+          "text": "Compose configuration",
+          "level": 3,
+          "anchor": "compose-config"
+        }
+      },
+      {
+        "id": "compose",
+        "type": "code",
+        "data": {
+          "code": "# Standalone Linux article fixture; not an application deployment.\nservices:\n  grafana:\n    image: grafana/grafana:12.3.0\n    ports:\n      - \"127.0.0.1:${GRAFANA_PORT:-3000}:3000\"\n    environment:\n      GF_SECURITY_ADMIN_USER: admin\n      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:?Set GRAFANA_ADMIN_PASSWORD}\n      GF_USERS_ALLOW_SIGN_UP: \"false\"\n    volumes:\n      - grafana-data:/var/lib/grafana\n      - ./datasource.yml:/etc/grafana/provisioning/datasources/prometheus.yml:ro\n      - ./dashboards.yml:/etc/grafana/provisioning/dashboards/linux.yml:ro\n      - ./linux-dashboard.json:/var/lib/grafana/dashboards/linux-dashboard.json:ro\n    depends_on:\n      - prometheus\n  prometheus:\n    image: prom/prometheus:v3.7.3\n    ports:\n      - \"127.0.0.1:${PROMETHEUS_PORT:-9090}:9090\"\n    command:\n      - --config.file=/etc/prometheus/prometheus.yml\n      - --storage.tsdb.path=/prometheus\n    volumes:\n      - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro\n      - prometheus-data:/prometheus\n  node-exporter:\n    image: prom/node-exporter:v1.10.2\n    pid: host\n    command:\n      - --path.rootfs=/host\n      - --path.procfs=/host/proc\n      - --path.sysfs=/host/sys\n      - --collector.filesystem.mount-points-exclude=^/(dev|proc|sys|var/lib/docker/.+|var/lib/kubelet/.+)($$|/)\n    volumes:\n      - /:/host:ro\n    # No published port: only Prometheus on this Compose network scrapes 9100.\nvolumes:\n  grafana-data:\n  prometheus-data:\n",
+          "language": "yaml"
+        }
+      },
+      {
+        "id": "prometheus-config",
+        "type": "header",
+        "data": {
+          "text": "Prometheus configuration",
+          "level": 3,
+          "anchor": "prometheus-config"
+        }
+      },
+      {
+        "id": "prometheus",
+        "type": "code",
+        "data": {
+          "code": "global:\n  scrape_interval: 15s\n  evaluation_interval: 15s\nscrape_configs:\n  - job_name: prometheus\n    static_configs:\n      - targets: [\"localhost:9090\"]\n  - job_name: node\n    static_configs:\n      - targets: [\"node-exporter:9100\"]\n",
+          "language": "yaml"
+        }
+      },
+      {
+        "id": "datasource-config",
+        "type": "header",
+        "data": {
+          "text": "Provision the datasource and dashboard",
+          "level": 3,
+          "anchor": "datasource-config"
+        }
+      },
+      {
+        "id": "datasource",
+        "type": "code",
+        "data": {
+          "code": "apiVersion: 1\ndatasources:\n  - name: Prometheus\n    uid: prometheus\n    type: prometheus\n    access: proxy\n    url: http://prometheus:9090\n    isDefault: true\n    editable: false\n    jsonData:\n      httpMethod: POST\n      timeInterval: 15s\n",
+          "language": "yaml"
+        }
+      },
+      {
+        "id": "dashboard-provider",
+        "type": "code",
+        "data": {
+          "code": "apiVersion: 1\nproviders:\n  - name: Linux metrics tutorial\n    type: file\n    disableDeletion: false\n    editable: false\n    options:\n      path: /var/lib/grafana/dashboards\n",
+          "language": "yaml"
+        }
+      },
+      {
+        "id": "dashboard-json",
+        "type": "paragraph",
+        "data": {
+          "text": "Place the supplied linux-dashboard.json alongside these YAML files. Its three panels use the queries in the dashboard section below. Use the complete companion directory; the Compose mounts require all five files."
+        }
+      },
+      {
+        "id": "start-stack",
+        "type": "header",
+        "data": {
+          "text": "Start and open the services",
+          "level": 3,
+          "anchor": "start-stack"
+        }
+      },
+      {
+        "id": "start",
+        "type": "code",
+        "data": {
+          "code": "export GRAFANA_ADMIN_PASSWORD='replace-with-a-strong-local-password'\ndocker compose config\ndocker compose up -d\ndocker compose ps\ncurl -fsS http://127.0.0.1:${PROMETHEUS_PORT:-9090}/-/ready\ncurl -fsS http://127.0.0.1:${GRAFANA_PORT:-3000}/api/health",
+          "language": "bash"
+        }
+      },
+      {
+        "id": "ports",
+        "type": "paragraph",
+        "data": {
+          "text": "Run the start commands from the monitoring directory entered in the download step. Open http://127.0.0.1:3000 and sign in as admin with GRAFANA_ADMIN_PASSWORD. For the separate local smoke test, set GRAFANA_PORT=13000 and PROMETHEUS_PORT=19090 before starting; open http://127.0.0.1:13000 instead. When working on a remote Linux server, use an SSH tunnel for the loopback-bound services rather than exposing their ports publicly. Changing the host port does not change Grafana’s internal datasource URL."
+        }
+      },
+      {
+        "id": "checks",
+        "type": "header",
+        "data": {
+          "text": "Check targets and queries before building panels",
+          "level": 2,
+          "anchor": "checks"
+        }
+      },
+      {
+        "id": "targets",
+        "type": "paragraph",
+        "data": {
+          "text": "Open http://127.0.0.1:9090/targets (or port 19090 for the smoke test). Both the prometheus and node jobs should show UP once scraping succeeds. Read the target’s last error if either is DOWN. In Prometheus’s query page, run the checks below. up should return 1; CPU is a counter with a mode label, memory values are bytes, and filesystem series show the actual exported mountpoint and fstype labels (native Linux typically includes mountpoint=\"/\"; the Docker Desktop VM may instead expose mounts such as /var/lib). Rate queries need at least two successful scrapes before they can return data."
+        }
+      },
+      {
+        "id": "query-checks",
+        "type": "code",
+        "data": {
+          "code": "up{job=\"node\"}\nnode_cpu_seconds_total{job=\"node\",mode=\"idle\"}\nnode_memory_MemAvailable_bytes{job=\"node\"}\nnode_filesystem_size_bytes{job=\"node\",fstype!~\"tmpfs|overlay|squashfs|nsfs\"}\nrate(node_cpu_seconds_total{job=\"node\",mode=\"idle\"}[5m])",
+          "language": "promql"
+        }
+      },
+      {
+        "id": "grafana-check",
+        "type": "paragraph",
+        "data": {
+          "text": "In Grafana, open Connections → Data sources → Prometheus and confirm its URL is http://prometheus:9090. The provisioned datasource is read-only; edit datasource.yml and restart Grafana if it needs changing. Use Explore to run up{job=\"node\"}; then open Dashboards → Linux server metrics. If creating a datasource manually instead of using provisioning, choose Prometheus, enter that same URL, and select Save & test."
+        }
+      },
+      {
+        "id": "dashboard",
+        "type": "header",
+        "data": {
+          "text": "Create useful CPU, memory and disk panels",
+          "level": 2,
+          "anchor": "dashboard"
+        }
+      },
+      {
+        "id": "instance-filter",
+        "type": "paragraph",
+        "data": {
+          "text": "The supplied dashboard has an instance selector populated from label_values(up{job=\"node\"}, instance). In each panel, select the Prometheus datasource, use the queries below, set the unit to Percent (0–100), and use a time-series visualization. The supplied JSON uses $__rate_interval for CPU so Grafana can choose a rate window based on the scrape interval and the visible time range. In Prometheus directly, replace $__rate_interval with 5m and replace $instance with node-exporter:9100. The filesystem mountpoint selector is separate from the instance selector. In Prometheus directly, also replace $mountpoint with an actual exported mount, such as / on native Linux or /var/lib in this Docker Desktop VM."
+        }
+      },
+      {
+        "id": "cpu",
+        "type": "header",
+        "data": {
+          "text": "CPU busy percentage",
+          "level": 3,
+          "anchor": "cpu"
+        }
+      },
+      {
+        "id": "cpu-query",
+        "type": "code",
+        "data": {
+          "code": "100 * (1 - avg by (instance) (rate(node_cpu_seconds_total{job=\"node\",instance=~\"$instance\",mode=\"idle\"}[$__rate_interval])))",
+          "language": "promql"
+        }
+      },
+      {
+        "id": "cpu-explain",
+        "type": "paragraph",
+        "data": {
+          "text": "Average idle time across CPU cores, subtract it from one, and multiply by 100. This shows total CPU busy percentage per instance, rather than summing core percentages above 100."
+        }
+      },
+      {
+        "id": "memory",
+        "type": "header",
+        "data": {
+          "text": "Memory used percentage",
+          "level": 3,
+          "anchor": "memory"
+        }
+      },
+      {
+        "id": "memory-query",
+        "type": "code",
+        "data": {
+          "code": "100 * (1 - node_memory_MemAvailable_bytes{job=\"node\",instance=~\"$instance\"} / node_memory_MemTotal_bytes{job=\"node\",instance=~\"$instance\"})",
+          "language": "promql"
+        }
+      },
+      {
+        "id": "memory-explain",
+        "type": "paragraph",
+        "data": {
+          "text": "MemAvailable estimates memory available to applications, including reclaimable memory. This is more useful for host pressure than treating every cached byte as unavailable."
+        }
+      },
+      {
+        "id": "disk",
+        "type": "header",
+        "data": {
+          "text": "Filesystem used percentage",
+          "level": 3,
+          "anchor": "disk"
+        }
+      },
+      {
+        "id": "disk-query",
+        "type": "code",
+        "data": {
+          "code": "100 * (1 - node_filesystem_avail_bytes{job=\"node\",instance=~\"$instance\",mountpoint=\"$mountpoint\",fstype!~\"tmpfs|overlay|squashfs|nsfs\"} / node_filesystem_size_bytes{job=\"node\",instance=~\"$instance\",mountpoint=\"$mountpoint\",fstype!~\"tmpfs|overlay|squashfs|nsfs\"})",
+          "language": "promql"
+        }
+      },
+      {
+        "id": "disk-explain",
+        "type": "paragraph",
+        "data": {
+          "text": "Use available space divided by size for the selected filesystem, excluding temporary and container-overlay filesystems. This reflects space unavailable to an ordinary user, including reserved space. On native Linux, select / to inspect the root filesystem. The filesystem mountpoint variable lists real exported mounts using label_values(node_filesystem_size_bytes{job=\"node\",instance=\"$instance\",fstype!~\"tmpfs|overlay|squashfs|nsfs\"},mountpoint), with / as the native-Linux default. On the Docker Desktop Linux VM used for the smoke example, / is absent because the exporter excludes overlay filesystems; select the exported ext4 mount /var/lib instead. That panel measures /var/lib on the VM, not the VM root filesystem or the Windows/macOS host. Inspect available labels rather than synthesizing a root series or relaxing the exporter exclusions."
+        }
+      },
+      {
+        "id": "dashboard-1860",
+        "type": "header",
+        "data": {
+          "text": "Optional: import Node Exporter Full (1860)",
+          "level": 3,
+          "anchor": "dashboard-1860"
+        }
+      },
+      {
+        "id": "import-dashboard",
+        "type": "paragraph",
+        "data": {
+          "text": "For a broader starting point, import <a href=\"https://grafana.com/grafana/dashboards/1860-node-exporter-full/\">Node Exporter Full, dashboard 1860</a> through Grafana’s dashboard import flow and choose the Prometheus datasource. Community dashboards may expect different job labels, collectors or datasource variables. Keep the three working panels as a baseline and inspect an empty imported panel’s query before changing your exporter configuration."
+        }
+      },
+      {
+        "id": "troubleshooting",
+        "type": "header",
+        "data": {
+          "text": "Troubleshoot missing data",
+          "level": 2,
+          "anchor": "troubleshooting"
+        }
+      },
+      {
+        "id": "troubleshooting-targets",
+        "type": "paragraph",
+        "data": {
+          "text": "If the node target is DOWN, check docker compose ps and docker compose logs node-exporter prometheus. Confirm the scrape target is node-exporter:9100 and that the host mount and collector flags are valid on your Linux system. A successful Prometheus readiness request alone does not prove the exporter is being scraped. The base read-only host bind uses default private propagation and covers filesystems visible when the exporter starts. If you mount another filesystem later, recreate the exporter after mounting it. On a native Linux host with a compatible shared/slave mount setup, an rslave bind can support discovery of later mounts; do not add rslave on Docker Desktop hosts that reject it."
+        }
+      },
+      {
+        "id": "troubleshooting-datasource",
+        "type": "paragraph",
+        "data": {
+          "text": "If Save & test or Explore fails, check the datasource URL and docker compose logs grafana prometheus. Use http://prometheus:9090 inside Grafana, even when the host port is 19090. If you cannot open the browser page, check the loopback port binding, environment overrides and any SSH tunnel."
+        }
+      },
+      {
+        "id": "troubleshooting-panels",
+        "type": "paragraph",
+        "data": {
+          "text": "If targets are UP but panels are empty, compare the panel’s job and instance selectors with the actual labels in Prometheus, widen the time range, and confirm there are enough samples for rate(). Check mountpoint and fstype labels for disk panels. On Docker Desktop, remember that the exporter sees the Linux VM. If a host port is already allocated, choose another GRAFANA_PORT or PROMETHEUS_PORT and recreate the affected service."
+        }
+      },
+      {
+        "id": "best-practices",
+        "type": "header",
+        "data": {
+          "text": "Practical dashboard best practices",
+          "level": 2,
+          "anchor": "best-practices"
+        }
+      },
+      {
+        "id": "dashboard-practices",
+        "type": "paragraph",
+        "data": {
+          "text": "Keep one question per panel, label units explicitly, and use consistent percentage axes. Filter by instance when monitoring more than one server. Show disk mountpoints deliberately rather than mixing pseudo-filesystems with real storage. Keep scrape interval, rate window and dashboard time range consistent. Save dashboard JSON and configuration in version control, review changes, and keep Grafana credentials outside the repository. Use metrics to investigate a real symptom instead of adding panels without a purpose."
+        }
+      },
+      {
+        "id": "remote-exporter",
+        "type": "header",
+        "data": {
+          "text": "Optional: monitor another Linux server",
+          "level": 2,
+          "anchor": "remote-exporter"
+        }
+      },
+      {
+        "id": "remote-scope",
+        "type": "paragraph",
+        "data": {
+          "text": "The base stack monitors only its local Linux host. To add another server, install a compatible Node Exporter on that Linux server using the official instructions. Permit TCP 9100 only over a private network or VPN from the Prometheus host; do not expose it to the public internet. Confirm routing and firewall restrictions first. For networks that need authentication or encryption, configure exporter TLS/auth separately using the official exporter-toolkit guidance."
+        }
+      },
+      {
+        "id": "remote-config",
+        "type": "code",
+        "data": {
+          "code": "# Optional replacement for the node scrape job in prometheus.yml:\n  - job_name: node\n    static_configs:\n      - targets: [\"node-exporter:9100\", \"10.0.0.20:9100\"]\n# Replace 10.0.0.20 with your reachable private exporter address.\n# Restart Prometheus after editing: docker compose restart prometheus",
+          "language": "yaml"
+        }
+      },
+      {
+        "id": "remote-check",
+        "type": "paragraph",
+        "data": {
+          "text": "Check that the new instance is UP in Prometheus before selecting it in Grafana. A private address in this example is a placeholder, not a provisioned exporter. This extension needs its own connectivity and security checks."
+        }
+      },
+      {
+        "id": "conclusion",
+        "type": "header",
+        "data": {
+          "text": "What this setup gives you",
+          "level": 2,
+          "anchor": "conclusion"
+        }
+      },
+      {
+        "id": "closing",
+        "type": "paragraph",
+        "data": {
+          "text": "You now have a configuration for collecting Linux host metrics with Node Exporter, storing them in Prometheus, and displaying CPU busy percentage, memory used percentage and selected-filesystem used percentage in Grafana. Confirm targets and raw queries first, then use the panels to inspect your server. Add other metrics only after verifying their exporters and queries."
+        }
+      },
+      {
+        "id": "sources",
+        "type": "header",
+        "data": {
+          "text": "Official documentation and references",
+          "level": 2,
+          "anchor": "sources"
+        }
+      },
+      {
+        "id": "official-sources",
+        "type": "paragraph",
+        "data": {
+          "text": "<a href=\"https://grafana.com/docs/grafana/latest/datasources/prometheus/\">Grafana Prometheus datasource</a> · <a href=\"https://grafana.com/docs/grafana/latest/setup-grafana/installation/docker/\">Grafana Docker installation</a> · <a href=\"https://grafana.com/docs/grafana/latest/administration/provisioning/\">Grafana provisioning</a> · <a href=\"https://prometheus.io/docs/prometheus/latest/configuration/configuration/\">Prometheus configuration</a> · <a href=\"https://prometheus.io/docs/guides/node-exporter/\">Prometheus Node Exporter guide</a> · <a href=\"https://github.com/prometheus/node_exporter\">Node Exporter container and filesystem notes</a> · <a href=\"https://github.com/prometheus/exporter-toolkit/blob/master/docs/web-configuration.md\">Exporter TLS and authentication</a>"
+        }
+      }
+    ]
+  },
+  "rss_guid": "https://monkeys.com.co/blog/the-ultimate-guide-to-grafana-what-it-is-why-it-used-and-how-to-build-a-complete-monitoring-1uvwek"
+}
