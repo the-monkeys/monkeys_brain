@@ -104,22 +104,29 @@ func (c *AuthMiddlewareConfig) AuthRequired(ctx *gin.Context) {
 // AuthOptional identifies the caller when a valid token is present but lets
 // anonymous requests through. Use it on public reads that render differently
 // for a signed-in viewer.
-func (c *AuthMiddlewareConfig) AuthOptional(ctx *gin.Context) {
+// LoadOptionalIdentity populates verified identity without advancing the handler chain.
+func (c *AuthMiddlewareConfig) LoadOptionalIdentity(ctx *gin.Context) {
+	if loaded, _ := ctx.Get("moderation_identity_loaded"); loaded == true {
+		return
+	}
+	ctx.Set("moderation_identity_loaded", true)
 	token, err := c.extractToken(ctx)
 	if err != nil {
-		ctx.Next()
 		return
 	}
 
 	res, err := c.svc.Client.Validate(ctx.Request.Context(), &pb.ValidateRequest{Token: token})
 	if err != nil {
-		ctx.Next()
 		return
 	}
 
 	ctx.Set("userName", res.UserName)
 	ctx.Set("accountId", res.AccountId)
 	ctx.Set("user_role", res.Role)
+}
+
+func (c *AuthMiddlewareConfig) AuthOptional(ctx *gin.Context) {
+	c.LoadOptionalIdentity(ctx)
 	ctx.Next()
 }
 

@@ -3,6 +3,8 @@ package events
 import (
 	"encoding/csv"
 	"fmt"
+	moderationpb "github.com/the-monkeys/the_monkeys/apis/serviceconn/gateway_moderation/pb"
+	contentmoderation "github.com/the-monkeys/the_monkeys/microservices/the_monkeys_gateway/internal/moderation"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -650,6 +652,26 @@ func (esc *EventServiceClient) ReportEvent(ctx *gin.Context) {
 		return
 	}
 
+	if esc.Moderation != nil {
+		reason := strings.ToLower(strings.TrimSpace(body.Reason))
+		details := ""
+		switch reason {
+		case "nsfw", "spam", "harassment", "misinformation", "copyright", "other":
+		default:
+			details = body.Reason
+			reason = "other"
+		}
+		res, err := esc.Moderation.ReportContent(ctx.Request.Context(), &moderationpb.ActionRequest{
+			Actor:  &moderationpb.Actor{AccountId: accountID(ctx), Ip: ctx.ClientIP()},
+			Target: &moderationpb.Target{Kind: "event", Id: ctx.Param("slug")}, Reason: reason, Details: details,
+		})
+		if contentmoderation.WriteError(ctx, err) {
+			return
+		}
+		ctx.Header("Cache-Control", "private, no-store")
+		ctx.JSON(http.StatusOK, res)
+		return
+	}
 	res, err := esc.Client.ReportEvent(ctx, &pb.ReportEventReq{
 		EventSlug:  ctx.Param("slug"),
 		AccountId:  accountID(ctx),

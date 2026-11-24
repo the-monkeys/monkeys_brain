@@ -1,0 +1,32 @@
+syntax = "proto3";
+package moderation_svc;
+option go_package = "github.com/the-monkeys/the_monkeys/apis/serviceconn/gateway_moderation/pb";
+message Target { string kind = 1; string id = 2; }
+message Actor { string account_id = 1; string ip = 2; }
+message Access {
+ Target target = 1; bool is_nsfw = 2; bool can_reveal = 3;
+ bool revealed = 4; string reason = 5; int64 revision = 6; string scan_status = 7;
+}
+message CheckRequest { string account_id = 1; repeated Target targets = 2; }
+message CheckResponse { repeated Access items = 1; }
+message ActionRequest { Actor actor = 1; Target target = 2; string reason = 3; string details = 4; bool is_nsfw = 5; }
+message Report {
+ int64 id = 1; Target target = 2; string reason = 3; string details = 4;
+ string status = 5; string reporter_username = 6; string created_at = 7;
+ string reviewed_by = 8; string reviewed_at = 9; string review_note = 10;
+}
+message ActionResponse { Report report = 1; Access access = 2; }
+message ListRequest { Actor actor = 1; string status = 2; int32 limit = 3; int32 offset = 4; }
+message ListResponse { repeated Report reports = 1; int64 total = 2; }
+message ReviewRequest { Actor actor = 1; int64 report_id = 2; string action = 3; string note = 4; }
+message MediaRequest { string account_id = 1; string path = 2; }
+message MediaResponse { bool allowed = 1; bool restricted = 2; bool resolved = 3; }
+service ModerationService {
+ rpc Check(CheckRequest) returns (CheckResponse);
+ rpc ReportContent(ActionRequest) returns (ActionResponse);
+ rpc Reveal(ActionRequest) returns (ActionResponse);
+ rpc SetAuthorLabel(ActionRequest) returns (ActionResponse);
+ rpc ListReports(ListRequest) returns (ListResponse);
+ rpc ReviewReport(ReviewRequest) returns (ActionResponse);
+ rpc CheckMedia(MediaRequest) returns (MediaResponse);
+}

@@ -1,6 +1,8 @@
 package admin
 
 import (
+	moderationpb "github.com/the-monkeys/the_monkeys/apis/serviceconn/gateway_moderation/pb"
+	contentmoderation "github.com/the-monkeys/the_monkeys/microservices/the_monkeys_gateway/internal/moderation"
 	"net/http"
 	"strconv"
 	"strings"
@@ -233,6 +235,18 @@ func (asc *AdminServiceClient) FlagNsfw(entityType string) gin.HandlerFunc {
 		}
 		if err := ctx.ShouldBindJSON(&body); err != nil || strings.TrimSpace(body.Reason) == "" {
 			ctx.AbortWithStatusJSON(http.StatusBadRequest, gin.H{"error": "reason is required"})
+			return
+		}
+		if asc.Moderation != nil && entityType != "user" {
+			_, err := asc.Moderation.ReportContent(ctx.Request.Context(), &moderationpb.ActionRequest{
+				Actor:  &moderationpb.Actor{AccountId: ctx.GetString("accountId"), Ip: ctx.ClientIP()},
+				Target: &moderationpb.Target{Kind: entityType, Id: id}, Reason: "nsfw", Details: body.Reason,
+			})
+			if contentmoderation.WriteError(ctx, err) {
+				return
+			}
+			ctx.Header("Cache-Control", "private, no-store")
+			ctx.JSON(http.StatusOK, gin.H{"message": "flagged", "entity_type": entityType, "entity_id": id})
 			return
 		}
 		_, err := asc.Events.AdminFlagNsfw(ctx.Request.Context(), &pb.AdminFlagNsfwReq{

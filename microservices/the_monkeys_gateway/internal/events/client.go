@@ -6,6 +6,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/the-monkeys/the_monkeys/apis/serviceconn/gateway_event/pb"
+	moderationpb "github.com/the-monkeys/the_monkeys/apis/serviceconn/gateway_moderation/pb"
 	"github.com/the-monkeys/the_monkeys/config"
 	"github.com/the-monkeys/the_monkeys/microservices/the_monkeys_gateway/utils"
 	"go.uber.org/zap"
@@ -17,8 +18,9 @@ import (
 
 // EventServiceClient adapts the events gRPC service to REST.
 type EventServiceClient struct {
-	Client pb.EventServiceClient
-	log    *zap.SugaredLogger
+	Client     pb.EventServiceClient
+	Moderation moderationpb.ModerationServiceClient
+	log        *zap.SugaredLogger
 	// baseURL is the canonical public origin (e.g. https://monkeys.com.co) used
 	// to build Open Graph / social share links. Sourced from config (SEO_BASE_URL)
 	// so it is never hardcoded to a stale domain.
