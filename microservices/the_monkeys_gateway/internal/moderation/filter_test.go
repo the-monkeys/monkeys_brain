@@ -13,6 +13,7 @@ import (
 )
 
 type fakePolicy struct {
+	resolved bool
 	pb.ModerationServiceClient
 	fail        bool
 	calls       int
@@ -45,7 +46,7 @@ func (f *fakePolicy) CheckMedia(context.Context, *pb.MediaRequest, ...grpc.CallO
 	if f.fail {
 		return nil, errors.New("unavailable")
 	}
-	return &pb.MediaResponse{Allowed: f.media, Restricted: !f.media}, nil
+	return &pb.MediaResponse{Allowed: f.media, Restricted: !f.media, Resolved: f.resolved}, nil
 }
 func serve(t *testing.T, path, body string, f *fakePolicy) *httptest.ResponseRecorder {
 	t.Helper()
@@ -229,5 +230,40 @@ func TestAccessEndpointUsesVerifiedSessionAndNoStore(t *testing.T) {
 	r.ServeHTTP(w, req)
 	if w.Code != 200 || f.lastAccount != "trusted" || w.Header().Get("Cache-Control") != "private, no-store" {
 		t.Fatal(w.Code, f.lastAccount, w.Header())
+	}
+}
+
+func TestMediaPolicyReadRequiresResolvedReferenceAndHidesInternalState(t *testing.T) {
+	for _, tc := range []struct{ resolved, want bool }{{false, false}, {true, true}} {
+		gin.SetMode(gin.TestMode)
+		f := &fakePolicy{media: true, resolved: tc.resolved}
+		r := gin.New()
+		r.GET("/media", New(f).Media)
+		w := httptest.NewRecorder()
+		r.ServeHTTP(w, httptest.NewRequest("GET", "/media?path=%2Fapi%2Fv2%2Fstorage%2Fposts%2Fpost%2Fimage.png", nil))
+		expected := `"allowed":false`
+		if tc.want {
+			expected = `"allowed":true`
+		}
+		if w.Code != 200 || !strings.Contains(w.Body.String(), expected) || strings.Contains(w.Body.String(), "resolved") || strings.Contains(w.Body.String(), "restricted") {
+			t.Fatal(w.Code, w.Body.String())
+		}
+	}
+}
+func TestMediaPolicyReadRejectsUnrelatedPaths(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	r := gin.New()
+	r.GET("/media", New(&fakePolicy{media: true, resolved: true}).Media)
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, httptest.NewRequest("GET", "/media?path=http%3A%2F%2Fevil.test%2Fprivate", nil))
+	if w.Code != 400 {
+		t.Fatal(w.Code, w.Body.String())
+	}
+}
+
+func TestSafeViewsCarryPolicyRevisionWithoutChangingBody(t *testing.T) {
+	w := serve(t, "/api/v2/blog/safe", `{"blog_id":"safe","title":"Original title","blog":{"blocks":[{"data":{"text":"Original body"}}]}}`, &fakePolicy{})
+	if w.Code != 200 || !strings.Contains(w.Body.String(), `"content_rating"`) || !strings.Contains(w.Body.String(), "Original body") {
+		t.Fatal(w.Code, w.Body.String())
 	}
 }

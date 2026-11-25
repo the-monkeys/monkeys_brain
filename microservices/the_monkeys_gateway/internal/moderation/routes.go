@@ -1,6 +1,7 @@
 package moderation
 
 import (
+	"context"
 	"fmt"
 	"github.com/gin-gonic/gin"
 	pb "github.com/the-monkeys/the_monkeys/apis/serviceconn/gateway_moderation/pb"
@@ -13,6 +14,8 @@ import (
 	"google.golang.org/grpc/status"
 	"net/http"
 	"strconv"
+	"strings"
+	"time"
 )
 
 func NewClient(cfg *config.Config) (pb.ModerationServiceClient, error) {
@@ -23,6 +26,7 @@ func NewClient(cfg *config.Config) (pb.ModerationServiceClient, error) {
 	return pb.NewModerationServiceClient(conn), nil
 }
 func (s *Service) RegisterRoutes(r *gin.Engine, mw auth.AuthMiddlewareConfig) {
+	r.GET("/api/v1/moderation/media", mw.AuthOptional, s.Media)
 	r.GET("/api/v1/moderation/:kind/:id", mw.AuthOptional, middleware.RateLimiterMiddleware("120-M"), s.Access)
 	write := r.Group("/api/v1/moderation", mw.AuthRequired, middleware.RateLimiterMiddleware("30-M"))
 	write.POST("/:kind/:id/report", s.Report)
@@ -135,4 +139,33 @@ func (s *Service) Access(c *gin.Context) {
 	c.Header("Cache-Control", "private, no-store")
 	c.Header("Vary", "Cookie, Authorization")
 	c.JSON(200, res.Items[0])
+}
+
+func (s *Service) Media(c *gin.Context) {
+	path := c.Query("path")
+	supported := false
+	for _, prefix := range []string{"/api/v2/storage/", "/api/storage/", "/api/v1/files/post/", "/api/v1.1/files/post/"} {
+		if strings.HasPrefix(path, prefix) {
+			supported = true
+			break
+		}
+	}
+	if !supported || len(path) > 4096 {
+		c.JSON(400, gin.H{"error": "Invalid media path."})
+		return
+	}
+	call, cancel := context.WithTimeout(c.Request.Context(), 5*time.Second)
+	defer cancel()
+	res, err := s.client.CheckMedia(call, &pb.MediaRequest{AccountId: c.GetString("accountId"), Path: path})
+	if fail(c, err) {
+		return
+	}
+	if res == nil {
+		c.JSON(503, gin.H{"error": "Content checks are temporarily unavailable."})
+		return
+	}
+	c.Header("Cache-Control", "private, no-store")
+	c.Header("Vary", "Cookie, Authorization")
+	// Do not expose whether a private target exists or which reference is restricted.
+	c.JSON(200, gin.H{"allowed": res.Allowed && res.Resolved})
 }

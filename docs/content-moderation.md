@@ -20,6 +20,7 @@ public content. Shared asset references are checked together.
 All writes require the ordinary authenticated session and are rate limited.
 The server uses its authenticated account ID; JSON actor/role fields are ignored.
 
+- GET /api/v1/moderation/media?path=... ? policy-only, no-store admission for image proxies/optimizers; returns only allowed, never private reference state
 - GET /api/v1/moderation/:kind/:id ? fresh eligibility for the current session
 - POST /api/v1/moderation/:kind/:id/report ? {reason, details}
 - POST /api/v1/moderation/:kind/:id/reveal
@@ -45,7 +46,7 @@ transactions protect retries and concurrent submissions. Rating changes and
 review actions are audited. Author labels cannot clear staff/scanner restrictions.
 
 ## Response contract
-Flagged content adds is_nsfw and content_rating. The latter contains target,
+Content views add optional is_nsfw and content_rating policy metadata, including a revision so a stale safe view cannot overwrite a newer restriction. The latter contains target,
 can_reveal, revealed, reason, revision and scan_status. Consumers must treat
 these as optional for compatibility with responses from older releases.
 Restricted responses contain safe replacement text and no raw body, media,

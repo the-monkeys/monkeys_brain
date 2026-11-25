@@ -355,6 +355,8 @@ func applyRating(row map[string]any, a *pb.Access) {
 		row["content_unavailable"] = true
 		return
 	}
+	row["content_rating"] = a
+	row["is_nsfw"] = a.IsNsfw
 	if !a.IsNsfw {
 		return
 	}
