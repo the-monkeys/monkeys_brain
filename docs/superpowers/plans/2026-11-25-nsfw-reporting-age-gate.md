@@ -3,7 +3,7 @@
 > For agentic workers: execute the approved plan using test-driven development; backend first in the actual checkout.
 
 **Goal:** Consistent reporting and adult-only explicit reveal for articles, events, groups and discussions.
-**Architecture:** Add an independent moderation RPC on the existing events service, with PostgreSQL rating/report/consent records. The gateway applies authoritative per-item policy after existing audience checks and before media streaming. The public and admin applications reuse existing designs.
+**Architecture:** Add an independent moderation RPC on the existing user service (ownership moved from events on 2026-11-25 at the user's request), with PostgreSQL rating/report/consent records. The gateway applies authoritative per-item policy after existing audience checks and before media streaming. The public and admin applications reuse existing designs.
 **Tech stack:** Go/Gin/gRPC/PostgreSQL, Next.js, Svelte admin.
 **Spec:** User-approved plan in this chat, 25 November 2026.
 

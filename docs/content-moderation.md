@@ -2,7 +2,10 @@
 
 This feature adds ratings and reports without changing publication status, article
 IDs, slugs, or existing audience permissions. It uses the primary PostgreSQL
-connection of the events service and an independent ModerationService RPC.
+connection of the user service and an independent ModerationService RPC, hosted
+on the existing user gRPC server. No extra service process, container, port or
+database pool is required. The gateway sends all content reporting, staff review,
+age/reveal and media-policy checks to this one user-service endpoint.
 
 ## Access policy
 A restricted item returns a safe placeholder until an authenticated viewer has
@@ -65,8 +68,14 @@ distinct from confirmed-safe content. An automated detector needs a separately
 evaluated model, thresholds, failure policy and false-positive handling.
 
 ## Deployment and backward compatibility
-Apply migration 000025 before upgrading the events service and gateway, then
-upgrade the public/admin interfaces. Old code can still read ordinary data:
+Apply migration 000025 before upgrading the user service, then upgrade the
+gateway and the public/admin interfaces. When upgrading from the event-hosted
+NSFW branch, deploy users first, switch all gateway instances next, and upgrade
+events last. Older gateways still call the event-hosted moderation RPC until
+they are replaced; new gateways call the existing configured user-service host
+and port. Do not remove the old event registration while an older gateway still
+uses it. No HTTP/protobuf contract, table, record, revision or stored reveal
+changes are needed for this move. Old code can still read ordinary data:
 the schema additions do not rename existing columns or rewrite content IDs.
 Older binaries do not enforce this new policy and must not serve restricted
 content alongside the new gateway.
@@ -78,12 +87,12 @@ images hosted by third parties remain controlled by those hosts.
 No production deployment is part of this change.
 
 ## Local verification
-Run the ordinary gateway/events suites and the moderation integration suite.
+Run the ordinary users/gateway/events suites and the moderation integration suite.
 MODERATION_TEST_DSN is accepted only for a deliberately named loopback
 moderation_store_test database. Tests create disposable schemas, run real
 prerequisite migrations and remove only those schemas.
 
-    go test ./microservices/the_monkeys_gateway/... ./microservices/the_monkeys_events/... ./common/staffaccess
+    go test ./microservices/the_monkeys_users/... ./microservices/the_monkeys_gateway/... ./microservices/the_monkeys_events/... ./common/staffaccess
     go test ./common/moderation -count=1 -timeout 180s -v
 
 The second command must have MODERATION_TEST_DSN set to the disposable database

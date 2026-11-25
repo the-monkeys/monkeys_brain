@@ -19,7 +19,7 @@ import (
 )
 
 func NewClient(cfg *config.Config) (pb.ModerationServiceClient, error) {
-	conn, err := grpc.NewClient(fmt.Sprintf("%s:%d", cfg.Microservices.TheMonkeysEvents, cfg.Microservices.EventsPort), grpc.WithTransportCredentials(insecure.NewCredentials()))
+	conn, err := grpc.NewClient(fmt.Sprintf("%s:%d", cfg.Microservices.TheMonkeysUser, cfg.Microservices.UserPort), grpc.WithTransportCredentials(insecure.NewCredentials()))
 	if err != nil {
 		return nil, err
 	}
