@@ -2,6 +2,7 @@ package moderation
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"github.com/gin-gonic/gin"
 	pb "github.com/the-monkeys/the_monkeys/apis/serviceconn/gateway_moderation/pb"
@@ -265,5 +266,27 @@ func TestSafeViewsCarryPolicyRevisionWithoutChangingBody(t *testing.T) {
 	w := serve(t, "/api/v2/blog/safe", `{"blog_id":"safe","title":"Original title","blog":{"blocks":[{"data":{"text":"Original body"}}]}}`, &fakePolicy{})
 	if w.Code != 200 || !strings.Contains(w.Body.String(), `"content_rating"`) || !strings.Contains(w.Body.String(), "Original body") {
 		t.Fatal(w.Code, w.Body.String())
+	}
+}
+
+func TestHomepageRestrictionPreservesAssessmentAndCardOrder(t *testing.T) {
+	raw := `{"blogs":[{"blog_id":"restricted","title":"secret headline","first_image":"secret.jpg","homepage_eligibility":{"eligible":true,"lead_eligible":true,"word_count":351,"minimum_words":250,"reasons":[],"version":"homepage-v1","extra":"secret"}},{"blog_id":"safe","title":"Keep me"}],"has_more":false,"homepage_policy_version":"homepage-v1"}`
+	w := serve(t, "/api/v2/blog/homepage", raw, &fakePolicy{})
+	var response struct {
+		Blogs   []map[string]any `json:"blogs"`
+		Version string           `json:"homepage_policy_version"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &response); err != nil {
+		t.Fatal(err)
+	}
+	if w.Code != 200 || len(response.Blogs) != 2 || response.Blogs[0]["blog_id"] != "restricted" || response.Blogs[1]["blog_id"] != "safe" || response.Version != "homepage-v1" {
+		t.Fatal(w.Code, w.Body.String())
+	}
+	assessment, ok := response.Blogs[0]["homepage_eligibility"].(map[string]any)
+	if !ok || len(assessment) != 6 || assessment["eligible"] != true || assessment["lead_eligible"] != true || assessment["word_count"] != float64(351) || assessment["minimum_words"] != float64(250) || assessment["version"] != "homepage-v1" {
+		t.Fatalf("homepage client cannot retain concealed card: %s", w.Body.String())
+	}
+	if strings.Contains(w.Body.String(), "secret") {
+		t.Fatal("raw content survived concealment", w.Body.String())
 	}
 }

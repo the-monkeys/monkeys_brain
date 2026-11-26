@@ -361,11 +361,27 @@ func applyRating(row map[string]any, a *pb.Access) {
 		return
 	}
 	if !a.Revealed {
+		// The homepage client requires this policy to retain an eligible card
+		// in its original slot. Keep only policy fields, never article content.
+		var homepageAssessment map[string]any
+		if a.Target.Kind == "blog" {
+			if assessment, ok := row["homepage_eligibility"].(map[string]any); ok {
+				homepageAssessment = make(map[string]any)
+				for _, key := range []string{"eligible", "lead_eligible", "word_count", "minimum_words", "reasons", "version"} {
+					if value, exists := assessment[key]; exists {
+						homepageAssessment[key] = value
+					}
+				}
+			}
+		}
 		safe := map[string]bool{"blog_id": true, "public_id": true, "id": true, "slug": true, "canonical_slug": true, "author_username": true, "owner_account_id": true, "organizer_username": true, "organizer_account_id": true, "created_at": true, "published_time": true, "start_time": true, "end_time": true, "timezone": true, "status": true, "audience": true, "like_count": true, "reply_count": true, "liked": true, "member_count": true}
 		for key := range row {
 			if !safe[key] {
 				delete(row, key)
 			}
+		}
+		if homepageAssessment != nil {
+			row["homepage_eligibility"] = homepageAssessment
 		}
 		switch a.Target.Kind {
 		case "blog":
