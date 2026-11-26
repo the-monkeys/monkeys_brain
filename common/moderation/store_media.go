@@ -9,6 +9,7 @@ import (
 	"path"
 	"strings"
 
+	"github.com/lib/pq"
 	pb "github.com/the-monkeys/the_monkeys/apis/serviceconn/gateway_moderation/pb"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -56,6 +57,59 @@ func storeTargetScanner(ctx context.Context, q storeQuery, t *pb.Target) (bool, 
 	err := q.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM (`+storeMediaRelations+`) relation JOIN storage_assets a ON a.checksum=relation.checksum WHERE relation.kind=$1 AND relation.target_id=$2 AND a.is_nsfw IS TRUE)`, t.Kind, t.Id).Scan(&flagged)
 	return flagged, err
 }
+
+type storeScannerKey struct{ kind, id string }
+
+// Only Check prefetches scanner facts, within its repeatable-read transaction.
+// Keep the full relation view: historical file/cover relations are protective.
+func storeTargetScanners(ctx context.Context, q storeQuery, targets []*pb.Target) (map[storeScannerKey]bool, error) {
+	flags := make(map[storeScannerKey]bool, len(targets))
+	kinds := make([]string, 0, len(targets))
+	ids := make([]string, 0, len(targets))
+	for _, t := range targets {
+		key := storeScannerKey{kind: t.Kind, id: t.Id}
+		if _, exists := flags[key]; exists {
+			continue
+		}
+		flags[key] = false
+		kinds = append(kinds, t.Kind)
+		ids = append(ids, t.Id)
+	}
+	if len(kinds) == 0 {
+		return flags, nil
+	}
+	if len(kinds) == 1 {
+		flagged, err := storeTargetScanner(ctx, q, targets[0])
+		if err != nil {
+			return nil, err
+		}
+		flags[storeScannerKey{kind: kinds[0], id: ids[0]}] = flagged
+		return flags, nil
+	}
+	rows, err := q.QueryContext(ctx, `WITH wanted AS (
+ SELECT kind,target_id FROM unnest($1::text[],$2::text[]) AS input(kind,target_id)
+)
+SELECT w.kind,w.target_id FROM wanted w
+JOIN content_media_owners relation ON relation.kind=w.kind AND relation.target_id=w.target_id
+JOIN storage_assets a ON a.checksum=relation.checksum
+WHERE a.is_nsfw IS TRUE GROUP BY w.kind,w.target_id`, pq.Array(kinds), pq.Array(ids))
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var key storeScannerKey
+		if err = rows.Scan(&key.kind, &key.id); err != nil {
+			return nil, err
+		}
+		flags[key] = true
+	}
+	if err = rows.Err(); err != nil {
+		return nil, err
+	}
+	return flags, nil
+}
+
 func mediaTarget(p string) *pb.Target {
 	parts := strings.Split(p, "/")
 	if len(parts) < 2 || parts[1] == "" {

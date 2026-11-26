@@ -176,6 +176,11 @@ func storeLegacyNSFW(ctx context.Context, q storeQuery, c storeContent, kind str
 	return flagged, err
 }
 func storeAccess(ctx context.Context, q storeQuery, a storeActor, t *pb.Target, c storeContent, visible bool) (*pb.Access, error) {
+	return storeAccessWithScanner(ctx, q, a, t, c, visible, nil)
+}
+
+// A nil scannerFlag preserves scalar reads for media and mutation callers.
+func storeAccessWithScanner(ctx context.Context, q storeQuery, a storeActor, t *pb.Target, c storeContent, visible bool, scannerFlag *bool) (*pb.Access, error) {
 	out := &pb.Access{Target: &pb.Target{Kind: t.Kind, Id: t.Id}}
 	if !visible {
 		out.Reason = "not_found"
@@ -192,9 +197,14 @@ func storeAccess(ctx context.Context, q storeQuery, a storeActor, t *pb.Target, 
 	if err != nil {
 		return nil, err
 	}
-	media, err := storeTargetScanner(ctx, q, t)
-	if err != nil {
-		return nil, err
+	var media bool
+	if scannerFlag == nil {
+		media, err = storeTargetScanner(ctx, q, t)
+		if err != nil {
+			return nil, err
+		}
+	} else {
+		media = *scannerFlag
 	}
 	out.IsNsfw = author || staff || scanner || legacy || media
 	if !out.IsNsfw {
@@ -229,16 +239,29 @@ func (s *Store) Check(ctx context.Context, req *pb.CheckRequest) (*pb.CheckRespo
 	if err != nil {
 		return nil, storeFailure(err)
 	}
-	out := &pb.CheckResponse{Items: make([]*pb.Access, 0, len(req.Targets))}
-	for _, t := range req.Targets {
+	contents := make([]storeContent, len(req.Targets))
+	visible := make([]bool, len(req.Targets))
+	scannerTargets := make([]*pb.Target, 0, len(req.Targets))
+	for i, t := range req.Targets {
 		if err = storeTarget(t); err != nil {
 			return nil, err
 		}
-		c, visible, e := loadStoreContent(ctx, tx, a, t)
-		if e != nil {
-			return nil, storeFailure(e)
+		contents[i], visible[i], err = loadStoreContent(ctx, tx, a, t)
+		if err != nil {
+			return nil, storeFailure(err)
 		}
-		access, e := storeAccess(ctx, tx, a, t, c, visible)
+		if visible[i] {
+			scannerTargets = append(scannerTargets, t)
+		}
+	}
+	scannerFlags, err := storeTargetScanners(ctx, tx, scannerTargets)
+	if err != nil {
+		return nil, storeFailure(err)
+	}
+	out := &pb.CheckResponse{Items: make([]*pb.Access, 0, len(req.Targets))}
+	for i, t := range req.Targets {
+		flagged := scannerFlags[storeScannerKey{kind: t.Kind, id: t.Id}]
+		access, e := storeAccessWithScanner(ctx, tx, a, t, contents[i], visible[i], &flagged)
 		if e != nil {
 			return nil, storeFailure(e)
 		}
