@@ -516,15 +516,22 @@ func (as *AuthzSvc) Validate(ctx context.Context, req *pb.ValidateRequest) (*pb.
 		return nil, status.Errorf(codes.Unauthenticated, "couldn't validate auth token")
 	}
 
-	// Check if the email exists
-	user, err := as.dbConn.CheckIfEmailExist(claims.Email)
+	if claims.AccountId == "" {
+		if staffLog != nil {
+			staffLog.Warnw("staff validation failed", "reason", "missing_account_id", "grpc_code", codes.Unauthenticated.String())
+		}
+		return nil, status.Error(codes.Unauthenticated, "account id is required")
+	}
+
+	// Resolve the signed account independently of mutable email and username.
+	user, err := as.dbConn.CheckIfAccountIdExist(claims.AccountId)
 	if err != nil {
 		if staffLog != nil {
 			staffLog.Warnw("staff validation failed", "reason", "account_lookup_failed", "grpc_code", codes.NotFound.String())
 		} else {
-			as.logger.Errorf("cannot validate token as the email %s doesn't exist, error: %+v", claims.Email, err)
+			as.logger.Errorf("cannot validate token as the account %s doesn't exist, error: %+v", claims.AccountId, err)
 		}
-		return nil, status.Errorf(codes.NotFound, "email does not exist")
+		return nil, status.Errorf(codes.NotFound, "account does not exist")
 	}
 
 	if err := utils.EnsureAccountEnabled(user); err != nil {
@@ -546,14 +553,14 @@ func (as *AuthzSvc) Validate(ctx context.Context, req *pb.ValidateRequest) (*pb.
 		staffLog.Infow("staff identity resolved", "account_id", user.AccountId,
 			"db_role", user.Role, "token_role", claims.Role, "role_source", "database")
 	} else {
-		as.logger.Debugf("User with email %s successfully verified!", claims.Email)
+		as.logger.Debugf("User with account id %s successfully verified!", user.AccountId)
 	}
 	return &pb.ValidateResponse{
 		StatusCode: http.StatusOK,
 		UserId:     user.Id,
-		Email:      claims.Email,
+		Email:      user.Email,
 		UserName:   user.Username,
-		AccountId:  claims.AccountId,
+		AccountId:  user.AccountId,
 		Role:       user.Role,
 	}, nil
 }
@@ -565,11 +572,15 @@ func (as *AuthzSvc) DecodeSignedJWT(ctx context.Context, req *pb.DecodeSignedJWT
 		return nil, status.Errorf(codes.Unauthenticated, "couldn't validate auth token")
 	}
 
-	// Check if the email exists
-	user, err := as.dbConn.CheckIfEmailExist(claims.Email)
+	if claims.AccountId == "" {
+		return nil, status.Error(codes.Unauthenticated, "account id is required")
+	}
+
+	// Resolve the signed account independently of mutable email and username.
+	user, err := as.dbConn.CheckIfAccountIdExist(claims.AccountId)
 	if err != nil {
-		as.logger.Errorf("cannot validate token as the email %s doesn't exist, error: %+v", claims.Email, err)
-		return nil, status.Errorf(codes.NotFound, "email does not exist")
+		as.logger.Errorf("cannot validate token as the account %s doesn't exist, error: %+v", claims.AccountId, err)
+		return nil, status.Errorf(codes.NotFound, "account does not exist")
 	}
 
 	if err := utils.EnsureAccountEnabled(user); err != nil {

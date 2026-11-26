@@ -65,7 +65,7 @@ func RegisterUserRouter(router *gin.Engine, cfg *config.Config, authClient *auth
 	routes.GET("/public/account/:acc_id", usc.GetUserDetailsByAccId)
 	routes.GET("/connection-count/:username", usc.ConnectionCount)
 
-	routes.Use(mware.AuthRequired)
+	routes.Use(middleware.PrivateNoStore(), mware.AuthRequired)
 
 	{
 		// Account verification (blue-check)

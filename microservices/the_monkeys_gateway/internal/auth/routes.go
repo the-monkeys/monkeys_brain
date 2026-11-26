@@ -14,6 +14,7 @@ import (
 
 	"github.com/the-monkeys/the_monkeys/common/staffaccess"
 	"github.com/the-monkeys/the_monkeys/config"
+	"github.com/the-monkeys/the_monkeys/microservices/the_monkeys_gateway/middleware"
 	"github.com/the-monkeys/the_monkeys/microservices/the_monkeys_gateway/utils"
 
 	"github.com/the-monkeys/the_monkeys/apis/serviceconn/gateway_authz/pb"
@@ -123,7 +124,7 @@ func RegisterAuthRouter(router *gin.Engine, cfg *config.Config, log *zap.Sugared
 	}
 	// fmt.Printf("asc.googleOauthConfig: %+v\n", asc.googleOauthConfig)
 
-	routes := router.Group("/api/v1/auth")
+	routes := router.Group("/api/v1/auth", middleware.PrivateNoStore())
 
 	// SSO Google Login
 	routes.GET("/google/login", asc.HandleGoogleLogin)
