@@ -280,7 +280,7 @@ func (uh *uDBHandler) UpdateUserProfile(username string, dbUserInfo *models.User
 		SET 
 			first_name = $1,
 			last_name = $2,
-			date_of_birth = $3,
+			date_of_birth = COALESCE($3, date_of_birth),
 			bio = $4,
 			updated_at = now(),
 			address = $5,
@@ -301,7 +301,7 @@ func (uh *uDBHandler) UpdateUserProfile(username string, dbUserInfo *models.User
 		}
 	}()
 
-	result := stmt.QueryRow(dbUserInfo.FirstName, dbUserInfo.LastName, dbUserInfo.DateOfBirth.Time,
+	result := stmt.QueryRow(dbUserInfo.FirstName, dbUserInfo.LastName, dbUserInfo.DateOfBirth,
 		dbUserInfo.Bio.String, dbUserInfo.Address.String, dbUserInfo.ContactNumber.String,
 		dbUserInfo.LinkedIn.String, dbUserInfo.Github.String, dbUserInfo.Twitter.String,
 		dbUserInfo.Instagram.String, username)

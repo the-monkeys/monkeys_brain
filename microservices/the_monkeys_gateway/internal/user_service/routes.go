@@ -266,6 +266,10 @@ func (usc *UserServiceClient) UpdateUserProfile(ctx *gin.Context) {
 		Partial:       isPartial,
 	})
 	if err != nil {
+		if status.Code(err) == codes.InvalidArgument {
+			ctx.AbortWithStatusJSON(http.StatusBadRequest, ReturnMessage{Message: "Enter a valid birth date."})
+			return
+		}
 		if status.Code(err) == codes.NotFound {
 			ctx.AbortWithStatusJSON(http.StatusNotFound, ReturnMessage{Message: "user not found"})
 			return
