@@ -111,6 +111,7 @@ func (es *elasticsearchStorage) GetBlogsMetadataByTags(ctx context.Context, tags
 		"size": limit,
 		"_source": withOptionalMetadataSource(
 			"blog_id",
+			"slug",
 			"owner_account_id",
 			"blog.blocks", // To extract title, first paragraph, and first image
 			"tags",
@@ -255,6 +256,7 @@ func (es *elasticsearchStorage) GetAllPublishedBlogsMetadata(ctx context.Context
 		"size": limit,
 		"_source": withOptionalMetadataSource(
 			"blog_id",
+			"slug",
 			"owner_account_id",
 			"blog.blocks", // To extract title, first paragraph, and first image
 			"tags",

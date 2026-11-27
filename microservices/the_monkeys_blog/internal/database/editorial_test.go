@@ -61,8 +61,14 @@ func TestEditorialMetadataProjections(t *testing.T) {
 						t.Errorf("%s=%v present=%t", k, got, exists)
 					}
 				}
-				if _, exists := rows[0]["slug"]; exists {
-					t.Fatal("legacy stored slug leaked into projection")
+				// Public catalogs carry the optional stored location for restricted
+				// sitemap discovery. It never replaces explicit canonical_slug.
+				if name == "published" || name == "tags" {
+					if rows[0]["slug"] != source["slug"] {
+						t.Fatal("public catalog lost original stored location")
+					}
+				} else if _, exists := rows[0]["slug"]; exists {
+					t.Fatal("unrelated metadata projection changed")
 				}
 			})
 		}

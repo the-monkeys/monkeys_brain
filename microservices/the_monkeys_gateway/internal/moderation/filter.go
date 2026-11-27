@@ -8,6 +8,7 @@ import (
 	"errors"
 	"github.com/gin-gonic/gin"
 	pb "github.com/the-monkeys/the_monkeys/apis/serviceconn/gateway_moderation/pb"
+	"github.com/the-monkeys/the_monkeys/microservices/the_monkeys_gateway/internal/searchcrawler"
 	"strings"
 	"time"
 )
@@ -17,9 +18,14 @@ const maxJSON = 32 << 20
 // MediaAuthorizationKey is populated only from a successful policy RPC, never HTTP headers.
 const MediaAuthorizationKey = "moderation.media_authorized"
 
-type Service struct{ client pb.ModerationServiceClient }
+type Service struct {
+	client  pb.ModerationServiceClient
+	crawler crawlerVerifier
+}
 
-func New(client pb.ModerationServiceClient) *Service { return &Service{client: client} }
+func New(client pb.ModerationServiceClient) *Service {
+	return &Service{client: client, crawler: searchcrawler.FromEnvironment()}
+}
 
 type document struct {
 	value  map[string]any
@@ -254,13 +260,15 @@ func (s *Service) Middleware(identity gin.HandlerFunc) gin.HandlerFunc {
 					c.JSON(503, gin.H{"error": "Too many content items."})
 					return
 				}
-				res, err := s.check(c, targets, false)
+				verified := s.crawler != nil && s.crawler.Verify(c.Request)
+				res, err := s.check(c, targets, verified)
 				if err != nil {
 					c.JSON(503, gin.H{"error": "Content checks are temporarily unavailable."})
 					return
 				}
 				for i, d := range docs {
-					applyRating(d.value, res.Items[i])
+					_, detail := root.(map[string]any)
+					s.project(c, d, res.Items[i], verified, detail && len(docs) == 1)
 				}
 				body, err = json.Marshal(root)
 				if err != nil {

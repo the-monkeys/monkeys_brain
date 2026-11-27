@@ -167,7 +167,7 @@ func TestPublicCatalogQuery(t *testing.T) {
 					t.Errorf("publication sort changed: %v", sort)
 				}
 				source := q["_source"].([]interface{})
-				for _, field := range []string{"blog_id", "owner_account_id", "blog.blocks", "tags", "content_type", "published_time", "ai_score"} {
+				for _, field := range []string{"blog_id", "slug", "owner_account_id", "blog.blocks", "tags", "content_type", "published_time", "ai_score"} {
 					found := false
 					for _, s := range source {
 						if s == field {
@@ -506,6 +506,28 @@ func TestPublicCatalogCanceledBeforeSearch(t *testing.T) {
 			if _, _, err := catalogRangeCall(es, method, ctx, 2, offset); !errors.Is(err, context.Canceled) {
 				t.Errorf("method=%s offset=%d err=%v", method, offset, err)
 			}
+		}
+	}
+}
+
+// A catalog must retain an existing canonical slug instead of inventing an ID alias.
+func TestPublicCatalogPreservesOptionalSlug(t *testing.T) {
+	for method, call := range catalogCalls {
+		t.Run(method, func(t *testing.T) {
+			body := `{"hits":{"total":{"value":1},"hits":[{"_source":{"blog_id":"post1","slug":"original-canonical-post1"}}]}}`
+			rows, _, err := callCatalog(t, call, catalogStorage(t, body, nil))
+			if err != nil || len(rows) != 1 {
+				t.Fatalf("rows=%v err=%v", rows, err)
+			}
+			if rows[0]["slug"] != "original-canonical-post1" {
+				t.Fatalf("stored canonical slug lost: %v", rows[0]["slug"])
+			}
+		})
+	}
+	for _, value := range []interface{}{nil, "", 42} {
+		row := publicCatalogMetadata(map[string]interface{}{"blog_id": "post1", "slug": value})
+		if _, present := row["slug"]; present {
+			t.Fatalf("invalid optional slug leaked: %v", value)
 		}
 	}
 }
