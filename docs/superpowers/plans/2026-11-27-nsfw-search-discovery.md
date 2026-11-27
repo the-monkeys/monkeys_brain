@@ -52,7 +52,7 @@ Files: seoCatalog.ts, sitemap.ts and focused tests.
 - [x] Built-in browser human journeys at desktop/tablet/mobile; local HTTP spoof/cache checks.
 - [x] Independent whole-change review and tests for important findings.
 - [x] Preserve protected unrelated diffs, local data and services.
-- [ ] Commit/push verified changes; no PR. Delivery heads are recorded in the final response.
+- [x] Commit/push verified changes; no PR. Backend implementation c744e9bd and frontend e18716bf were pushed successfully; this final plan update records delivery.
 
 ## Rulings
 - User approved implementation inline; no repeated confirmation.
@@ -71,3 +71,10 @@ Files: seoCatalog.ts, sitemap.ts and focused tests.
 - Automatic approval review rejected replacing the original running Gateway. All original services were preserved; separate local test copies and a test-only proxy were used instead.
 
 - Fixed: public-catalog source selection and metadata now preserve an optional original slug so sitemap discovery matches the existing detail canonical. Explicit canonical_slug retains priority; ordinary public canonical/RSS rules are unchanged. Query, projection and editorial compatibility regressions passed.
+
+## Final verification
+- Frontend: 279 test files / 2,479 tests passed; full types, lint (existing warnings), optimized build passed.
+- Backend: Blog, Gateway and common moderation suites passed; both existing service images built locally.
+- Live final UI on port 3000: 95 HTTP checks passed. Built-in browser minor/adult smoke passed after serving final build; responsive article/homepage checks passed at 320/820/1440.
+- Detailed redacted report and source manifest are committed in frontend docs/benchmarks/2026-11-27-nsfw-search-discovery.md.
+- Production rollout remains disabled until the trusted ingress contract is independently verified/configured. No production changes, PR or data deletion.
