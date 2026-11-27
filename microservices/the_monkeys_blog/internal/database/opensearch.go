@@ -649,6 +649,8 @@ func (es *elasticsearchStorage) PublishBlogById(ctx context.Context, blogId stri
 		DocumentID:      blogId,
 		Body:            strings.NewReader(string(bs)),
 		RetryOnConflict: &retries,
+		// Explicit publication actions must be searchable immediately; autosaves do not refresh.
+		Refresh: "true",
 	}
 
 	// Execute the update request
@@ -717,6 +719,8 @@ func (es *elasticsearchStorage) ScheduleBlogById(ctx context.Context, opts Sched
 		DocumentID:      opts.BlogID,
 		Body:            strings.NewReader(string(bs)),
 		RetryOnConflict: &retries,
+		// Explicit publication actions must be searchable immediately; autosaves do not refresh.
+		Refresh: "true",
 	}
 
 	updateResponse, err := req.Do(ctx, es.client)
@@ -772,6 +776,8 @@ func (es *elasticsearchStorage) MoveBlogToDraft(ctx context.Context, blogId stri
 		DocumentID:      blogId,
 		Body:            strings.NewReader(string(bs)),
 		RetryOnConflict: &retries,
+		// Explicit publication actions must be searchable immediately; autosaves do not refresh.
+		Refresh: "true",
 	}
 
 	// Execute the update request
