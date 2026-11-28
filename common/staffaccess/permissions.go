@@ -19,15 +19,16 @@ const (
 	VerificationReview    = "verification.review"
 	VerificationDocuments = "verification.documents.read"
 	ModerationManage      = "moderation.manage"
+	ModerationNSFW        = "moderation.nsfw"
 	PaymentsRead          = "payments.read"
 	PaymentsManage        = "payments.manage"
 	OrphansRead           = "posts.orphans.read"
 )
 
 var rolePermissions = map[string][]string{
-	constants.RoleAdmin:     {Access, OverviewRead, UsersRead, UsersManage, UsersDelete, PostsRead, PostsManage, EventsRead, EventsManage, GroupsRead, GroupsManage, VerificationRead, VerificationReview, VerificationDocuments, ModerationManage, PaymentsRead, PaymentsManage, OrphansRead},
-	constants.RoleSupport:   {Access, OverviewRead, VerificationRead, VerificationReview, VerificationDocuments},
-	constants.RoleCommunity: {Access, OverviewRead, UsersRead, UsersDelete, PostsRead, PostsManage, EventsRead, EventsManage, GroupsRead, GroupsManage, VerificationRead, VerificationReview, VerificationDocuments, ModerationManage},
+	constants.RoleAdmin:     {ModerationNSFW, Access, OverviewRead, UsersRead, UsersManage, UsersDelete, PostsRead, PostsManage, EventsRead, EventsManage, GroupsRead, GroupsManage, VerificationRead, VerificationReview, VerificationDocuments, ModerationManage, PaymentsRead, PaymentsManage, OrphansRead},
+	constants.RoleSupport:   {ModerationNSFW, Access, OverviewRead, VerificationRead, VerificationReview, VerificationDocuments},
+	constants.RoleCommunity: {ModerationNSFW, Access, OverviewRead, UsersRead, UsersDelete, PostsRead, PostsManage, EventsRead, EventsManage, GroupsRead, GroupsManage, VerificationRead, VerificationReview, VerificationDocuments, ModerationManage},
 }
 
 // Permissions returns a copy so callers cannot change the authorization policy.

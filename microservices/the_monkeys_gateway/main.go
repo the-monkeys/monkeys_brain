@@ -23,6 +23,7 @@ import (
 	"github.com/the-monkeys/the_monkeys/microservices/the_monkeys_gateway/internal/events"
 	"github.com/the-monkeys/the_monkeys/microservices/the_monkeys_gateway/internal/groups"
 	"github.com/the-monkeys/the_monkeys/microservices/the_monkeys_gateway/internal/idempotency"
+	"github.com/the-monkeys/the_monkeys/microservices/the_monkeys_gateway/internal/moderation"
 	"github.com/the-monkeys/the_monkeys/microservices/the_monkeys_gateway/internal/notification"
 	"github.com/the-monkeys/the_monkeys/microservices/the_monkeys_gateway/internal/snapshot"
 	"github.com/the-monkeys/the_monkeys/microservices/the_monkeys_gateway/internal/storage"
@@ -107,6 +108,14 @@ func main() {
 
 	// Register REST routes for all the microservices
 	authClient := auth.RegisterAuthRouter(server.router, cfg, log)
+	policyClient, policyErr := moderation.NewClient(cfg)
+	if policyErr != nil {
+		log.Fatalw("cannot initialize moderation client", "err", policyErr)
+	}
+	contentPolicy := moderation.New(policyClient)
+	identity := auth.InitAuthMiddleware(authClient, log)
+	server.router.Use(contentPolicy.Middleware(identity.LoadOptionalIdentity))
+	contentPolicy.RegisterRoutes(server.router, identity)
 	userClient := user_service.RegisterUserRouter(server.router, cfg, authClient, log, searchCache, creationGuard)
 	blogClient := blog.RegisterBlogRouter(server.router, cfg, authClient, userClient, log)
 	// Phase 3: search-v2 blog & autocomplete endpoints. Hits ES via the
@@ -117,11 +126,14 @@ func main() {
 	storageV2Svc := storage_v2.RegisterRoutes(server.router, cfg, storageClient.Client, authClient, log)
 	notification.RegisterNotificationRoute(server.router, cfg, authClient, log)
 	eventClient := events.RegisterEventRouter(server.router, cfg, authClient, storageV2Svc, log, creationGuard)
+	eventClient.Moderation = policyClient
 	groupClient := groups.RegisterGroupRouter(server.router, cfg, authClient, eventClient.Client, blogClient.Client, storageV2Svc, log, creationGuard)
 	discussions.RegisterDiscussionRouter(server.router, cfg, authClient, log)
 	blogClient.Groups = groupClient.Client
 	userClient.ACL = &blogacl.Checker{Blogs: blogClient.Client, Groups: groupClient.Client, Log: log}
-	admin.RegisterAdminRouter(server.router, cfg, authClient, eventClient.Client, blogClient.Client, groupClient.Client, log)
+	adminClient := admin.RegisterAdminRouter(server.router, cfg, authClient, eventClient.Client, blogClient.Client, groupClient.Client, log)
+	adminClient.Moderation = policyClient
+	adminClient.RegisterModerationRoutes(server.router, authClient, contentPolicy, log)
 	systems.RegisterSystemRouter(server.router, cfg, log)
 	snapshot.RegisterRoutes(server.router, cfg, log)
 

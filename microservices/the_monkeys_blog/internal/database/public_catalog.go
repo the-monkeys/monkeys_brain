@@ -55,6 +55,9 @@ func publicCatalogMetadata(source map[string]interface{}) map[string]interface{}
 		"content_type":     source["content_type"],
 		"published_time":   source["published_time"],
 	}
+	if slug, ok := source["slug"].(string); ok && strings.TrimSpace(slug) != "" {
+		metadata["slug"] = slug
+	}
 	blog, _ := source["blog"].(map[string]interface{})
 	blocks, _ := blog["blocks"].([]interface{})
 	var title, firstHeader, paragraphTitle, firstParagraph, firstImage string

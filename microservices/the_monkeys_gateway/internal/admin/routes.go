@@ -3,6 +3,7 @@ package admin
 import (
 	"context"
 	"fmt"
+	moderationpb "github.com/the-monkeys/the_monkeys/apis/serviceconn/gateway_moderation/pb"
 	"net"
 	"net/http"
 	"os/exec"
@@ -25,11 +26,12 @@ import (
 )
 
 type AdminServiceClient struct {
-	Client userpb.UserServiceClient
-	Events pb.EventServiceClient
-	Blogs  blogpb.BlogServiceClient
-	Groups grouppb.GroupServiceClient
-	logger *zap.SugaredLogger
+	Moderation moderationpb.ModerationServiceClient
+	Client     userpb.UserServiceClient
+	Events     pb.EventServiceClient
+	Blogs      blogpb.BlogServiceClient
+	Groups     grouppb.GroupServiceClient
+	logger     *zap.SugaredLogger
 }
 
 func NewAdminServiceClient(cfg *config.Config, log *zap.SugaredLogger) userpb.UserServiceClient {

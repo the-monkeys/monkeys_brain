@@ -87,12 +87,17 @@ func (us *UserSvc) GetUserProfile(ctx context.Context, req *pb.UserProfileReq) (
 		return nil, status.Errorf(codes.Internal, "cannot get the user profile")
 	}
 
+	birthday := ""
+	if userDetails.DateOfBirth.Valid && userDetails.DateOfBirth.Time.Year() > 1 {
+		birthday = userDetails.DateOfBirth.Time.String()
+	}
+
 	return &pb.UserProfileRes{
 		AccountId:     userDetails.AccountId,
 		Username:      userDetails.Username,
 		FirstName:     userDetails.FirstName,
 		LastName:      userDetails.LastName,
-		DateOfBirth:   userDetails.DateOfBirth.Time.String(),
+		DateOfBirth:   birthday,
 		Bio:           userDetails.Bio.String,
 		AvatarUrl:     userDetails.AvatarUrl.String,
 		CreatedAt:     timestamp.New(userDetails.CreatedAt.Time),
@@ -125,7 +130,10 @@ func (us *UserSvc) GetUserActivities(ctx context.Context, req *pb.UserActivityRe
 
 func (us *UserSvc) UpdateUserProfile(ctx context.Context, req *pb.UpdateUserProfileReq) (*pb.UpdateUserProfileRes, error) {
 	us.log.Debugf("user %s is updating the profile.", req.Username)
-	us.log.Debugf("req: %+v", req)
+	birthday, err := parseProfileBirthday(req.DateOfBirth)
+	if err != nil {
+		return nil, err
+	}
 
 	// Check if the user exists
 	userDetails, err := us.dbConn.CheckIfUsernameExist(req.Username)
@@ -154,6 +162,9 @@ func (us *UserSvc) UpdateUserProfile(ctx context.Context, req *pb.UpdateUserProf
 	} else {
 		dbUserInfo = utils.MapUserUpdateDataPut(req, dbUserInfo)
 	}
+
+	// Missing DOB has no replacement intent, for both legacy PUT and PATCH clients.
+	dbUserInfo.DateOfBirth = birthday
 
 	// Update the user
 	err = us.dbConn.UpdateUserProfile(req.Username, dbUserInfo)

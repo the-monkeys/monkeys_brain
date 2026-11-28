@@ -92,3 +92,21 @@ func TestHeadListAndGetShareGate(t *testing.T) {
 		t.Fatal("list must be AuthOptional so unpublished anonymous is 404 not 401")
 	}
 }
+
+func TestAuthoritativeMediaAdmissionForNonBlogCAS(t *testing.T) {
+	sum := strings.Repeat("a", 64)
+	for _, prefix := range []string{"/api/v2/storage", "/api/storage"} {
+		s := &Service{storageCli: &resolveStub{resp: &pb.ResolveAssetReadResp{AllowPublic: false}}}
+		c, w := testPostCtx(http.MethodGet, prefix+"/assets/sha256/aa/aa/"+sum+".jpg", "", "", "adult")
+		c.Set("moderation.media_authorized", true)
+		if !s.gateAssetFileRead(c, sum+".jpg") {
+			t.Fatal("policy-approved non-blog asset blocked", prefix, w.Code)
+		}
+		s.storageCli = &resolveStub{resp: &pb.ResolveAssetReadResp{VerificationOnly: true}}
+		c, w = testPostCtx(http.MethodGet, prefix+"/assets/sha256/aa/aa/"+sum+".jpg", "", "", "adult")
+		c.Set("moderation.media_authorized", true)
+		if s.gateAssetFileRead(c, sum+".jpg") || w.Code != http.StatusNotFound {
+			t.Fatal("verification bypass")
+		}
+	}
+}

@@ -81,6 +81,9 @@ func main() {
 
 	grpcServer := grpc.NewServer()
 	pb.RegisterUserServiceServer(grpcServer, userService)
+	if err := database.RegisterModerationServer(grpcServer, db); err != nil {
+		log.Fatalw("cannot register moderation service", "err", err)
+	}
 
 	// Register health check service
 	healthServer := health.NewServer()

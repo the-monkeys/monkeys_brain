@@ -65,7 +65,7 @@ func RegisterUserRouter(router *gin.Engine, cfg *config.Config, authClient *auth
 	routes.GET("/public/account/:acc_id", usc.GetUserDetailsByAccId)
 	routes.GET("/connection-count/:username", usc.ConnectionCount)
 
-	routes.Use(mware.AuthRequired)
+	routes.Use(middleware.PrivateNoStore(), mware.AuthRequired)
 
 	{
 		// Account verification (blue-check)
@@ -266,6 +266,10 @@ func (usc *UserServiceClient) UpdateUserProfile(ctx *gin.Context) {
 		Partial:       isPartial,
 	})
 	if err != nil {
+		if status.Code(err) == codes.InvalidArgument {
+			ctx.AbortWithStatusJSON(http.StatusBadRequest, ReturnMessage{Message: "Enter a valid birth date."})
+			return
+		}
 		if status.Code(err) == codes.NotFound {
 			ctx.AbortWithStatusJSON(http.StatusNotFound, ReturnMessage{Message: "user not found"})
 			return

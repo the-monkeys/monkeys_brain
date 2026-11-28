@@ -1,6 +1,7 @@
 package storage_v2
 
 import (
+	contentmoderation "github.com/the-monkeys/the_monkeys/microservices/the_monkeys_gateway/internal/moderation"
 	"net/http"
 	"path"
 	"strings"
@@ -97,6 +98,12 @@ func (s *Service) gateAssetFileRead(ctx *gin.Context, objectName string) bool {
 	if err != nil || res == nil || res.GetVerificationOnly() {
 		s.abortNotFound(ctx)
 		return false
+	}
+	// The shared policy can authoritatively admit non-blog references after
+	// checking their current audience, age and reveal. Verification objects stay
+	// denied above, and an unresolved/missing asset never uses this fallback.
+	if approved, _ := ctx.Get(contentmoderation.MediaAuthorizationKey); approved == true && !res.GetNotFound() {
+		return true
 	}
 	if res.GetAllowPublic() {
 		return true
